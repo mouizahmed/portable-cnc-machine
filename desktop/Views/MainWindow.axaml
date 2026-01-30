@@ -1,0 +1,134 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+        x:Class="PortableCncApp.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        mc:Ignorable="d"
+        Width="1200"
+        Height="760"
+        MinWidth="960"
+        MinHeight="640"
+        Title="Portable CNC">
+
+  <!-- Root layout -->
+  <Grid RowDefinitions="Auto,*" ColumnDefinitions="260,*"
+        Background="{DynamicResource AppBackgroundBrush}">
+
+    <!-- Header -->
+    <Border Grid.Row="0" Grid.ColumnSpan="2"
+            Background="{DynamicResource PanelBackgroundBrush}"
+            Padding="14">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" VerticalAlignment="Center">
+
+        <!-- Left: App name + connection -->
+        <StackPanel Spacing="4">
+          <TextBlock Text="Portable CNC"
+                     FontSize="18"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextPrimaryBrush}" />
+
+          <TextBlock FontSize="12"
+                     Foreground="{DynamicResource TextSecondaryBrush}">
+            <Run Text="Conn: " />
+            <Run Text="{Binding ConnectionLabel}" />
+          </TextBlock>
+        </StackPanel>
+
+        <!-- Machine state pill -->
+        <Border Grid.Column="1"
+                Margin="10,0,0,0"
+                Padding="10,6"
+                CornerRadius="999"
+                Background="{Binding StatePillBrush}">
+          <TextBlock Text="{Binding MachineStateLabel}"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     FontWeight="SemiBold" />
+        </Border>
+
+        <!-- Small indicators -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10"
+                    Margin="12,0,0,0" VerticalAlignment="Center">
+          <TextBlock Text="{Binding LimitsLabel}"
+                     Foreground="{DynamicResource TextSecondaryBrush}" />
+          <TextBlock Text="{Binding SpindleLabel}"
+                     Foreground="{DynamicResource TextSecondaryBrush}" />
+        </StackPanel>
+
+        <!-- Emergency Stop / Stop -->
+        <Button Grid.Column="3"
+                Margin="12,0,0,0"
+                Padding="14,8"
+                Background="{DynamicResource DangerBrush}"
+                Foreground="White"
+                FontWeight="SemiBold"
+                Command="{Binding StopCommand}"
+                IsEnabled="{Binding CanStop}">
+          STOP
+        </Button>
+
+        <!-- Settings shortcut (optional) -->
+        <Button Grid.Column="4"
+                Margin="10,0,0,0"
+                Padding="10,8"
+                Command="{Binding GoSettingsCommand}">
+          Settings
+        </Button>
+
+      </Grid>
+    </Border>
+
+    <!-- Sidebar nav -->
+    <Border Grid.Row="1" Grid.Column="0"
+            Background="{DynamicResource PanelBackgroundBrush}"
+            Padding="12">
+      <StackPanel Spacing="10">
+
+        <TextBlock Text="NAV"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   Margin="4,0,0,6"/>
+
+        <!-- Simple nav buttons -->
+        <Button Content="Run"
+                Command="{Binding GoRunCommand}"
+                HorizontalAlignment="Stretch" />
+        <Button Content="Jog"
+                Command="{Binding GoJogCommand}"
+                HorizontalAlignment="Stretch" />
+        <Button Content="Files"
+                Command="{Binding GoFilesCommand}"
+                HorizontalAlignment="Stretch" />
+        <Button Content="Connect"
+                Command="{Binding GoConnectCommand}"
+                HorizontalAlignment="Stretch" />
+        <Button Content="Settings"
+                Command="{Binding GoSettingsCommand}"
+                HorizontalAlignment="Stretch" />
+
+        <Border Height="1" Background="#2B2B2B" Margin="0,8"/>
+
+        <!-- Advanced toggle + optional Maintenance -->
+        <CheckBox Content="Advanced"
+                  IsChecked="{Binding AdvancedEnabled}"
+                  Foreground="{DynamicResource TextSecondaryBrush}" />
+
+        <Button Content="Maintenance"
+                Command="{Binding GoMaintenanceCommand}"
+                IsVisible="{Binding AdvancedEnabled}"
+                HorizontalAlignment="Stretch" />
+      </StackPanel>
+    </Border>
+
+    <!-- Content area -->
+    <Border Grid.Row="1" Grid.Column="1"
+            Padding="{DynamicResource PagePadding}"
+            Background="{DynamicResource AppBackgroundBrush}">
+      <!-- This will display the View that matches CurrentPage via App.axaml DataTemplates -->
+      <ContentControl Content="{Binding CurrentPage}" />
+    </Border>
+
+  </Grid>
+</Window>

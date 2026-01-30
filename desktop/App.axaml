@@ -1,0 +1,43 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             x:Class="PortableCncApp.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+    <Application.Resources>
+        <!-- App colors / brushes -->
+        <SolidColorBrush x:Key="AppBackgroundBrush" Color="#1E1E1E" />
+        <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#252526" />
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#A0A0A0" />
+        <SolidColorBrush x:Key="DangerBrush" Color="#D83B3B" />
+        <Thickness x:Key="PagePadding">20</Thickness>
+    </Application.Resources>
+
+    <!-- DataTemplates for page navigation -->
+    <Application.DataTemplates>
+        <DataTemplate DataType="{x:Type vm:RunViewModel}">
+            <TextBlock Text="Run Page" FontSize="24" Foreground="{DynamicResource TextPrimaryBrush}" />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:JogViewModel}">
+            <TextBlock Text="Jog Page" FontSize="24" Foreground="{DynamicResource TextPrimaryBrush}" />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:FilesViewModel}">
+            <TextBlock Text="Files Page" FontSize="24" Foreground="{DynamicResource TextPrimaryBrush}" />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ConnectViewModel}">
+            <TextBlock Text="Connect Page" FontSize="24" Foreground="{DynamicResource TextPrimaryBrush}" />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+            <TextBlock Text="Settings Page" FontSize="24" Foreground="{DynamicResource TextPrimaryBrush}" />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:MaintenanceViewModel}">
+            <TextBlock Text="Maintenance Page" FontSize="24" Foreground="{DynamicResource TextPrimaryBrush}" />
+        </DataTemplate>
+    </Application.DataTemplates>
+
+</Application>
