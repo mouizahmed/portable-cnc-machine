@@ -1,0 +1,129 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             x:Class="PortableCncApp.Views.Pages.FilesView"
+             x:DataType="vm:FilesViewModel"
+             mc:Ignorable="d">
+
+  <Grid RowDefinitions="Auto,*">
+    
+    <!-- Page Header -->
+    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+      <StackPanel>
+        <TextBlock Text="G-Code Files"
+                   FontSize="24"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+        <TextBlock Text="Browse, preview, and load G-code files for machining"
+                   FontSize="13"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   Margin="0,4,0,0"/>
+      </StackPanel>
+      
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <Button Content="📂 Browse..." Command="{Binding BrowseCommand}" Padding="12,8"/>
+        <Button Content="🔄 Refresh" Command="{Binding RefreshCommand}" Padding="12,8"/>
+      </StackPanel>
+    </Grid>
+
+    <!-- Main Content -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,*">
+      
+      <!-- LEFT: File List -->
+      <Border Background="{DynamicResource PanelBackgroundBrush}"
+              CornerRadius="8"
+              Padding="16"
+              Margin="0,0,8,0">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top"
+                     Text="AVAILABLE FILES"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextTertiaryBrush}"
+                     LetterSpacing="1"
+                     Margin="0,0,0,12"/>
+          
+          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+            <Button Content="Load Selected"
+                    Command="{Binding LoadSelectedCommand}"
+                    IsEnabled="{Binding HasSelectedFile}"
+                    Padding="16,8"
+                    Background="{DynamicResource AccentBrush}"/>
+            <Button Content="Delete"
+                    Command="{Binding DeleteCommand}"
+                    IsEnabled="{Binding HasSelectedFile}"
+                    Padding="16,8"
+                    Background="{DynamicResource DangerBrush}"/>
+          </StackPanel>
+          
+          <ListBox ItemsSource="{Binding Files}"
+                   SelectedItem="{Binding SelectedFile}"
+                   Background="Transparent"
+                   BorderThickness="0">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:GCodeFileInfo">
+                <Border Padding="12,10" Margin="0,2">
+                  <Grid ColumnDefinitions="*,Auto,Auto">
+                    <StackPanel>
+                      <TextBlock Text="{Binding Name}"
+                                 FontSize="14"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Text="{Binding Modified}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextTertiaryBrush}"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding Size}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               VerticalAlignment="Center"
+                               Margin="16,0"/>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <!-- RIGHT: File Preview -->
+      <Border Grid.Column="1"
+              Background="{DynamicResource PanelBackgroundBrush}"
+              CornerRadius="8"
+              Padding="16"
+              Margin="8,0,0,0">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+            <TextBlock Text="FILE PREVIEW"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"/>
+            <TextBlock Grid.Column="1"
+                       Text="{Binding PreviewLineCount, StringFormat={}{0} lines}"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextTertiaryBrush}"/>
+          </Grid>
+          
+          <Border Background="#1A1A1A"
+                  CornerRadius="4"
+                  Padding="12"
+                  BorderBrush="{DynamicResource BorderBrush}"
+                  BorderThickness="1">
+            <ScrollViewer>
+              <TextBlock Text="{Binding FilePreview}"
+                         FontFamily="Consolas"
+                         FontSize="12"
+                         Foreground="{DynamicResource TextSecondaryBrush}"
+                         TextWrapping="NoWrap"/>
+            </ScrollViewer>
+          </Border>
+        </DockPanel>
+      </Border>
+      
+    </Grid>
+  </Grid>
+</UserControl>

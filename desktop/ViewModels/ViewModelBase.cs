@@ -19,3 +19,16 @@ public abstract class ViewModelBase : INotifyPropertyChanged
         return true;
     }
 }
+
+/// <summary>
+/// Base class for page ViewModels that need access to shared machine state
+/// </summary>
+public abstract class PageViewModelBase : ViewModelBase
+{
+    protected MainWindowViewModel? MainVm { get; private set; }
+
+    public void SetMainViewModel(MainWindowViewModel mainVm)
+    {
+        MainVm = mainVm;
+    }
+}

@@ -1,0 +1,196 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             x:Class="PortableCncApp.Views.Pages.SettingsView"
+             x:DataType="vm:SettingsViewModel"
+             mc:Ignorable="d">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+    
+    <!-- Page Header -->
+    <StackPanel Margin="0,0,0,16">
+      <TextBlock Text="Settings"
+                 FontSize="24"
+                 FontWeight="SemiBold"
+                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+      <TextBlock Text="Configure machine parameters, safety thresholds, and UI preferences"
+                 FontSize="13"
+                 Foreground="{DynamicResource TextSecondaryBrush}"
+                 Margin="0,4,0,0"/>
+    </StackPanel>
+
+    <!-- Settings Content -->
+    <ScrollViewer Grid.Row="1">
+      <StackPanel Spacing="16">
+        
+        <!-- Steps per mm -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}" CornerRadius="8" Padding="20">
+          <StackPanel>
+            <TextBlock Text="STEPS PER MILLIMETER"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto">
+              <TextBlock Text="X Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,6"/>
+              <TextBlock Grid.Column="1" Text="Y Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,8,6"/>
+              <TextBlock Grid.Column="2" Text="Z Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,6"/>
+              
+              <NumericUpDown Grid.Row="1" Value="{Binding StepsPerMmX}" Minimum="1" Maximum="10000" Increment="10" Margin="0,0,8,0"/>
+              <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding StepsPerMmY}" Minimum="1" Maximum="10000" Increment="10" Margin="8,0,8,0"/>
+              <NumericUpDown Grid.Row="1" Grid.Column="2" Value="{Binding StepsPerMmZ}" Minimum="1" Maximum="10000" Increment="10" Margin="8,0,0,0"/>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Max Feed Rates -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}" CornerRadius="8" Padding="20">
+          <StackPanel>
+            <TextBlock Text="MAXIMUM FEED RATES (mm/min)"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto">
+              <TextBlock Text="X Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,6"/>
+              <TextBlock Grid.Column="1" Text="Y Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,8,6"/>
+              <TextBlock Grid.Column="2" Text="Z Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,6"/>
+              
+              <NumericUpDown Grid.Row="1" Value="{Binding MaxFeedRateX}" Minimum="1" Maximum="20000" Increment="100" Margin="0,0,8,0"/>
+              <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding MaxFeedRateY}" Minimum="1" Maximum="20000" Increment="100" Margin="8,0,8,0"/>
+              <NumericUpDown Grid.Row="1" Grid.Column="2" Value="{Binding MaxFeedRateZ}" Minimum="1" Maximum="5000" Increment="50" Margin="8,0,0,0"/>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Acceleration -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}" CornerRadius="8" Padding="20">
+          <StackPanel>
+            <TextBlock Text="ACCELERATION (mm/s²)"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto">
+              <TextBlock Text="X Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,6"/>
+              <TextBlock Grid.Column="1" Text="Y Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,8,6"/>
+              <TextBlock Grid.Column="2" Text="Z Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,6"/>
+              
+              <NumericUpDown Grid.Row="1" Value="{Binding AccelerationX}" Minimum="1" Maximum="1000" Increment="10" Margin="0,0,8,0"/>
+              <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding AccelerationY}" Minimum="1" Maximum="1000" Increment="10" Margin="8,0,8,0"/>
+              <NumericUpDown Grid.Row="1" Grid.Column="2" Value="{Binding AccelerationZ}" Minimum="1" Maximum="500" Increment="5" Margin="8,0,0,0"/>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Travel Limits -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}" CornerRadius="8" Padding="20">
+          <StackPanel>
+            <TextBlock Text="MAXIMUM TRAVEL (mm)"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto">
+              <TextBlock Text="X Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,6"/>
+              <TextBlock Grid.Column="1" Text="Y Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,8,6"/>
+              <TextBlock Grid.Column="2" Text="Z Axis" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,6"/>
+              
+              <NumericUpDown Grid.Row="1" Value="{Binding MaxTravelX}" Minimum="1" Maximum="1000" Increment="10" Margin="0,0,8,0"/>
+              <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding MaxTravelY}" Minimum="1" Maximum="1000" Increment="10" Margin="8,0,8,0"/>
+              <NumericUpDown Grid.Row="1" Grid.Column="2" Value="{Binding MaxTravelZ}" Minimum="1" Maximum="500" Increment="5" Margin="8,0,0,0"/>
+              
+              <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="24" Margin="0,12,0,0">
+                <CheckBox Content="Enable Soft Limits" IsChecked="{Binding SoftLimitsEnabled}"/>
+                <CheckBox Content="Enable Hard Limits" IsChecked="{Binding HardLimitsEnabled}"/>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Spindle Settings -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}" CornerRadius="8" Padding="20">
+          <StackPanel>
+            <TextBlock Text="SPINDLE SETTINGS"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+              <TextBlock Text="Maximum RPM" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,6"/>
+              <TextBlock Grid.Column="1" Text="Minimum RPM" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,6"/>
+              
+              <NumericUpDown Grid.Row="1" Value="{Binding SpindleMaxRpm}" Minimum="1000" Maximum="50000" Increment="1000" Margin="0,0,8,0"/>
+              <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding SpindleMinRpm}" Minimum="0" Maximum="10000" Increment="100" Margin="8,0,0,0"/>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Safety Thresholds -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}" CornerRadius="8" Padding="20">
+          <StackPanel>
+            <TextBlock Text="SAFETY THRESHOLDS"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+              <TextBlock Text="Max Temperature (°C)" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,6"/>
+              <TextBlock Grid.Column="1" Text="Warning Temperature (°C)" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,6"/>
+              
+              <NumericUpDown Grid.Row="1" Value="{Binding MaxTemperature}" Minimum="30" Maximum="100" Increment="5" Margin="0,0,8,0"/>
+              <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding WarningTemperature}" Minimum="25" Maximum="80" Increment="5" Margin="8,0,0,0"/>
+            </Grid>
+          </StackPanel>
+        </Border>
+        
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- Bottom Action Bar -->
+    <Border Grid.Row="2"
+            Background="{DynamicResource PanelBackgroundBrush}"
+            CornerRadius="8"
+            Padding="16"
+            Margin="0,16,0,0">
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Content="Save Settings"
+                Command="{Binding SaveSettingsCommand}"
+                Padding="20,10"
+                Background="{DynamicResource AccentBrush}"
+                Foreground="White"
+                FontWeight="SemiBold"/>
+        <Button Content="Apply to Machine"
+                Command="{Binding ApplyToMachineCommand}"
+                Padding="20,10"/>
+        <Button Content="Load Defaults"
+                Command="{Binding LoadDefaultsCommand}"
+                Padding="20,10"/>
+        
+        <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="8,0"/>
+        
+        <Button Content="Import..."
+                Command="{Binding ImportSettingsCommand}"
+                Padding="16,10"/>
+        <Button Content="Export..."
+                Command="{Binding ExportSettingsCommand}"
+                Padding="16,10"/>
+      </StackPanel>
+    </Border>
+    
+  </Grid>
+</UserControl>

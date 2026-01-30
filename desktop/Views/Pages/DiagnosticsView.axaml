@@ -1,0 +1,250 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             x:Class="PortableCncApp.Views.Pages.DiagnosticsView"
+             x:DataType="vm:DiagnosticsViewModel"
+             mc:Ignorable="d">
+
+  <Grid RowDefinitions="Auto,*">
+    
+    <!-- Page Header -->
+    <StackPanel Margin="0,0,0,16">
+      <TextBlock Text="Diagnostics"
+                 FontSize="24"
+                 FontWeight="SemiBold"
+                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+      <TextBlock Text="Advanced debugging console, sensor data, and system diagnostics"
+                 FontSize="13"
+                 Foreground="{DynamicResource TextSecondaryBrush}"
+                 Margin="0,4,0,0"/>
+    </StackPanel>
+
+    <!-- Main Content -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,320">
+      
+      <!-- LEFT: Console -->
+      <Border Background="{DynamicResource PanelBackgroundBrush}"
+              CornerRadius="8"
+              Padding="16"
+              Margin="0,0,8,0">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+            <TextBlock Text="COMMAND CONSOLE"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"/>
+            <Button Grid.Column="1" Content="Clear" Command="{Binding ClearLogCommand}" Padding="12,4" FontSize="11"/>
+          </Grid>
+          
+          <!-- Log Output -->
+          <Border DockPanel.Dock="Top"
+                  Background="#0D0D0D"
+                  CornerRadius="4"
+                  Padding="12"
+                  Height="300"
+                  BorderBrush="{DynamicResource BorderBrush}"
+                  BorderThickness="1">
+            <ScrollViewer>
+              <ItemsControl ItemsSource="{Binding LogEntries}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:LogEntry">
+                    <StackPanel Orientation="Horizontal" Margin="0,2">
+                      <TextBlock Text="{Binding FormattedTime}"
+                                 FontFamily="Consolas"
+                                 FontSize="11"
+                                 Foreground="#666666"
+                                 Width="90"/>
+                      <TextBlock Text="{Binding Type}"
+                                 FontFamily="Consolas"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Width="40"
+                                 Foreground="{DynamicResource AccentBrush}"/>
+                      <TextBlock Text="{Binding Message}"
+                                 FontFamily="Consolas"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Border>
+          
+          <!-- Command Input -->
+          <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+            <TextBox Text="{Binding CommandInput}"
+                     Watermark="Enter GRBL command (e.g., $$ for settings, ? for status)..."
+                     FontFamily="Consolas"/>
+            <Button Grid.Column="1" 
+                    Content="Send" 
+                    Command="{Binding SendCommandCommand}" 
+                    Padding="16,8"
+                    Margin="8,0,0,0"
+                    Background="{DynamicResource AccentBrush}"/>
+          </Grid>
+          
+          <!-- Quick Commands -->
+          <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+            <TextBlock Text="QUICK COMMANDS"
+                       FontSize="10"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       Margin="0,0,0,8"/>
+            <WrapPanel>
+              <Button Content="? Status" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
+              <Button Content="$$ Settings" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
+              <Button Content="$# Parameters" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
+              <Button Content="$G Parser State" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
+              <Button Content="$I Build Info" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
+              <Button Content="$N Startup Blocks" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
+            </WrapPanel>
+          </StackPanel>
+          
+        </DockPanel>
+      </Border>
+
+      <!-- RIGHT: Sensor Data & Status -->
+      <StackPanel Grid.Column="1" Spacing="16">
+        
+        <!-- Recovery Actions -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel>
+            <TextBlock Text="RECOVERY ACTIONS"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <StackPanel Spacing="8">
+              <Button Content="Reset Fault"
+                      Command="{Binding ResetFaultCommand}"
+                      HorizontalAlignment="Stretch"
+                      Padding="12,10"/>
+              <Button Content="Unlock (Clear E-Stop)"
+                      Command="{Binding UnlockCommand}"
+                      HorizontalAlignment="Stretch"
+                      Padding="12,10"
+                      Background="{DynamicResource DangerBrush}"/>
+              <Button Content="Refresh Sensors"
+                      Command="{Binding RefreshSensorsCommand}"
+                      HorizontalAlignment="Stretch"
+                      Padding="12,10"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Sensor Readings -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel>
+            <TextBlock Text="SENSOR READINGS"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+              <TextBlock Text="CPU Temperature" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              <TextBlock Grid.Column="1" Text="{Binding CpuTemperature, StringFormat={}{0:F1}°C}" 
+                         Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas"/>
+              
+              <TextBlock Grid.Row="1" Text="Ambient Temp" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AmbientTemperature, StringFormat={}{0:F1}°C}" 
+                         Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas" Margin="0,4,0,0"/>
+              
+              <TextBlock Grid.Row="2" Text="Spindle Temp" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SpindleTemperature, StringFormat={}{0:F1}°C}" 
+                         Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas" Margin="0,4,0,0"/>
+              
+              <TextBlock Grid.Row="3" Text="Humidity" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Humidity, StringFormat={}{0:F0}%}" 
+                         Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas" Margin="0,4,0,0"/>
+              
+              <TextBlock Grid.Row="4" Text="Vibration" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+              <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding VibrationLevel, StringFormat={}{0:F3} g}" 
+                         Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas" Margin="0,4,0,0"/>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Driver Status -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel>
+            <TextBlock Text="DRIVER STATUS"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <Ellipse Width="10" Height="10" Fill="{Binding XDriverOk, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"/>
+                <TextBlock Text="X Driver" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <Ellipse Width="10" Height="10" Fill="{Binding YDriverOk, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"/>
+                <TextBlock Text="Y Driver" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              </StackPanel>
+              <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                <Ellipse Width="10" Height="10" Fill="{Binding ZDriverOk, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"/>
+                <TextBlock Text="Z Driver" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              </StackPanel>
+              <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Ellipse Width="10" Height="10" Fill="{Binding SpindleDriverOk, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"/>
+                <TextBlock Text="Spindle" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Limit Switches -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel>
+            <TextBlock Text="LIMIT SWITCHES"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto">
+              <TextBlock Text="" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}"/>
+              <TextBlock Grid.Column="1" Text="MIN" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" HorizontalAlignment="Center"/>
+              <TextBlock Grid.Column="2" Text="MAX" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" HorizontalAlignment="Center"/>
+              
+              <TextBlock Grid.Row="1" Text="X" FontWeight="SemiBold" Foreground="#E06666"/>
+              <Ellipse Grid.Row="1" Grid.Column="1" Width="12" Height="12" 
+                       Fill="{Binding XMinLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}"
+                       HorizontalAlignment="Center"/>
+              <Ellipse Grid.Row="1" Grid.Column="2" Width="12" Height="12" 
+                       Fill="{Binding XMaxLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}"
+                       HorizontalAlignment="Center"/>
+              
+              <TextBlock Grid.Row="2" Text="Y" FontWeight="SemiBold" Foreground="#93C47D" Margin="0,8,0,0"/>
+              <Ellipse Grid.Row="2" Grid.Column="1" Width="12" Height="12" 
+                       Fill="{Binding YMinLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}"
+                       HorizontalAlignment="Center" Margin="0,8,0,0"/>
+              <Ellipse Grid.Row="2" Grid.Column="2" Width="12" Height="12" 
+                       Fill="{Binding YMaxLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}"
+                       HorizontalAlignment="Center" Margin="0,8,0,0"/>
+            </Grid>
+          </StackPanel>
+        </Border>
+        
+      </StackPanel>
+    </Grid>
+  </Grid>
+</UserControl>

@@ -6,129 +6,318 @@
         x:Class="PortableCncApp.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         mc:Ignorable="d"
-        Width="1200"
-        Height="760"
-        MinWidth="960"
-        MinHeight="640"
-        Title="Portable CNC">
-
-  <!-- Root layout -->
-  <Grid RowDefinitions="Auto,*" ColumnDefinitions="260,*"
+        Width="1280"
+        Height="800"
+        MinWidth="1024"
+        MinHeight="700"
+        Title="Portable CNC Control"
         Background="{DynamicResource AppBackgroundBrush}">
 
-    <!-- Header -->
-    <Border Grid.Row="0" Grid.ColumnSpan="2"
-            Background="{DynamicResource PanelBackgroundBrush}"
-            Padding="14">
-      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" VerticalAlignment="Center">
-
-        <!-- Left: App name + connection -->
-        <StackPanel Spacing="4">
-          <TextBlock Text="Portable CNC"
+  <Grid RowDefinitions="Auto,*,Auto">
+    
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- HEADER BAR -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <Border Grid.Row="0"
+            Background="{DynamicResource HeaderBackgroundBrush}"
+            Padding="16,10"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
+        
+        <!-- App Title & Connection Status -->
+        <StackPanel Spacing="2">
+          <TextBlock Text="PORTABLE CNC"
                      FontSize="18"
-                     FontWeight="SemiBold"
-                     Foreground="{DynamicResource TextPrimaryBrush}" />
-
-          <TextBlock FontSize="12"
-                     Foreground="{DynamicResource TextSecondaryBrush}">
-            <Run Text="Conn: " />
-            <Run Text="{Binding ConnectionLabel}" />
-          </TextBlock>
+                     FontWeight="Bold"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     LetterSpacing="1"/>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Ellipse Width="8" Height="8" Fill="{Binding ConnectionStatusBrush}"/>
+            <TextBlock Text="{Binding ConnectionStatusText}"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+          </StackPanel>
         </StackPanel>
 
-        <!-- Machine state pill -->
-        <Border Grid.Column="1"
-                Margin="10,0,0,0"
-                Padding="10,6"
-                CornerRadius="999"
-                Background="{Binding StatePillBrush}">
-          <TextBlock Text="{Binding MachineStateLabel}"
-                     Foreground="{DynamicResource TextPrimaryBrush}"
-                     FontWeight="SemiBold" />
+        <!-- Motion State Pill -->
+        <Border Grid.Column="2"
+                Margin="16,0"
+                Padding="14,6"
+                CornerRadius="4"
+                Background="{Binding MotionStateBrush}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="MOTION:"
+                       FontSize="11"
+                       Foreground="#CCFFFFFF"
+                       VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding MotionStateLabel}"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Foreground="White"
+                       VerticalAlignment="Center"/>
+          </StackPanel>
         </Border>
 
-        <!-- Small indicators -->
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10"
-                    Margin="12,0,0,0" VerticalAlignment="Center">
-          <TextBlock Text="{Binding LimitsLabel}"
-                     Foreground="{DynamicResource TextSecondaryBrush}" />
-          <TextBlock Text="{Binding SpindleLabel}"
-                     Foreground="{DynamicResource TextSecondaryBrush}" />
+        <!-- Safety State Pill -->
+        <Border Grid.Column="3"
+                Margin="0,0,16,0"
+                Padding="14,6"
+                CornerRadius="4"
+                Background="{Binding SafetyStateBrush}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="SAFETY:"
+                       FontSize="11"
+                       Foreground="#CCFFFFFF"
+                       VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding SafetyStateLabel}"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Foreground="White"
+                       VerticalAlignment="Center"/>
+          </StackPanel>
+        </Border>
+
+        <!-- Limits & Spindle Indicators -->
+        <StackPanel Grid.Column="4" 
+                    Orientation="Horizontal" 
+                    Spacing="16"
+                    Margin="0,0,16,0"
+                    VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock Text="Limits:"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+            <TextBlock Text="{Binding LimitsStatusText}"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock Text="Spindle:"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+            <TextBlock Text="{Binding SpindleStatusText}"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+          </StackPanel>
         </StackPanel>
 
-        <!-- Emergency Stop / Stop -->
-        <Button Grid.Column="3"
-                Margin="12,0,0,0"
-                Padding="14,8"
+        <!-- E-STOP Button -->
+        <Button Grid.Column="5"
+                Margin="0,0,12,0"
+                Padding="20,8"
                 Background="{DynamicResource DangerBrush}"
                 Foreground="White"
-                FontWeight="SemiBold"
-                Command="{Binding StopCommand}"
-                IsEnabled="{Binding CanStop}">
-          STOP
+                FontWeight="Bold"
+                FontSize="14"
+                CornerRadius="4"
+                Command="{Binding EStopCommand}">
+          E-STOP
         </Button>
 
-        <!-- Settings shortcut (optional) -->
-        <Button Grid.Column="4"
-                Margin="10,0,0,0"
-                Padding="10,8"
-                Command="{Binding GoSettingsCommand}">
-          Settings
+        <!-- Settings Quick Access -->
+        <Button Grid.Column="6"
+                Padding="12,8"
+                Command="{Binding GoSettingsCommand}"
+                Background="Transparent"
+                Foreground="{DynamicResource TextSecondaryBrush}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="⚙" FontSize="16"/>
+            <TextBlock Text="Settings" VerticalAlignment="Center"/>
+          </StackPanel>
         </Button>
-
+        
       </Grid>
     </Border>
 
-    <!-- Sidebar nav -->
-    <Border Grid.Row="1" Grid.Column="0"
-            Background="{DynamicResource PanelBackgroundBrush}"
-            Padding="12">
-      <StackPanel Spacing="10">
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- MAIN CONTENT AREA -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <Grid Grid.Row="1" ColumnDefinitions="220,*">
+      
+      <!-- SIDEBAR NAVIGATION -->
+      <Border Grid.Column="0"
+              Background="{DynamicResource SidebarBackgroundBrush}"
+              Padding="12"
+              BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="0,0,1,0">
+        <DockPanel>
+          
+          <!-- Navigation Links -->
+          <StackPanel DockPanel.Dock="Top" Spacing="4">
+            <TextBlock Text="NAVIGATION"
+                       FontSize="10"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       Margin="8,0,0,8"
+                       LetterSpacing="1"/>
 
-        <TextBlock Text="NAV"
-                   FontSize="12"
-                   FontWeight="SemiBold"
-                   Foreground="{DynamicResource TextSecondaryBrush}"
-                   Margin="4,0,0,6"/>
+            <Button Classes="NavButton"
+                    Command="{Binding GoDashboardCommand}"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="▶" Width="20" TextAlignment="Center"/>
+                <TextBlock Text="Dashboard"/>
+              </StackPanel>
+            </Button>
 
-        <!-- Simple nav buttons -->
-        <Button Content="Run"
-                Command="{Binding GoRunCommand}"
-                HorizontalAlignment="Stretch" />
-        <Button Content="Jog"
-                Command="{Binding GoJogCommand}"
-                HorizontalAlignment="Stretch" />
-        <Button Content="Files"
-                Command="{Binding GoFilesCommand}"
-                HorizontalAlignment="Stretch" />
-        <Button Content="Connect"
-                Command="{Binding GoConnectCommand}"
-                HorizontalAlignment="Stretch" />
-        <Button Content="Settings"
-                Command="{Binding GoSettingsCommand}"
-                HorizontalAlignment="Stretch" />
+            <Button Classes="NavButton"
+                    Command="{Binding GoJogCommand}"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="✥" Width="20" TextAlignment="Center"/>
+                <TextBlock Text="Jog Control"/>
+              </StackPanel>
+            </Button>
 
-        <Border Height="1" Background="#2B2B2B" Margin="0,8"/>
+            <Button Classes="NavButton"
+                    Command="{Binding GoFilesCommand}"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="📁" Width="20" TextAlignment="Center"/>
+                <TextBlock Text="Files"/>
+              </StackPanel>
+            </Button>
 
-        <!-- Advanced toggle + optional Maintenance -->
-        <CheckBox Content="Advanced"
-                  IsChecked="{Binding AdvancedEnabled}"
-                  Foreground="{DynamicResource TextSecondaryBrush}" />
+            <Button Classes="NavButton"
+                    Command="{Binding GoConnectCommand}"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="🔌" Width="20" TextAlignment="Center"/>
+                <TextBlock Text="Connect"/>
+              </StackPanel>
+            </Button>
 
-        <Button Content="Maintenance"
-                Command="{Binding GoMaintenanceCommand}"
-                IsVisible="{Binding AdvancedEnabled}"
-                HorizontalAlignment="Stretch" />
-      </StackPanel>
+            <Button Classes="NavButton"
+                    Command="{Binding GoSettingsCommand}"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="⚙" Width="20" TextAlignment="Center"/>
+                <TextBlock Text="Settings"/>
+              </StackPanel>
+            </Button>
+
+            <!-- Separator -->
+            <Border Height="1" 
+                    Background="{DynamicResource BorderBrush}" 
+                    Margin="0,12"/>
+
+            <!-- Advanced Section -->
+            <CheckBox Content="Advanced Mode"
+                      IsChecked="{Binding AdvancedEnabled}"
+                      Foreground="{DynamicResource TextSecondaryBrush}"
+                      Margin="8,0,0,8"/>
+
+            <Button Classes="NavButton"
+                    Command="{Binding GoDiagnosticsCommand}"
+                    IsVisible="{Binding AdvancedEnabled}"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="🔧" Width="20" TextAlignment="Center"/>
+                <TextBlock Text="Diagnostics"/>
+              </StackPanel>
+            </Button>
+          </StackPanel>
+
+          <!-- Bottom: Quick DRO Display -->
+          <Border DockPanel.Dock="Bottom"
+                  Background="{DynamicResource PanelBackgroundBrush}"
+                  CornerRadius="6"
+                  Padding="12"
+                  Margin="0,12,0,0">
+            <StackPanel Spacing="8">
+              <TextBlock Text="POSITION (mm)"
+                         FontSize="10"
+                         FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextTertiaryBrush}"
+                         LetterSpacing="1"/>
+              
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" Text="X:" FontWeight="SemiBold" Foreground="#E06666" Margin="0,0,8,4"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding PositionX, StringFormat={}{0:F3}}" 
+                           Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas"/>
+                
+                <TextBlock Grid.Row="1" Text="Y:" FontWeight="SemiBold" Foreground="#93C47D" Margin="0,0,8,4"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding PositionY, StringFormat={}{0:F3}}"
+                           Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas"/>
+                
+                <TextBlock Grid.Row="2" Text="Z:" FontWeight="SemiBold" Foreground="#6FA8DC" Margin="0,0,8,0"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PositionZ, StringFormat={}{0:F3}}"
+                           Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+          
+        </DockPanel>
+      </Border>
+
+      <!-- PAGE CONTENT -->
+      <Border Grid.Column="1" Padding="20">
+        <ContentControl Content="{Binding CurrentPage}"/>
+      </Border>
+      
+    </Grid>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- STATUS BAR -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <Border Grid.Row="2"
+            Background="{DynamicResource HeaderBackgroundBrush}"
+            Padding="16,8"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+        
+        <!-- Status Message -->
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="Status:"
+                     FontSize="12"
+                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+          <TextBlock Text="{Binding StatusMessage}"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextPrimaryBrush}"/>
+        </StackPanel>
+
+        <!-- Feed Rate -->
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="20,0">
+          <TextBlock Text="Feed:"
+                     FontSize="11"
+                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+          <TextBlock Text="{Binding FeedRate, StringFormat={}{0:F0}}"
+                     FontSize="11"
+                     Foreground="{DynamicResource TextPrimaryBrush}"/>
+          <TextBlock Text="mm/min"
+                     FontSize="11"
+                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+        </StackPanel>
+
+        <!-- Temperature -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="20,0">
+          <TextBlock Text="Temp:"
+                     FontSize="11"
+                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+          <TextBlock Text="{Binding Temperature, StringFormat={}{0:F1}°C}"
+                     FontSize="11"
+                     Foreground="{DynamicResource TextPrimaryBrush}"/>
+        </StackPanel>
+
+        <!-- Current Page Indicator -->
+        <TextBlock Grid.Column="3"
+                   Text="{Binding CurrentPageName}"
+                   FontSize="11"
+                   Foreground="{DynamicResource TextTertiaryBrush}"/>
+        
+      </Grid>
     </Border>
-
-    <!-- Content area -->
-    <Border Grid.Row="1" Grid.Column="1"
-            Padding="{DynamicResource PagePadding}"
-            Background="{DynamicResource AppBackgroundBrush}">
-      <!-- This will display the View that matches CurrentPage via App.axaml DataTemplates -->
-      <ContentControl Content="{Binding CurrentPage}" />
-    </Border>
-
+    
   </Grid>
 </Window>
