@@ -1,7 +1,9 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:materialIcons="using:Material.Icons.Avalonia"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+
         xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
         x:Class="PortableCncApp.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -124,7 +126,7 @@
                 Background="Transparent"
                 Foreground="{DynamicResource TextSecondaryBrush}">
           <StackPanel Orientation="Horizontal" Spacing="6">
-            <TextBlock Text="⚙" FontSize="16"/>
+            <materialIcons:MaterialIcon Kind="Settings" />
             <TextBlock Text="Settings" VerticalAlignment="Center"/>
           </StackPanel>
         </Button>
@@ -147,19 +149,13 @@
           
           <!-- Navigation Links -->
           <StackPanel DockPanel.Dock="Top" Spacing="4">
-            <TextBlock Text="NAVIGATION"
-                       FontSize="10"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextTertiaryBrush}"
-                       Margin="8,0,0,8"
-                       LetterSpacing="1"/>
 
             <Button Classes="NavButton"
                     Command="{Binding GoDashboardCommand}"
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="▶" Width="20" TextAlignment="Center"/>
+                  <materialIcons:MaterialIcon Kind="Play" />
                 <TextBlock Text="Dashboard"/>
               </StackPanel>
             </Button>
@@ -169,7 +165,7 @@
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="✥" Width="20" TextAlignment="Center"/>
+                <materialIcons:MaterialIcon Kind="CameraControl" />
                 <TextBlock Text="Jog Control"/>
               </StackPanel>
             </Button>
@@ -179,7 +175,7 @@
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="📁" Width="20" TextAlignment="Center"/>
+                <materialIcons:MaterialIcon Kind="Folder" />
                 <TextBlock Text="Files"/>
               </StackPanel>
             </Button>
@@ -189,7 +185,7 @@
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="🔌" Width="20" TextAlignment="Center"/>
+                <materialIcons:MaterialIcon Kind="PowerPlug" />
                 <TextBlock Text="Connect"/>
               </StackPanel>
             </Button>
@@ -199,7 +195,7 @@
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="⚙" Width="20" TextAlignment="Center"/>
+                <materialIcons:MaterialIcon Kind="Settings" />
                 <TextBlock Text="Settings"/>
               </StackPanel>
             </Button>
@@ -221,7 +217,7 @@
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="🔧" Width="20" TextAlignment="Center"/>
+                <materialIcons:MaterialIcon Kind="Wrench" />
                 <TextBlock Text="Diagnostics"/>
               </StackPanel>
             </Button>

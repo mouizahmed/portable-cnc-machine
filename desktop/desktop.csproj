@@ -20,6 +20,7 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.3.11" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="2.4.1" />
     
     <!-- Serial port communication (cross-platform) -->
     <PackageReference Include="System.IO.Ports" Version="9.0.0" />
