@@ -289,13 +289,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         private set => SetProperty(ref _currentPageName, value);
     }
 
-    private bool _advancedEnabled;
-    public bool AdvancedEnabled
-    {
-        get => _advancedEnabled;
-        set => SetProperty(ref _advancedEnabled, value);
-    }
-
     // ════════════════════════════════════════════════════════════════
     // COMMANDS
     // ════════════════════════════════════════════════════════════════
@@ -352,10 +345,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         GoFilesCommand = new RelayCommand(() => NavigateTo(FilesVm, "Files"));
         GoConnectCommand = new RelayCommand(() => NavigateTo(ConnectVm, "Connect"));
         GoSettingsCommand = new RelayCommand(() => NavigateTo(SettingsVm, "Settings"));
-        GoDiagnosticsCommand = new RelayCommand(() =>
-        {
-            if (AdvancedEnabled) NavigateTo(DiagnosticsVm, "Diagnostics");
-        });
+        GoDiagnosticsCommand = new RelayCommand(() => NavigateTo(DiagnosticsVm, "Diagnostics"));
 
         // Machine control commands
         StartCommand = new RelayCommand(ExecuteStart);
@@ -374,9 +364,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
         // Set initial page
         CurrentPage = DashboardVm;
-
-        // Initialize with demo values
-        InitializeDemoValues();
     }
 
     private void NavigateTo(object page, string pageName)
@@ -567,14 +554,4 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         Serial.Dispose();
     }
 
-    private void InitializeDemoValues()
-    {
-        // Demo values for UI development
-        MotionState = MotionState.Idle;
-        SafetyState = SafetyState.SafeIdle;
-        Temperature = 24.5;
-        Humidity = 45.0;
-        FeedRate = 500;
-        SpindleSpeed = 12000;
-    }
 }

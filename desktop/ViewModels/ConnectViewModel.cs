@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Threading.Tasks;
 using System.Windows.Input;
 
 namespace PortableCncApp.ViewModels;
@@ -85,32 +86,52 @@ public sealed class ConnectViewModel : PageViewModelBase
         RefreshPorts();
     }
 
-    private void Connect()
+    private async void Connect()
     {
         if (MainVm == null || SelectedPort == null) return;
 
         IsConnecting = true;
         MainVm.PiConnectionStatus = ConnectionStatus.Connecting;
-        MainVm.StatusMessage = $"Connecting to {SelectedPort}...";
+        MainVm.StatusMessage = $"Opening {SelectedPort}...";
 
         var success = MainVm.Serial.Connect(SelectedPort, BaudRate);
-
-        if (success)
-        {
-            MainVm.PiConnectionStatus = ConnectionStatus.Connected;
-            MainVm.StatusMessage = $"Connected on {SelectedPort} — waiting for Teensy...";
-
-            // Request firmware info; response parsed by MainWindowViewModel.OnGrblLine
-            MainVm.Serial.SendCommand("$I");
-
-            // Start periodic '?' status polling (200 ms)
-            MainVm.StartPolling();
-        }
-        else
+        if (!success)
         {
             MainVm.PiConnectionStatus = ConnectionStatus.Error;
-            MainVm.StatusMessage = "Connection failed — check port and baud rate";
+            MainVm.StatusMessage = "Failed to open port — check port and baud rate";
+            IsConnecting = false;
+            return;
         }
+
+        // Port is open. Send a wakeup and wait up to 3 s for any response.
+        MainVm.StatusMessage = $"Waiting for device on {SelectedPort}...";
+        MainVm.Serial.SendRealtime((byte)'?');
+
+        bool responded = false;
+        void OnLine(string _) => responded = true;
+        MainVm.Serial.LineReceived += OnLine;
+
+        for (int i = 0; i < 30 && !responded; i++)
+            await Task.Delay(100);
+
+        MainVm.Serial.LineReceived -= OnLine;
+
+        if (!responded)
+        {
+            // No device answered — close the port and report the failure
+            MainVm.Serial.Disconnect();
+            MainVm.PiConnectionStatus = ConnectionStatus.Error;
+            MainVm.StatusMessage = $"No response on {SelectedPort} — is the Pico connected?";
+            IsConnecting = false;
+            return;
+        }
+
+        MainVm.PiConnectionStatus = ConnectionStatus.Connected;
+        MainVm.StatusMessage = $"Connected on {SelectedPort} — waiting for Teensy...";
+
+        // Request firmware info and start periodic status polling
+        MainVm.Serial.SendCommand("$I");
+        MainVm.StartPolling();
 
         IsConnecting = false;
     }

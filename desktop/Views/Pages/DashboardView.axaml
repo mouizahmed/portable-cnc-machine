@@ -7,22 +7,10 @@
              x:DataType="vm:DashboardViewModel"
              mc:Ignorable="d">
 
-  <Grid RowDefinitions="Auto,*,Auto">
+  <Grid RowDefinitions="*,Auto">
     
-    <!-- Page Header -->
-    <StackPanel Margin="0,0,0,16">
-      <TextBlock Text="Dashboard"
-                 FontSize="24"
-                 FontWeight="SemiBold"
-                 Foreground="{DynamicResource TextPrimaryBrush}"/>
-      <TextBlock Text="Monitor machine status, view G-code preview, and control execution"
-                 FontSize="13"
-                 Foreground="{DynamicResource TextSecondaryBrush}"
-                 Margin="0,4,0,0"/>
-    </StackPanel>
-
     <!-- Main Content Grid -->
-    <Grid Grid.Row="1" ColumnDefinitions="*,320">
+    <Grid Grid.Row="0" ColumnDefinitions="*,320">
       
       <!-- LEFT: G-code Visualization Area -->
       <Border Background="{DynamicResource PanelBackgroundBrush}"
@@ -58,7 +46,8 @@
       </Border>
 
       <!-- RIGHT: Info Panels -->
-      <StackPanel Grid.Column="1" Spacing="16">
+      <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="16">
         
         <!-- DRO Panel -->
         <Border Background="{DynamicResource PanelBackgroundBrush}"
@@ -216,10 +205,11 @@
         </Border>
         
       </StackPanel>
+      </ScrollViewer>
     </Grid>
 
     <!-- Bottom Control Bar -->
-    <Border Grid.Row="2"
+    <Border Grid.Row="1"
             Background="{DynamicResource PanelBackgroundBrush}"
             CornerRadius="8"
             Padding="16"

@@ -44,6 +44,7 @@
 
         <!-- Motion State Pill -->
         <Border Grid.Column="2"
+                IsVisible="{Binding IsConnected}"
                 Margin="16,0"
                 Padding="14,6"
                 CornerRadius="4"
@@ -63,6 +64,7 @@
 
         <!-- Safety State Pill -->
         <Border Grid.Column="3"
+                IsVisible="{Binding IsConnected}"
                 Margin="0,0,16,0"
                 Padding="14,6"
                 CornerRadius="4"
@@ -81,7 +83,8 @@
         </Border>
 
         <!-- Limits & Spindle Indicators -->
-        <StackPanel Grid.Column="4" 
+        <StackPanel Grid.Column="4"
+                    IsVisible="{Binding IsConnected}" 
                     Orientation="Horizontal" 
                     Spacing="16"
                     Margin="0,0,16,0"
@@ -108,6 +111,7 @@
 
         <!-- E-STOP Button -->
         <Button Grid.Column="5"
+                IsVisible="{Binding IsConnected}"
                 Margin="0,0,12,0"
                 Padding="20,8"
                 Background="{DynamicResource DangerBrush}"
@@ -200,20 +204,8 @@
               </StackPanel>
             </Button>
 
-            <!-- Separator -->
-            <Border Height="1" 
-                    Background="{DynamicResource BorderBrush}" 
-                    Margin="0,12"/>
-
-            <!-- Advanced Section -->
-            <CheckBox Content="Advanced Mode"
-                      IsChecked="{Binding AdvancedEnabled}"
-                      Foreground="{DynamicResource TextSecondaryBrush}"
-                      Margin="8,0,0,8"/>
-
             <Button Classes="NavButton"
                     Command="{Binding GoDiagnosticsCommand}"
-                    IsVisible="{Binding AdvancedEnabled}"
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="10">
@@ -284,7 +276,8 @@
         </StackPanel>
 
         <!-- Feed Rate -->
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="20,0">
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="20,0"
+                    IsVisible="{Binding IsConnected}">
           <TextBlock Text="Feed:"
                      FontSize="11"
                      Foreground="{DynamicResource TextSecondaryBrush}"/>
@@ -297,7 +290,8 @@
         </StackPanel>
 
         <!-- Temperature -->
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="20,0">
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="20,0"
+                    IsVisible="{Binding IsConnected}">
           <TextBlock Text="Temp:"
                      FontSize="11"
                      Foreground="{DynamicResource TextSecondaryBrush}"/>
