@@ -23,8 +23,8 @@
       </StackPanel>
       
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-        <Button Content="📂 Browse..." Command="{Binding BrowseCommand}" Padding="12,8"/>
-        <Button Content="🔄 Refresh" Command="{Binding RefreshCommand}" Padding="12,8"/>
+        <Button Content="Browse..." Command="{Binding BrowseCommand}" Padding="12,8"/>
+        <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="12,8"/>
       </StackPanel>
     </Grid>
 
@@ -51,8 +51,8 @@
                     IsEnabled="{Binding HasSelectedFile}"
                     Padding="16,8"
                     Background="{DynamicResource AccentBrush}"/>
-            <Button Content="Delete"
-                    Command="{Binding DeleteCommand}"
+            <Button Content="Remove"
+                    Command="{Binding RemoveCommand}"
                     IsEnabled="{Binding HasSelectedFile}"
                     Padding="16,8"
                     Background="{DynamicResource DangerBrush}"/>

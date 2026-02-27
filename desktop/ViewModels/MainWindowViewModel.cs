@@ -1,11 +1,21 @@
 using System;
+using System.Globalization;
 using System.Windows.Input;
 using Avalonia.Media;
+using Avalonia.Threading;
+using PortableCncApp.Services;
 
 namespace PortableCncApp.ViewModels;
 
-public sealed class MainWindowViewModel : ViewModelBase
+public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 {
+    // ════════════════════════════════════════════════════════════════
+    // SERIAL SERVICE
+    // ════════════════════════════════════════════════════════════════
+
+    public SerialService Serial { get; } = new();
+    private DispatcherTimer? _pollTimer;
+
     // ════════════════════════════════════════════════════════════════
     // CONNECTION STATUS (USB CDC Serial to Pico 2W)
     // ════════════════════════════════════════════════════════════════
@@ -354,6 +364,14 @@ public sealed class MainWindowViewModel : ViewModelBase
         HomeCommand = new RelayCommand(ExecuteHome);
         EStopCommand = new RelayCommand(ExecuteEStop);
 
+        // Wire up serial service events
+        Serial.LineReceived += OnGrblLine;
+        Serial.ErrorOccurred += msg =>
+        {
+            StatusMessage = $"Serial error: {msg}";
+            IsStatusError = true;
+        };
+
         // Set initial page
         CurrentPage = DashboardVm;
 
@@ -417,6 +435,136 @@ public sealed class MainWindowViewModel : ViewModelBase
         SpindleOn = false;
         StatusMessage = "EMERGENCY STOP ACTIVATED";
         IsStatusError = true;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // GRBL STATUS POLLING
+    // ════════════════════════════════════════════════════════════════
+
+    public void StartPolling()
+    {
+        _pollTimer?.Stop();
+        _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _pollTimer.Tick += (_, _) => Serial.SendRealtime((byte)'?');
+        _pollTimer.Start();
+    }
+
+    public void StopPolling()
+    {
+        _pollTimer?.Stop();
+        _pollTimer = null;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // GRBL RESPONSE PARSING
+    // ════════════════════════════════════════════════════════════════
+
+    private void OnGrblLine(string line)
+    {
+        if (line.StartsWith('<') && line.EndsWith('>'))
+        {
+            ParseStatusReport(line[1..^1]);
+            if (TeensyConnectionStatus != ConnectionStatus.Connected)
+                TeensyConnectionStatus = ConnectionStatus.Connected;
+        }
+        else if (line.StartsWith("Grbl "))
+        {
+            // e.g. "Grbl 1.1h ['$' for help]"
+            var parts = line.Split(' ');
+            if (parts.Length >= 2)
+                ConnectVm.GrblVersion = parts[1];
+            if (TeensyConnectionStatus != ConnectionStatus.Connected)
+                TeensyConnectionStatus = ConnectionStatus.Connected;
+        }
+        else if (line == "ok")
+        {
+            if (TeensyConnectionStatus != ConnectionStatus.Connected)
+                TeensyConnectionStatus = ConnectionStatus.Connected;
+        }
+        else if (line.StartsWith("[VER:"))
+        {
+            // e.g. "[VER:1.1h.20190825:]"
+            var inner = line[5..^1].TrimEnd(':');
+            ConnectVm.TeensyFirmware = inner;
+        }
+        else if (line.StartsWith("error:"))
+        {
+            StatusMessage = $"GRBL error {line[6..]}";
+            IsStatusError = true;
+        }
+        else if (line.StartsWith("ALARM:"))
+        {
+            MotionState = MotionState.Fault;
+            StatusMessage = $"GRBL alarm {line[6..]}";
+            IsStatusError = true;
+        }
+    }
+
+    private void ParseStatusReport(string report)
+    {
+        // Format: State|MPos:x,y,z|FS:feed,spindle|...
+        var parts = report.Split('|');
+        if (parts.Length == 0) return;
+
+        // State (may be "Hold:0", "Hold:1" etc.)
+        var stateStr = parts[0];
+        var colonIdx = stateStr.IndexOf(':');
+        if (colonIdx >= 0) stateStr = stateStr[..colonIdx];
+
+        var newState = stateStr switch
+        {
+            "Idle"  => MotionState.Idle,
+            "Run"   => MotionState.RunProgram,
+            "Hold"  => MotionState.FeedHold,
+            "Jog"   => MotionState.Jog,
+            "Alarm" => MotionState.Fault,
+            "Home"  => MotionState.Homing,
+            _       => MotionState
+        };
+        if (MotionState != newState) MotionState = newState;
+
+        for (int i = 1; i < parts.Length; i++)
+        {
+            var sep = parts[i].IndexOf(':');
+            if (sep < 0) continue;
+            var key = parts[i][..sep];
+            var val = parts[i][(sep + 1)..];
+
+            switch (key)
+            {
+                case "MPos":
+                case "WPos":
+                {
+                    var coords = val.Split(',');
+                    if (coords.Length >= 3)
+                    {
+                        if (double.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var x)) PositionX = x;
+                        if (double.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var y)) PositionY = y;
+                        if (double.TryParse(coords[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var z)) PositionZ = z;
+                    }
+                    break;
+                }
+                case "FS":
+                {
+                    var fs = val.Split(',');
+                    if (fs.Length >= 2)
+                    {
+                        if (double.TryParse(fs[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var f)) FeedRate = f;
+                        if (double.TryParse(fs[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var s)) SpindleSpeed = s;
+                    }
+                    break;
+                }
+                case "F":
+                    if (double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out var feed)) FeedRate = feed;
+                    break;
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        StopPolling();
+        Serial.Dispose();
     }
 
     private void InitializeDemoValues()

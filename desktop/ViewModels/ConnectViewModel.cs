@@ -6,7 +6,7 @@ namespace PortableCncApp.ViewModels;
 public sealed class ConnectViewModel : PageViewModelBase
 {
     // ════════════════════════════════════════════════════════════════
-    // SERIAL PORT CONNECTION (USB CDC to Pico 2W)
+    // SERIAL PORT SELECTION
     // ════════════════════════════════════════════════════════════════
 
     public ObservableCollection<string> AvailablePorts { get; } = new();
@@ -25,7 +25,6 @@ public sealed class ConnectViewModel : PageViewModelBase
         set => SetProperty(ref _baudRate, value);
     }
 
-    // Common baud rates for selection
     public int[] BaudRateOptions { get; } = { 9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000, 1000000 };
 
     private bool _isConnecting;
@@ -36,7 +35,7 @@ public sealed class ConnectViewModel : PageViewModelBase
     }
 
     // ════════════════════════════════════════════════════════════════
-    // DEVICE INFO
+    // DEVICE INFO (populated from GRBL responses)
     // ════════════════════════════════════════════════════════════════
 
     private string _picoFirmware = "-";
@@ -83,69 +82,55 @@ public sealed class ConnectViewModel : PageViewModelBase
         RefreshPortsCommand = new RelayCommand(RefreshPorts);
         TestConnectionCommand = new RelayCommand(TestConnection);
 
-        // Initialize with available ports
         RefreshPorts();
     }
 
-    private async void Connect()
+    private void Connect()
     {
         if (MainVm == null || SelectedPort == null) return;
 
         IsConnecting = true;
         MainVm.PiConnectionStatus = ConnectionStatus.Connecting;
-        MainVm.StatusMessage = $"Connecting to Pico 2W on {SelectedPort}...";
+        MainVm.StatusMessage = $"Connecting to {SelectedPort}...";
 
-        try
+        var success = MainVm.Serial.Connect(SelectedPort, BaudRate);
+
+        if (success)
         {
-            // TODO: Actual serial connection logic
-            // var serialPort = new SerialPort(SelectedPort, BaudRate);
-            // serialPort.Open();
-            // Send handshake/version query
-
-            // Simulate connection delay
-            await System.Threading.Tasks.Task.Delay(1000);
-
-            // Simulate successful connection
             MainVm.PiConnectionStatus = ConnectionStatus.Connected;
-            MainVm.TeensyConnectionStatus = ConnectionStatus.Connected;
-            MainVm.MotionState = MotionState.Idle;
-            MainVm.SafetyState = SafetyState.SafeIdle;
+            MainVm.StatusMessage = $"Connected on {SelectedPort} — waiting for Teensy...";
 
-            // Populate device info (would come from actual device query)
-            PicoFirmware = "v1.0.0";
-            TeensyFirmware = "v1.2.3";
-            GrblVersion = "1.1h";
-            PicoSerialNumber = "PICO-2W-001234";
+            // Request firmware info; response parsed by MainWindowViewModel.OnGrblLine
+            MainVm.Serial.SendCommand("$I");
 
-            MainVm.StatusMessage = $"Connected to Pico 2W on {SelectedPort}";
+            // Start periodic '?' status polling (200 ms)
+            MainVm.StartPolling();
         }
-        catch (System.Exception ex)
+        else
         {
             MainVm.PiConnectionStatus = ConnectionStatus.Error;
-            MainVm.StatusMessage = $"Connection failed: {ex.Message}";
+            MainVm.StatusMessage = "Connection failed — check port and baud rate";
         }
-        finally
-        {
-            IsConnecting = false;
-        }
+
+        IsConnecting = false;
     }
 
     private void Disconnect()
     {
         if (MainVm == null) return;
 
-        // TODO: Close serial port
-        // serialPort?.Close();
+        MainVm.StopPolling();
+        MainVm.Serial.Disconnect();
 
         MainVm.PiConnectionStatus = ConnectionStatus.Disconnected;
         MainVm.TeensyConnectionStatus = ConnectionStatus.Disconnected;
         MainVm.MotionState = MotionState.PowerUp;
         MainVm.SafetyState = SafetyState.SafeIdle;
 
-        PicoFirmware = "-";
         TeensyFirmware = "-";
         GrblVersion = "-";
         PicoSerialNumber = "-";
+        PicoFirmware = "-";
 
         MainVm.StatusMessage = "Disconnected";
     }
@@ -153,21 +138,14 @@ public sealed class ConnectViewModel : PageViewModelBase
     private void RefreshPorts()
     {
         AvailablePorts.Clear();
-        
+
         try
         {
-            // Enumerate available serial ports (works on Windows, macOS, Linux)
             foreach (var port in System.IO.Ports.SerialPort.GetPortNames())
-            {
                 AvailablePorts.Add(port);
-            }
         }
-        catch (System.Exception)
-        {
-            // Fallback if serial port enumeration fails
-        }
+        catch { }
 
-        // Auto-select first port if available
         if (AvailablePorts.Count > 0 && SelectedPort == null)
             SelectedPort = AvailablePorts[0];
     }
@@ -176,8 +154,8 @@ public sealed class ConnectViewModel : PageViewModelBase
     {
         if (MainVm == null) return;
 
-        // TODO: Send a ping/status request to verify connection is still alive
-        // Send "?" to get GRBL status
-        MainVm.StatusMessage = "Testing connection...";
+        // Send real-time status query — response will come through OnGrblLine
+        MainVm.Serial.SendRealtime((byte)'?');
+        MainVm.StatusMessage = "Status query sent";
     }
 }
