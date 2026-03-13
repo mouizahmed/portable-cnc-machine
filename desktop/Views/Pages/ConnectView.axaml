@@ -50,12 +50,6 @@
                         PlaceholderText="Select COM port..."/>
             </StackPanel>
 
-            <StackPanel>
-              <TextBlock Text="Baud Rate" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
-              <ComboBox ItemsSource="{Binding BaudRateOptions}"
-                        SelectedItem="{Binding BaudRate}"
-                        HorizontalAlignment="Stretch"/>
-            </StackPanel>
           </StackPanel>
 
           <!-- Connect/Disconnect Buttons -->
@@ -113,28 +107,32 @@
                   <TextBlock Text="Pico 2W" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/>
                   <TextBlock Text="Safety Supervisor" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}"/>
                 </StackPanel>
-                <Border Grid.Column="1" 
-                        Padding="10,4" 
+                <Border Grid.Column="1"
+                        Padding="10,4"
                         CornerRadius="4"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
                         Background="{Binding MainVm.PiConnectionStatus, Converter={x:Static vm:ConnectionStatusToBrushConverter.Instance}}">
-                  <TextBlock Text="{Binding MainVm.PiConnectionStatus}" 
-                             FontSize="11" 
+                  <TextBlock Text="{Binding MainVm.PiConnectionStatus}"
+                             FontSize="11"
                              FontWeight="SemiBold"
                              Foreground="White"/>
                 </Border>
-                
+
                 <!-- Teensy Status -->
                 <StackPanel Grid.Row="1" Margin="0,12,0,0">
                   <TextBlock Text="Teensy 4.1" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold"/>
                   <TextBlock Text="Motion Controller" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}"/>
                 </StackPanel>
-                <Border Grid.Row="1" Grid.Column="1" 
-                        Padding="10,4" 
+                <Border Grid.Row="1" Grid.Column="1"
+                        Padding="10,4"
                         CornerRadius="4"
                         Margin="0,12,0,0"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
                         Background="{Binding MainVm.TeensyConnectionStatus, Converter={x:Static vm:ConnectionStatusToBrushConverter.Instance}}">
-                  <TextBlock Text="{Binding MainVm.TeensyConnectionStatus}" 
-                             FontSize="11" 
+                  <TextBlock Text="{Binding MainVm.TeensyConnectionStatus}"
+                             FontSize="11"
                              FontWeight="SemiBold"
                              Foreground="White"/>
                 </Border>
@@ -147,18 +145,15 @@
             <StackPanel Spacing="8">
               <TextBlock Text="Firmware Versions" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"/>
               
-              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
                 <TextBlock Text="Pico 2W Firmware" Foreground="{DynamicResource TextPrimaryBrush}"/>
                 <TextBlock Grid.Column="1" Text="{Binding PicoFirmware}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas"/>
-                
+
                 <TextBlock Grid.Row="1" Text="Teensy Firmware" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,6,0,0"/>
                 <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TeensyFirmware}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" Margin="0,6,0,0"/>
-                
-                <TextBlock Grid.Row="2" Text="GRBL Version" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,6,0,0"/>
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding GrblVersion}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" Margin="0,6,0,0"/>
 
-                <TextBlock Grid.Row="3" Text="Pico Serial #" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,6,0,0"/>
-                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PicoSerialNumber}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" Margin="0,6,0,0"/>
+                <TextBlock Grid.Row="2" Text="Pico Serial #" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,6,0,0"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PicoSerialNumber}" Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Consolas" Margin="0,6,0,0"/>
               </Grid>
             </StackPanel>
           </Border>

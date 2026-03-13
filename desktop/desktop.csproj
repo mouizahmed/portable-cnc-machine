@@ -24,6 +24,9 @@
     
     <!-- Serial port communication (cross-platform) -->
     <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+
+    <!-- WMI — USB VID/PID device identification (Windows only) -->
+    <PackageReference Include="System.Management" Version="9.0.0" />
     
     <!-- Diagnostics (Debug only) -->
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.11">

@@ -14,6 +14,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // ════════════════════════════════════════════════════════════════
 
     public SerialService Serial { get; } = new();
+    public SettingsService Settings { get; } = new();
     private DispatcherTimer? _pollTimer;
 
     // ════════════════════════════════════════════════════════════════
@@ -245,7 +246,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // STATUS MESSAGES
     // ════════════════════════════════════════════════════════════════
     
-    private string _statusMessage = "Ready";
+    private string _statusMessage = "Not connected";
     public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
 
     private bool _isStatusError;
@@ -354,13 +355,14 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         HomeCommand = new RelayCommand(ExecuteHome);
         EStopCommand = new RelayCommand(ExecuteEStop);
 
+        // Load persisted settings, apply to child VMs, attempt auto-connect
+        Settings.Load();
+        SettingsVm.ApplyFrom(Settings.Current);
+        ConnectVm.TryAutoConnect();
+
         // Wire up serial service events
         Serial.LineReceived += OnGrblLine;
-        Serial.ErrorOccurred += msg =>
-        {
-            StatusMessage = $"Serial error: {msg}";
-            IsStatusError = true;
-        };
+        Serial.ErrorOccurred += _ => OnDeviceLost();
 
         // Set initial page
         CurrentPage = DashboardVm;
@@ -428,11 +430,23 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // GRBL STATUS POLLING
     // ════════════════════════════════════════════════════════════════
 
+    private DateTime _lastResponseTime = DateTime.MaxValue;
+    private static readonly TimeSpan DisconnectTimeout = TimeSpan.FromSeconds(3);
+
     public void StartPolling()
     {
+        _lastResponseTime = DateTime.UtcNow;
         _pollTimer?.Stop();
         _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-        _pollTimer.Tick += (_, _) => Serial.SendRealtime((byte)'?');
+        _pollTimer.Tick += (_, _) =>
+        {
+            if (DateTime.UtcNow - _lastResponseTime > DisconnectTimeout)
+            {
+                OnDeviceLost();
+                return;
+            }
+            Serial.SendRealtime((byte)'?');
+        };
         _pollTimer.Start();
     }
 
@@ -446,8 +460,24 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // GRBL RESPONSE PARSING
     // ════════════════════════════════════════════════════════════════
 
+    private void OnDeviceLost()
+    {
+        StopPolling();
+        Serial.Disconnect();
+
+        PiConnectionStatus     = ConnectionStatus.Error;
+        TeensyConnectionStatus = ConnectionStatus.Disconnected;
+        MotionState            = MotionState.PowerUp;
+        SafetyState            = SafetyState.SafeIdle;
+        StatusMessage          = "Device disconnected";
+        IsStatusError          = true;
+
+        ConnectVm.ResetDeviceInfo();
+    }
+
     private void OnGrblLine(string line)
     {
+        _lastResponseTime = DateTime.UtcNow;
         if (line.StartsWith('<') && line.EndsWith('>'))
         {
             ParseStatusReport(line[1..^1]);
@@ -456,10 +486,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
         else if (line.StartsWith("Grbl "))
         {
-            // e.g. "Grbl 1.1h ['$' for help]"
-            var parts = line.Split(' ');
-            if (parts.Length >= 2)
-                ConnectVm.GrblVersion = parts[1];
             if (TeensyConnectionStatus != ConnectionStatus.Connected)
                 TeensyConnectionStatus = ConnectionStatus.Connected;
         }
@@ -467,6 +493,16 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             if (TeensyConnectionStatus != ConnectionStatus.Connected)
                 TeensyConnectionStatus = ConnectionStatus.Connected;
+        }
+        else if (line.StartsWith("[PICO:"))
+        {
+            // e.g. "[PICO:0.1.0]"
+            ConnectVm.PicoFirmware = line[6..^1];
+        }
+        else if (line.StartsWith("[SN:"))
+        {
+            // e.g. "[SN:e6614c311b8a2c23]"
+            ConnectVm.PicoSerialNumber = line[4..^1];
         }
         else if (line.StartsWith("[VER:"))
         {

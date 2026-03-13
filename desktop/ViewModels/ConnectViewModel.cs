@@ -16,27 +16,18 @@ public sealed class ConnectViewModel : PageViewModelBase
     public string? SelectedPort
     {
         get => _selectedPort;
-        set => SetProperty(ref _selectedPort, value);
+        set { if (SetProperty(ref _selectedPort, value)) _connectCommand.RaiseCanExecuteChanged(); }
     }
-
-    private int _baudRate = 115200;
-    public int BaudRate
-    {
-        get => _baudRate;
-        set => SetProperty(ref _baudRate, value);
-    }
-
-    public int[] BaudRateOptions { get; } = { 9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000, 1000000 };
 
     private bool _isConnecting;
     public bool IsConnecting
     {
         get => _isConnecting;
-        set => SetProperty(ref _isConnecting, value);
+        set { if (SetProperty(ref _isConnecting, value)) _connectCommand.RaiseCanExecuteChanged(); }
     }
 
     // ════════════════════════════════════════════════════════════════
-    // DEVICE INFO (populated from GRBL responses)
+    // DEVICE INFO (populated from device responses)
     // ════════════════════════════════════════════════════════════════
 
     private string _picoFirmware = "-";
@@ -53,13 +44,6 @@ public sealed class ConnectViewModel : PageViewModelBase
         set => SetProperty(ref _teensyFirmware, value);
     }
 
-    private string _grblVersion = "-";
-    public string GrblVersion
-    {
-        get => _grblVersion;
-        set => SetProperty(ref _grblVersion, value);
-    }
-
     private string _picoSerialNumber = "-";
     public string PicoSerialNumber
     {
@@ -71,14 +55,15 @@ public sealed class ConnectViewModel : PageViewModelBase
     // COMMANDS
     // ════════════════════════════════════════════════════════════════
 
-    public ICommand ConnectCommand { get; }
+    private readonly RelayCommand _connectCommand;
+    public ICommand ConnectCommand => _connectCommand;
     public ICommand DisconnectCommand { get; }
     public ICommand RefreshPortsCommand { get; }
     public ICommand TestConnectionCommand { get; }
 
     public ConnectViewModel()
     {
-        ConnectCommand = new RelayCommand(Connect, () => SelectedPort != null && !IsConnecting);
+        _connectCommand = new RelayCommand(Connect, () => SelectedPort != null && !IsConnecting);
         DisconnectCommand = new RelayCommand(Disconnect);
         RefreshPortsCommand = new RelayCommand(RefreshPorts);
         TestConnectionCommand = new RelayCommand(TestConnection);
@@ -86,7 +71,24 @@ public sealed class ConnectViewModel : PageViewModelBase
         RefreshPorts();
     }
 
-    private async void Connect()
+    /// <summary>Called by MainWindowViewModel after settings are loaded to trigger auto-connect.</summary>
+    public async void TryAutoConnect()
+    {
+        if (MainVm == null) return;
+
+        var settings = MainVm.Settings.Current;
+        if (!settings.AutoConnect || string.IsNullOrEmpty(settings.LastPort)) return;
+
+        // Only attempt if the saved port is actually available
+        if (!AvailablePorts.Contains(settings.LastPort)) return;
+
+        SelectedPort = settings.LastPort;
+        await ConnectAsync();
+    }
+
+    private async void Connect() => await ConnectAsync();
+
+    private async Task ConnectAsync()
     {
         if (MainVm == null || SelectedPort == null) return;
 
@@ -94,31 +96,32 @@ public sealed class ConnectViewModel : PageViewModelBase
         MainVm.PiConnectionStatus = ConnectionStatus.Connecting;
         MainVm.StatusMessage = $"Opening {SelectedPort}...";
 
-        var success = MainVm.Serial.Connect(SelectedPort, BaudRate);
+        var success = MainVm.Serial.Connect(SelectedPort);
         if (!success)
         {
             MainVm.PiConnectionStatus = ConnectionStatus.Error;
-            MainVm.StatusMessage = "Failed to open port — check port and baud rate";
+            MainVm.StatusMessage = $"Failed to open {SelectedPort}";
             IsConnecting = false;
             return;
         }
 
-        // Port is open. Send a wakeup and wait up to 3 s for any response.
+        // Port is open — probe every 200 ms for up to 3 s to handle USB CDC stabilisation
         MainVm.StatusMessage = $"Waiting for device on {SelectedPort}...";
-        MainVm.Serial.SendRealtime((byte)'?');
 
         bool responded = false;
-        void OnLine(string _) => responded = true;
+        void OnLine(string line) { if (line.StartsWith("[PICO:")) responded = true; }
         MainVm.Serial.LineReceived += OnLine;
 
-        for (int i = 0; i < 30 && !responded; i++)
-            await Task.Delay(100);
+        for (int i = 0; i < 15 && !responded; i++)
+        {
+            MainVm.Serial.SendRealtime((byte)'?');
+            await Task.Delay(200);
+        }
 
         MainVm.Serial.LineReceived -= OnLine;
 
         if (!responded)
         {
-            // No device answered — close the port and report the failure
             MainVm.Serial.Disconnect();
             MainVm.PiConnectionStatus = ConnectionStatus.Error;
             MainVm.StatusMessage = $"No response on {SelectedPort} — is the Pico connected?";
@@ -126,14 +129,24 @@ public sealed class ConnectViewModel : PageViewModelBase
             return;
         }
 
+        // Save the port that worked
+        MainVm.Settings.Current.LastPort = SelectedPort;
+        MainVm.Settings.Save();
+
         MainVm.PiConnectionStatus = ConnectionStatus.Connected;
         MainVm.StatusMessage = $"Connected on {SelectedPort} — waiting for Teensy...";
 
-        // Request firmware info and start periodic status polling
         MainVm.Serial.SendCommand("$I");
         MainVm.StartPolling();
 
         IsConnecting = false;
+    }
+
+    public void ResetDeviceInfo()
+    {
+        PicoFirmware     = "-";
+        TeensyFirmware   = "-";
+        PicoSerialNumber = "-";
     }
 
     private void Disconnect()
@@ -143,17 +156,13 @@ public sealed class ConnectViewModel : PageViewModelBase
         MainVm.StopPolling();
         MainVm.Serial.Disconnect();
 
-        MainVm.PiConnectionStatus = ConnectionStatus.Disconnected;
+        MainVm.PiConnectionStatus     = ConnectionStatus.Disconnected;
         MainVm.TeensyConnectionStatus = ConnectionStatus.Disconnected;
-        MainVm.MotionState = MotionState.PowerUp;
-        MainVm.SafetyState = SafetyState.SafeIdle;
+        MainVm.MotionState            = MotionState.PowerUp;
+        MainVm.SafetyState            = SafetyState.SafeIdle;
+        MainVm.StatusMessage          = "Disconnected";
 
-        TeensyFirmware = "-";
-        GrblVersion = "-";
-        PicoSerialNumber = "-";
-        PicoFirmware = "-";
-
-        MainVm.StatusMessage = "Disconnected";
+        ResetDeviceInfo();
     }
 
     private void RefreshPorts()
@@ -162,7 +171,7 @@ public sealed class ConnectViewModel : PageViewModelBase
 
         try
         {
-            foreach (var port in System.IO.Ports.SerialPort.GetPortNames())
+            foreach (var port in PortableCncApp.Services.UsbDeviceService.GetPicoPorts())
                 AvailablePorts.Add(port);
         }
         catch { }
@@ -174,8 +183,6 @@ public sealed class ConnectViewModel : PageViewModelBase
     private void TestConnection()
     {
         if (MainVm == null) return;
-
-        // Send real-time status query — response will come through OnGrblLine
         MainVm.Serial.SendRealtime((byte)'?');
         MainVm.StatusMessage = "Status query sent";
     }

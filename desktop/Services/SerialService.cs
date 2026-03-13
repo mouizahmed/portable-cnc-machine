@@ -24,13 +24,13 @@ public sealed class SerialService : IDisposable
     /// <summary>Fired on the UI thread when a serial error occurs.</summary>
     public event Action<string>? ErrorOccurred;
 
-    public bool Connect(string portName, int baudRate)
+    public bool Connect(string portName)
     {
         if (IsConnected) Disconnect();
 
         try
         {
-            _port = new SerialPort(portName, baudRate)
+            _port = new SerialPort(portName, 115200)
             {
                 Encoding = Encoding.ASCII,
                 DtrEnable = true,
@@ -110,7 +110,11 @@ public sealed class SerialService : IDisposable
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            var msg = ex.Message;
+            Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke(msg));
+        }
     }
 
     private void CleanupPort()

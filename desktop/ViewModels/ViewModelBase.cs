@@ -25,7 +25,7 @@ public abstract class ViewModelBase : INotifyPropertyChanged
 /// </summary>
 public abstract class PageViewModelBase : ViewModelBase
 {
-    protected MainWindowViewModel? MainVm { get; private set; }
+    public MainWindowViewModel? MainVm { get; private set; }
 
     public void SetMainViewModel(MainWindowViewModel mainVm)
     {

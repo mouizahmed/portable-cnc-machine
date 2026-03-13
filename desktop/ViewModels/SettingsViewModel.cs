@@ -107,10 +107,58 @@ public sealed class SettingsViewModel : PageViewModelBase
         ExportSettingsCommand = new RelayCommand(ExportSettings);
     }
 
+    public void ApplyFrom(PortableCncApp.Services.AppSettings s)
+    {
+        StepsPerMmX = s.StepsPerMmX;
+        StepsPerMmY = s.StepsPerMmY;
+        StepsPerMmZ = s.StepsPerMmZ;
+        MaxFeedRateX = s.MaxFeedRateX;
+        MaxFeedRateY = s.MaxFeedRateY;
+        MaxFeedRateZ = s.MaxFeedRateZ;
+        AccelerationX = s.AccelerationX;
+        AccelerationY = s.AccelerationY;
+        AccelerationZ = s.AccelerationZ;
+        MaxTravelX = s.MaxTravelX;
+        MaxTravelY = s.MaxTravelY;
+        MaxTravelZ = s.MaxTravelZ;
+        SoftLimitsEnabled = s.SoftLimitsEnabled;
+        HardLimitsEnabled = s.HardLimitsEnabled;
+        SpindleMaxRpm = s.SpindleMaxRpm;
+        SpindleMinRpm = s.SpindleMinRpm;
+        MaxTemperature = s.MaxTemperature;
+        WarningTemperature = s.WarningTemperature;
+        Units = s.Units;
+    }
+
+    private void SaveTo(PortableCncApp.Services.AppSettings s)
+    {
+        s.StepsPerMmX = StepsPerMmX;
+        s.StepsPerMmY = StepsPerMmY;
+        s.StepsPerMmZ = StepsPerMmZ;
+        s.MaxFeedRateX = MaxFeedRateX;
+        s.MaxFeedRateY = MaxFeedRateY;
+        s.MaxFeedRateZ = MaxFeedRateZ;
+        s.AccelerationX = AccelerationX;
+        s.AccelerationY = AccelerationY;
+        s.AccelerationZ = AccelerationZ;
+        s.MaxTravelX = MaxTravelX;
+        s.MaxTravelY = MaxTravelY;
+        s.MaxTravelZ = MaxTravelZ;
+        s.SoftLimitsEnabled = SoftLimitsEnabled;
+        s.HardLimitsEnabled = HardLimitsEnabled;
+        s.SpindleMaxRpm = SpindleMaxRpm;
+        s.SpindleMinRpm = SpindleMinRpm;
+        s.MaxTemperature = MaxTemperature;
+        s.WarningTemperature = WarningTemperature;
+        s.Units = Units;
+    }
+
     private void SaveSettings()
     {
-        // TODO: Save to config file
-        MainVm!.StatusMessage = "Settings saved";
+        if (MainVm == null) return;
+        SaveTo(MainVm.Settings.Current);
+        MainVm.Settings.Save();
+        MainVm.StatusMessage = "Settings saved";
     }
 
     private void LoadDefaults()
