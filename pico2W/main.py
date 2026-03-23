@@ -30,7 +30,12 @@
 # Physical button (GP15, active-low) always → E-STOP regardless of state.
 
 import utime
+import machine
 from methods import setup, splash_screen, show_state, update_progress, flash_estop
+
+# ── Onboard LED (confirms code is running) ────────────────────────────────────
+led = machine.Pin("LED", machine.Pin.OUT)
+led.on()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 STATE_IDLE      = 1

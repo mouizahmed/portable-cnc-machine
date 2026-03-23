@@ -67,6 +67,8 @@ class ILI9488:
         self.rst.value(0); utime.sleep_ms(120)
         self.rst.value(1); utime.sleep_ms(120)
 
+        self._cmd(0x01); utime.sleep_ms(120)  # Software Reset
+
         self._cmd(0xE0)  # Positive Gamma Control
         self._data([0x00,0x03,0x09,0x08,0x16,0x0A,0x3F,0x78,0x4C,0x09,0x0A,0x08,0x16,0x1A,0x0F])
 
@@ -188,7 +190,7 @@ class ILI9488:
                 if scale > 1:
                     scaled = bytearray()
                     for i in range(0, len(row_buf), 3):
-                        scaled += row_buf[i:i + 3] * scale
+                        scaled += bytes(row_buf[i:i + 3]) * scale
                     row_buf = scaled
 
                 # Write row, repeated for vertical scaling

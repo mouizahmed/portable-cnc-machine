@@ -73,7 +73,9 @@ def setup():
 
 def splash_screen(display):
     """Display a boot splash for ~2 seconds."""
-    display.fill(DARK)
+    print("splash: filling screen")
+    display.fill(RED)
+    print("splash: fill done")
 
     title = "Portable CNC"
     sub   = "Team 40  –  Pico 2W"
