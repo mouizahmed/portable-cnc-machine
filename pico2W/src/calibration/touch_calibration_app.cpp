@@ -9,6 +9,13 @@ namespace {
 constexpr uint8_t kStableSamplesNeeded = 6;
 constexpr int16_t kCrosshairArm = 14;
 constexpr int16_t kCrosshairBox = 10;
+constexpr int16_t kCalibrationMetricsY1 = 246;
+constexpr int16_t kCalibrationMetricsY2 = 260;
+constexpr int16_t kCalibrationMetricsY3 = 274;
+constexpr int16_t kTargetFooterX = 18;
+constexpr int16_t kTargetFooterY = 152;
+constexpr int16_t kTargetFooterW = 260;
+constexpr int16_t kTargetFooterH = 12;
 }  // namespace
 
 const std::array<TouchCalibrationApp::CalibrationTarget, 4> TouchCalibrationApp::kTargets{{
@@ -18,8 +25,8 @@ const std::array<TouchCalibrationApp::CalibrationTarget, 4> TouchCalibrationApp:
     {"BOTTOM RIGHT", static_cast<uint16_t>(LCD_WIDTH - 1 - CALIBRATION_MARGIN_X), static_cast<uint16_t>(LCD_HEIGHT - 1 - CALIBRATION_MARGIN_Y)},
 }};
 
-const TouchCalibrationApp::Button TouchCalibrationApp::kSaveButton{36, 270, 180, 38, "SAVE", COLOR_SUCCESS};
-const TouchCalibrationApp::Button TouchCalibrationApp::kRetryButton{264, 270, 180, 38, "RETRY", COLOR_WARNING};
+const TouchCalibrationApp::Button TouchCalibrationApp::kSaveButton{36, 286, 180, 26, "SAVE", COLOR_SUCCESS};
+const TouchCalibrationApp::Button TouchCalibrationApp::kRetryButton{264, 286, 180, 26, "RETRY", COLOR_WARNING};
 
 TouchCalibrationApp::TouchCalibrationApp(Ili9488& display, Xpt2046& touch, CalibrationStorage& storage)
     : display_(display), touch_(touch), storage_(storage) {}
@@ -83,14 +90,18 @@ void TouchCalibrationApp::render_status_screen(const char* title, const char* li
     draw_centered_text(88, line2, COLOR_MUTED, COLOR_BG, 1);
 }
 
-void TouchCalibrationApp::render_target_screen(const CalibrationTarget& target, std::size_t index, const char* footer) const {
+void TouchCalibrationApp::render_target_screen_base(const CalibrationTarget& target, std::size_t index) const {
     char step[24];
     std::snprintf(step, sizeof(step), "POINT %u OF %u", static_cast<unsigned int>(index + 1), static_cast<unsigned int>(kTargets.size()));
 
     render_status_screen("TOUCH CALIBRATION", "PRESS AND HOLD THE TARGET", step);
     display_.draw_text(18, 126, target.label, COLOR_TEXT, COLOR_BG, 2);
-    display_.draw_text(18, 152, footer, COLOR_MUTED, COLOR_BG, 1);
     draw_crosshair(static_cast<int16_t>(target.x), static_cast<int16_t>(target.y), COLOR_TARGET);
+}
+
+void TouchCalibrationApp::render_target_footer(const char* footer, uint16_t color) const {
+    display_.fill_rect(kTargetFooterX, kTargetFooterY, kTargetFooterW, kTargetFooterH, COLOR_BG);
+    display_.draw_text(kTargetFooterX, kTargetFooterY, footer, color, COLOR_BG, 1);
 }
 
 bool TouchCalibrationApp::collect_target_sample(const CalibrationTarget& target, std::size_t index, RawTouchPoint& sample) const {
@@ -98,13 +109,14 @@ bool TouchCalibrationApp::collect_target_sample(const CalibrationTarget& target,
 
     while (true) {
         wait_for_release();
-        render_target_screen(target, index, "WAITING FOR TOUCH");
+        render_target_screen_base(target, index);
+        render_target_footer("WAITING FOR TOUCH");
 
         while (!touch_.is_touched()) {
             sleep_ms(UI_POLL_MS);
         }
 
-        render_target_screen(target, index, "HOLD STEADY");
+        render_target_footer("HOLD STEADY");
         sleep_ms(TOUCH_SETTLE_MS);
 
         std::size_t count = 0;
@@ -130,13 +142,13 @@ bool TouchCalibrationApp::collect_target_sample(const CalibrationTarget& target,
             sample.y = static_cast<uint16_t>(total_y / captures.size());
             sample.z = 0;
 
-            render_target_screen(target, index, "CAPTURED");
+            render_target_footer("CAPTURED", COLOR_SUCCESS);
             draw_crosshair(static_cast<int16_t>(target.x), static_cast<int16_t>(target.y), COLOR_SUCCESS);
             sleep_ms(250);
             return true;
         }
 
-        render_target_screen(target, index, "TOUCH TOO SHORT - TRY AGAIN");
+        render_target_footer("TOUCH TOO SHORT - TRY AGAIN", COLOR_WARNING);
         sleep_ms(450);
     }
 }
@@ -215,18 +227,17 @@ void TouchCalibrationApp::render_touch_test_screen(const TouchCalibration& calib
     display_.fill_screen(COLOR_BG);
     draw_centered_text(20, loaded_from_flash ? "TOUCH TEST" : "CALIBRATION REVIEW", COLOR_TEXT, COLOR_BG, 3);
     draw_centered_text(64, loaded_from_flash ? "HOLD TOUCH 2S TO RECALIBRATE" : "TEST TOUCH THEN SAVE OR RETRY", COLOR_MUTED, COLOR_BG, 1);
-    draw_centered_text(82, "DRAW AROUND THE SCREEN", COLOR_MUTED, COLOR_BG, 1);
-    display_.draw_rect(8, 172, LCD_WIDTH - 16, 88, COLOR_BORDER);
+    draw_centered_text(82, "DRAG ACROSS THE SCREEN", COLOR_MUTED, COLOR_BG, 1);
 
     std::snprintf(line, sizeof(line), "XMIN:%u XMAX:%u", calibration.x_min, calibration.x_max);
-    display_.draw_text(24, 272, line, COLOR_TEXT, COLOR_BG, 1);
+    display_.draw_text(24, kCalibrationMetricsY1, line, COLOR_TEXT, COLOR_BG, 1);
     std::snprintf(line, sizeof(line), "YMIN:%u YMAX:%u", calibration.y_min, calibration.y_max);
-    display_.draw_text(24, 288, line, COLOR_TEXT, COLOR_BG, 1);
+    display_.draw_text(24, kCalibrationMetricsY2, line, COLOR_TEXT, COLOR_BG, 1);
     std::snprintf(line, sizeof(line), "SWAP:%u INVX:%u INVY:%u",
                   calibration.swap_xy ? 1u : 0u,
                   calibration.invert_x ? 1u : 0u,
                   calibration.invert_y ? 1u : 0u);
-    display_.draw_text(240, 288, line, COLOR_MUTED, COLOR_BG, 1);
+    display_.draw_text(24, kCalibrationMetricsY3, line, COLOR_MUTED, COLOR_BG, 1);
 
     render_live_values(TouchPoint{0, 0}, RawTouchPoint{0, 0, 0});
 

@@ -61,7 +61,8 @@ private:
     void wait_for_release(uint32_t timeout_ms = TOUCH_RELEASE_TIMEOUT_MS) const;
 
     void render_status_screen(const char* title, const char* line1, const char* line2) const;
-    void render_target_screen(const CalibrationTarget& target, std::size_t index, const char* footer) const;
+    void render_target_screen_base(const CalibrationTarget& target, std::size_t index) const;
+    void render_target_footer(const char* footer, uint16_t color = COLOR_MUTED) const;
     bool collect_target_sample(const CalibrationTarget& target, std::size_t index, RawTouchPoint& sample) const;
     static void compute_axis_range(int32_t raw_low,
                                    int32_t raw_high,
