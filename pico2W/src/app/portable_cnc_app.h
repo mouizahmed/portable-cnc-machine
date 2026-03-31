@@ -1,0 +1,36 @@
+#pragma once
+
+#include "app/job/job_state_machine.h"
+#include "app/machine/machine_state_machine.h"
+#include "app/navigation/screen_router.h"
+#include "app/status/status_provider.h"
+#include "calibration/calibration_storage.h"
+#include "calibration/touch_calibration_app.h"
+#include "ui/components/app_frame.h"
+#include "ui/screens/files_screen.h"
+#include "ui/screens/main_menu_screen.h"
+#include "ui/screens/screen.h"
+
+class PortableCncApp {
+public:
+    PortableCncApp(Ili9488& display, Xpt2046& touch, CalibrationStorage& storage);
+
+    void run();
+
+private:
+    Xpt2046& touch_;
+    bool touch_latched_ = false;
+    ScreenRouter router_;
+    MachineStateMachine machine_state_machine_;
+    JobStateMachine job_state_machine_;
+    StatusProvider status_provider_;
+    TouchCalibrationApp calibration_app_;
+    AppFrame frame_;
+    MainMenuScreen main_menu_screen_;
+    FilesScreen files_screen_;
+
+    void run_startup_sequence();
+    bool poll_event(UiEvent& event);
+    void handle_event(const UiEvent& event);
+    void render_current_screen();
+};

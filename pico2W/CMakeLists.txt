@@ -33,14 +33,25 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 pico_sdk_init()
 
 add_executable(portable_cnc_machine
-    src/app_frame.cpp
-    src/calibration_storage.cpp
-    src/ili9488.cpp
+    src/app/portable_cnc_app.cpp
+    src/app/job/job_state_machine.cpp
+    src/app/machine/machine_state_machine.cpp
+    src/app/navigation/screen_router.cpp
+    src/app/status/status_line_formatter.cpp
+    src/app/status/status_provider.cpp
+    src/calibration/calibration_storage.cpp
+    src/calibration/touch_calibration_app.cpp
+    src/drivers/ili9488.cpp
+    src/drivers/xpt2046.cpp
     src/main.cpp
-    src/main_menu_screen.cpp
-    src/portable_cnc_app.cpp
-    src/touch_calibration_app.cpp
-    src/xpt2046.cpp
+    src/ui/components/app_frame.cpp
+    src/ui/components/menu_card.cpp
+    src/ui/components/nav_bar.cpp
+    src/ui/components/selectable_list_row.cpp
+    src/ui/components/status_bar.cpp
+    src/ui/helpers/ui_helpers.cpp
+    src/ui/screens/files_screen.cpp
+    src/ui/screens/main_menu_screen.cpp
 )
 
 target_include_directories(portable_cnc_machine PRIVATE

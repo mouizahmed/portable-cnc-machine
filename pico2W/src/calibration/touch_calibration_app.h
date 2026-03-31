@@ -4,16 +4,21 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "calibration_storage.h"
+#include "calibration/calibration_storage.h"
 #include "config.h"
-#include "ili9488.h"
-#include "xpt2046.h"
+#include "drivers/ili9488.h"
+#include "drivers/xpt2046.h"
 
 class TouchCalibrationApp {
 public:
+    enum class CalibrationResult : uint8_t {
+        LoadedFromStorage,
+        CalibratedAndSaved,
+    };
+
     TouchCalibrationApp(Ili9488& display, Xpt2046& touch, CalibrationStorage& storage);
 
-    void ensure_calibration(TouchCalibration& calibration) const;
+    CalibrationResult ensure_calibration(TouchCalibration& calibration) const;
     void run_touch_test(const TouchCalibration& calibration) const;
 
 private:

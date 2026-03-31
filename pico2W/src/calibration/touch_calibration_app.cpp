@@ -1,4 +1,4 @@
-#include "touch_calibration_app.h"
+#include "calibration/touch_calibration_app.h"
 
 #include <cstdio>
 
@@ -330,10 +330,10 @@ TouchCalibration TouchCalibrationApp::calibrate_touch() const {
     return calibration;
 }
 
-void TouchCalibrationApp::ensure_calibration(TouchCalibration& calibration) const {
+TouchCalibrationApp::CalibrationResult TouchCalibrationApp::ensure_calibration(TouchCalibration& calibration) const {
     if (storage_.load(calibration)) {
         touch_.set_calibration(calibration);
-        return;
+        return CalibrationResult::LoadedFromStorage;
     }
 
     while (true) {
@@ -348,7 +348,7 @@ void TouchCalibrationApp::ensure_calibration(TouchCalibration& calibration) cons
         const ReviewAction action = review_calibration(calibration);
         if (action == ReviewAction::Save) {
             if (storage_.save(calibration)) {
-                return;
+                return CalibrationResult::CalibratedAndSaved;
             }
             render_status_screen("FLASH SAVE FAILED", "CALIBRATION WAS NOT STORED", "TRY SAVE AGAIN OR RETRY");
             sleep_ms(1200);

@@ -1,10 +1,10 @@
-#include "ili9488.h"
+#include "drivers/ili9488.h"
 
 #include <array>
 #include <cstring>
 
 #include "config.h"
-#include "font5x7.h"
+#include "drivers/font5x7.h"
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
 

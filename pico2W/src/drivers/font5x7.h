@@ -63,4 +63,3 @@ inline const std::array<uint8_t, 5>& glyph_for(char ch) {
     }
     return kFont5x7[0].columns;
 }
-

@@ -1,9 +1,9 @@
 #include "pico/stdlib.h"
 
-#include "calibration_storage.h"
-#include "ili9488.h"
-#include "portable_cnc_app.h"
-#include "xpt2046.h"
+#include "app/portable_cnc_app.h"
+#include "calibration/calibration_storage.h"
+#include "drivers/ili9488.h"
+#include "drivers/xpt2046.h"
 
 int main() {
     stdio_init_all();

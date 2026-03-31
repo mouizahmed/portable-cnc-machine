@@ -1,4 +1,4 @@
-#include "xpt2046.h"
+#include "drivers/xpt2046.h"
 
 #include "config.h"
 #include "hardware/gpio.h"
