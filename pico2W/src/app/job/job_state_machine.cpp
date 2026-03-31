@@ -1,23 +1,11 @@
 #include "app/job/job_state_machine.h"
 
-#include <array>
-
-namespace {
-std::array<FileEntry, 5> kFileEntries{{
-    {"DEMO.NC", "READY TO RUN", "24 KB", "T1 1/8 EM", "G54"},
-    {"FRAME.NC", "ALUMINUM PLATE", "31 KB", "T2 1/4 EM", "G54"},
-    {"PLATE.NC", "DRILL / CONTOUR", "18 KB", "T3 DRILL", "G55"},
-    {"HOLES.NC", "PECK CYCLE", "9 KB", "T3 DRILL", "G54"},
-    {"POCKET.NC", "ROUGHING PASS", "42 KB", "T2 1/4 EM", "G56"},
-}};
-}  // namespace
-
 std::size_t JobStateMachine::count() const {
-    return kFileEntries.size();
+    return entry_count_;
 }
 
 const FileEntry& JobStateMachine::entry(std::size_t index) const {
-    return kFileEntries[index];
+    return entries_[index];
 }
 
 JobState JobStateMachine::state() const {
@@ -36,13 +24,13 @@ const FileEntry* JobStateMachine::selected_entry() const {
     if (!has_selection()) {
         return nullptr;
     }
-    return &kFileEntries[static_cast<std::size_t>(selected_index_)];
+    return &entries_[static_cast<std::size_t>(selected_index_)];
 }
 
 bool JobStateMachine::handle_event(JobEvent event, int16_t selected_index) {
     switch (event) {
         case JobEvent::SelectFile:
-            if (selected_index < 0 || selected_index >= static_cast<int16_t>(kFileEntries.size()) || selected_index_ == selected_index) {
+            if (selected_index < 0 || selected_index >= static_cast<int16_t>(entry_count_) || selected_index_ == selected_index) {
                 return false;
             }
             selected_index_ = selected_index;
@@ -68,4 +56,20 @@ bool JobStateMachine::handle_event(JobEvent event, int16_t selected_index) {
 
 bool JobStateMachine::can_run() const {
     return state_ == JobState::FileSelected;
+}
+
+void JobStateMachine::clear_files() {
+    entry_count_ = 0;
+    selected_index_ = -1;
+    state_ = JobState::NoFileSelected;
+}
+
+bool JobStateMachine::add_file(const FileEntry& entry) {
+    if (entry_count_ >= entries_.size()) {
+        return false;
+    }
+
+    entries_[entry_count_] = entry;
+    ++entry_count_;
+    return true;
 }

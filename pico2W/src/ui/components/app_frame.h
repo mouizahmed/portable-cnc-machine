@@ -14,6 +14,7 @@ public:
     explicit AppFrame(Ili9488& display);
 
     void render_chrome(const StatusSnapshot& status, NavTab active_tab) const;
+    void render_status_bar(const StatusSnapshot& status) const;
     void draw_footer_status(const char* status_text) const;
     UiEventResult handle_event(const UiEvent& event) const;
 

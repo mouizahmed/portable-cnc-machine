@@ -17,3 +17,11 @@ enum class JobState : uint8_t {
     FileSelected,
     Running,
 };
+
+enum class StorageState : uint8_t {
+    Uninitialized,
+    Mounting,
+    Mounted,
+    MountError,
+    ScanError,
+};

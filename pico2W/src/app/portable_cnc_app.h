@@ -4,8 +4,10 @@
 #include "app/machine/machine_state_machine.h"
 #include "app/navigation/screen_router.h"
 #include "app/status/status_provider.h"
+#include "app/storage/storage_service.h"
 #include "calibration/calibration_storage.h"
 #include "calibration/touch_calibration_app.h"
+#include "drivers/sd_spi_card.h"
 #include "ui/components/app_frame.h"
 #include "ui/screens/files_screen.h"
 #include "ui/screens/main_menu_screen.h"
@@ -13,7 +15,7 @@
 
 class PortableCncApp {
 public:
-    PortableCncApp(Ili9488& display, Xpt2046& touch, CalibrationStorage& storage);
+    PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_card, CalibrationStorage& storage);
 
     void run();
 
@@ -23,6 +25,7 @@ private:
     ScreenRouter router_;
     MachineStateMachine machine_state_machine_;
     JobStateMachine job_state_machine_;
+    StorageService storage_service_;
     StatusProvider status_provider_;
     TouchCalibrationApp calibration_app_;
     AppFrame frame_;
@@ -32,5 +35,6 @@ private:
     void run_startup_sequence();
     bool poll_event(UiEvent& event);
     void handle_event(const UiEvent& event);
+    void render_storage_change();
     void render_current_screen();
 };

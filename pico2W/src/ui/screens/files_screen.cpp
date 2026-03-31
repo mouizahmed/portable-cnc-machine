@@ -49,6 +49,15 @@ void FilesScreen::render(const StatusSnapshot& status) {
     draw_file_details();
 }
 
+void FilesScreen::refresh_storage_view() const {
+    draw_file_details();
+    draw_file_list_header();
+
+    for (std::size_t i = 0; i < model_.count(); ++i) {
+        draw_row(static_cast<int16_t>(i));
+    }
+}
+
 UiEventResult FilesScreen::handle_event(const UiEvent& event) {
     if (event.type != UiEventType::TouchPressed) {
         return UiEventResult{};
@@ -102,6 +111,15 @@ void FilesScreen::draw_file_details() const {
         static_cast<int16_t>(kDetailsPanelRect.w - 2),
         static_cast<int16_t>(kDetailsPanelRect.h - kPanelStyle.header_height - 3),
     }, kColorPanel);
+
+    if (model_.count() == 0) {
+        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 24, "SOURCE: SD", COLOR_TEXT, kColorPanel, 1);
+        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 48, "NO G-CODE", COLOR_TEXT, kColorPanel, 1);
+        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 64, "FILES FOUND", COLOR_TEXT, kColorPanel, 1);
+        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 96, "CHECK SD", COLOR_MUTED, kColorPanel, 1);
+        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 112, "CARD / ROOT", COLOR_MUTED, kColorPanel, 1);
+        return;
+    }
 
     if (!model_.has_selection()) {
         display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 24, "SOURCE: SD", COLOR_TEXT, kColorPanel, 1);

@@ -39,9 +39,12 @@ add_executable(portable_cnc_machine
     src/app/navigation/screen_router.cpp
     src/app/status/status_line_formatter.cpp
     src/app/status/status_provider.cpp
+    src/app/storage/storage_service.cpp
     src/calibration/calibration_storage.cpp
     src/calibration/touch_calibration_app.cpp
     src/drivers/ili9488.cpp
+    src/drivers/sd_spi_card.cpp
+    src/drivers/sd_spi_diskio.cpp
     src/drivers/xpt2046.cpp
     src/main.cpp
     src/ui/components/app_frame.cpp
@@ -52,10 +55,13 @@ add_executable(portable_cnc_machine
     src/ui/helpers/ui_helpers.cpp
     src/ui/screens/files_screen.cpp
     src/ui/screens/main_menu_screen.cpp
+    C:/Users/mouiz/.pico-sdk/sdk/2.2.0/lib/tinyusb/lib/fatfs/source/ff.c
+    C:/Users/mouiz/.pico-sdk/sdk/2.2.0/lib/tinyusb/lib/fatfs/source/ffunicode.c
 )
 
 target_include_directories(portable_cnc_machine PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src
+    C:/Users/mouiz/.pico-sdk/sdk/2.2.0/lib/tinyusb/lib/fatfs/source
 )
 
 target_link_libraries(portable_cnc_machine PRIVATE

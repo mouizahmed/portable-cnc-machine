@@ -11,12 +11,15 @@ constexpr unsigned int PIN_SPI_MOSI = 7;
 constexpr unsigned int PIN_LCD_BL = 8;
 constexpr unsigned int PIN_TOUCH_CS = 9;
 constexpr unsigned int PIN_TOUCH_IRQ = 10;
+constexpr unsigned int PIN_SD_CS = 11;
 constexpr unsigned int PIN_ESTOP = 15;
 
 constexpr unsigned int LCD_WIDTH = 480;
 constexpr unsigned int LCD_HEIGHT = 320;
 
 constexpr uint32_t DISPLAY_SPI_BAUD = 20'000'000;
+constexpr uint32_t SD_SPI_INIT_BAUD = 400'000;
+constexpr uint32_t SD_SPI_BAUD = 12'000'000;
 constexpr uint32_t UI_POLL_MS = 20;
 constexpr uint32_t TOUCH_SETTLE_MS = 80;
 constexpr uint32_t TOUCH_RELEASE_TIMEOUT_MS = 1500;

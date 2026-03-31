@@ -16,6 +16,7 @@ public:
     NavTab tab() const override;
     void render(const StatusSnapshot& status) override;
     UiEventResult handle_event(const UiEvent& event) override;
+    void refresh_storage_view() const;
 
 private:
     static const UiRect kListPanelRect;

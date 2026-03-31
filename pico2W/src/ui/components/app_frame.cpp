@@ -15,6 +15,10 @@ void AppFrame::render_chrome(const StatusSnapshot& status, NavTab active_tab) co
     nav_bar_.render(active_tab);
 }
 
+void AppFrame::render_status_bar(const StatusSnapshot& status) const {
+    status_bar_.render(status);
+}
+
 void AppFrame::draw_footer_status(const char* status_text) const {
     char line[48];
     std::snprintf(line, sizeof(line), "STATUS: %s", status_text);

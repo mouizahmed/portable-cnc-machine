@@ -3,9 +3,10 @@
 #include "config.h"
 #include "pico/stdlib.h"
 
-PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, CalibrationStorage& storage)
+PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_card, CalibrationStorage& storage)
     : touch_(touch),
-      status_provider_(machine_state_machine_, job_state_machine_),
+      storage_service_(sd_card),
+      status_provider_(machine_state_machine_, job_state_machine_, storage_service_),
       calibration_app_(display, touch, storage),
       frame_(display),
       main_menu_screen_(display, frame_),
@@ -20,6 +21,10 @@ void PortableCncApp::run() {
     render_current_screen();
 
     while (true) {
+        if (storage_service_.poll(job_state_machine_)) {
+            render_storage_change();
+        }
+
         UiEvent event{};
         if (poll_event(event)) {
             handle_event(event);
@@ -34,6 +39,7 @@ void PortableCncApp::run_startup_sequence() {
     machine_state_machine_.handle_event(MachineEvent::StartCalibration);
     calibration_app_.ensure_calibration(calibration);
     machine_state_machine_.handle_event(MachineEvent::CalibrationCompleted);
+    storage_service_.initialize(job_state_machine_);
 }
 
 bool PortableCncApp::poll_event(UiEvent& event) {
@@ -65,6 +71,15 @@ void PortableCncApp::handle_event(const UiEvent& event) {
     if (router_.can_navigate_to(result.navigation_target) &&
         router_.navigate_to(result.navigation_target)) {
         render_current_screen();
+    }
+}
+
+void PortableCncApp::render_storage_change() {
+    const StatusSnapshot status = status_provider_.current();
+    frame_.render_status_bar(status);
+
+    if (router_.current().tab() == NavTab::Files) {
+        files_screen_.refresh_storage_view();
     }
 }
 
