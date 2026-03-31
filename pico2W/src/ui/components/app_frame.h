@@ -7,7 +7,6 @@
 #include "ui/components/nav_bar.h"
 #include "ui/components/status_bar.h"
 #include "ui/components/ui_shell_types.h"
-#include "ui/helpers/ui_helpers.h"
 #include "ui/ui_event.h"
 
 class AppFrame {
@@ -15,7 +14,6 @@ public:
     explicit AppFrame(Ili9488& display);
 
     void render_chrome(const StatusSnapshot& status, NavTab active_tab) const;
-    void draw_screen_title(const char* title, const char* subtitle) const;
     void draw_footer_status(const char* status_text) const;
     UiEventResult handle_event(const UiEvent& event) const;
 
@@ -24,7 +22,6 @@ public:
 
 private:
     Ili9488& display_;
-    UiPainter painter_;
     StatusBar status_bar_;
     NavBar nav_bar_;
 };

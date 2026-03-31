@@ -20,7 +20,6 @@ NavTab MainMenuScreen::tab() const {
 
 void MainMenuScreen::render(const StatusSnapshot& status) {
     frame_.render_chrome(status, NavTab::Home);
-    frame_.draw_screen_title("PORTABLE CNC", "MAIN MENU");
 
     for (const MenuCardSpec& card : kCards) {
         menu_card_.render(card);

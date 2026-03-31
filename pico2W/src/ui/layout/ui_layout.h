@@ -9,8 +9,6 @@
 namespace UiLayout {
 inline constexpr int16_t kTopBarHeight = 22;
 inline constexpr int16_t kBottomBarHeight = 30;
-inline constexpr int16_t kTitleY = 34;
-inline constexpr int16_t kSubtitleY = 64;
 inline constexpr int16_t kFooterStatusX = 24;
 inline constexpr int16_t kFooterStatusY = 262;
 
@@ -32,15 +30,20 @@ inline constexpr UiRect nav_button_rect(std::size_t index) {
 inline constexpr UiRect main_menu_card_rect(std::size_t index) {
     return UiRect{
         static_cast<int16_t>(24 + static_cast<int16_t>(index % 3) * 148),
-        static_cast<int16_t>((index < 3) ? 102 : 178),
+        static_cast<int16_t>((index < 3) ? 54 : 130),
         136,
         60,
     };
 }
 
-inline constexpr UiRect kFilesListPanelRect{20, 100, 292, 150};
-inline constexpr UiRect kFilesDetailsPanelRect{326, 100, 134, 150};
-inline constexpr UiRect kFilesRunButtonRect{364, 216, 58, 22};
+inline constexpr UiRect kFilesListPanelRect{20, 54, 292, 150};
+inline constexpr UiRect kFilesDetailsPanelRect{326, 54, 134, 150};
+inline constexpr UiRect kFilesRunButtonRect{
+    static_cast<int16_t>(kFilesDetailsPanelRect.x + 38),
+    static_cast<int16_t>(kFilesDetailsPanelRect.y + 116),
+    58,
+    22,
+};
 inline constexpr int16_t kFilesRowHeight = 28;
 inline constexpr int16_t kFilesRowInsetX = 8;
 inline constexpr int16_t kFilesRowHeightInner = 22;

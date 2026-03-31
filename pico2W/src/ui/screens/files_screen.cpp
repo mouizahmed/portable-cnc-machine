@@ -40,7 +40,6 @@ NavTab FilesScreen::tab() const {
 
 void FilesScreen::render(const StatusSnapshot& status) {
     frame_.render_chrome(status, NavTab::Files);
-    frame_.draw_screen_title("FILES", "SELECT G-CODE / STORAGE");
     draw_static_layout();
 
     for (std::size_t i = 0; i < model_.count(); ++i) {

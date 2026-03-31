@@ -6,7 +6,6 @@
 
 AppFrame::AppFrame(Ili9488& display)
     : display_(display),
-      painter_(display),
       status_bar_(display),
       nav_bar_(display) {}
 
@@ -14,11 +13,6 @@ void AppFrame::render_chrome(const StatusSnapshot& status, NavTab active_tab) co
     display_.fill_screen(COLOR_BG);
     status_bar_.render(status);
     nav_bar_.render(active_tab);
-}
-
-void AppFrame::draw_screen_title(const char* title, const char* subtitle) const {
-    painter_.draw_text_centered(UiLayout::kTitleY, title, COLOR_TEXT, COLOR_BG, 3);
-    painter_.draw_text_centered(UiLayout::kSubtitleY, subtitle, COLOR_MUTED, COLOR_BG, 1);
 }
 
 void AppFrame::draw_footer_status(const char* status_text) const {
