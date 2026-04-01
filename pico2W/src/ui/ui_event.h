@@ -7,6 +7,7 @@
 
 enum class UiEventType : uint8_t {
     TouchPressed,
+    TouchReleased,
 };
 
 struct UiEvent {
@@ -18,4 +19,5 @@ struct UiEventResult {
     bool handled = false;
     bool has_navigation = false;
     NavTab navigation_target = NavTab::Home;
+    bool refresh_status_bar = false;
 };

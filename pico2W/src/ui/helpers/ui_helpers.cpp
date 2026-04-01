@@ -1,5 +1,7 @@
 #include "ui/helpers/ui_helpers.h"
 
+#include "ui/layout/ui_layout.h"
+
 namespace {
 bool ui_rect_is_empty(const UiRect& rect) {
     return rect.w <= 0 || rect.h <= 0;
@@ -53,12 +55,10 @@ void UiPainter::draw_panel(const UiRect& rect, const char* header, const UiPanel
             style.header_height,
         };
         fill_rect(header_rect, style.header_fill);
-        display_.draw_text(static_cast<int16_t>(rect.x + 10),
-                           static_cast<int16_t>(rect.y + 3),
-                           header,
-                           style.header_text,
-                           style.header_fill,
-                           1);
+        const uint8_t header_scale = 2;
+        const int16_t text_x = static_cast<int16_t>(rect.x + (rect.w - display_.text_width(header, header_scale)) / 2);
+        const int16_t text_y = static_cast<int16_t>(rect.y + 1 + (style.header_height - display_.text_height(header_scale)) / 2);
+        display_.draw_text(text_x, text_y, header, style.header_text, style.header_fill, header_scale);
     }
 }
 

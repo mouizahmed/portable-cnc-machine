@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/jog/jog_state_machine.h"
 #include "app/job/job_state_machine.h"
 #include "app/machine/machine_state_machine.h"
 #include "app/navigation/screen_router.h"
@@ -10,6 +11,7 @@
 #include "drivers/sd_spi_card.h"
 #include "ui/components/app_frame.h"
 #include "ui/screens/files_screen.h"
+#include "ui/screens/jog_screen.h"
 #include "ui/screens/main_menu_screen.h"
 #include "ui/screens/screen.h"
 
@@ -22,19 +24,22 @@ public:
 private:
     Xpt2046& touch_;
     bool touch_latched_ = false;
+    TouchPoint last_touch_point_{};
     ScreenRouter router_;
     MachineStateMachine machine_state_machine_;
+    JogStateMachine jog_state_machine_;
     JobStateMachine job_state_machine_;
     StorageService storage_service_;
     StatusProvider status_provider_;
     TouchCalibrationApp calibration_app_;
     AppFrame frame_;
     MainMenuScreen main_menu_screen_;
+    JogScreen jog_screen_;
     FilesScreen files_screen_;
 
     void run_startup_sequence();
     bool poll_event(UiEvent& event);
     void handle_event(const UiEvent& event);
     void render_storage_change();
-    void render_current_screen();
+    void render_current_screen(bool full = false);
 };

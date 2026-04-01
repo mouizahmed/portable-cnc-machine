@@ -40,11 +40,12 @@ bool NavBar::hit_test(const TouchPoint& point, NavTab& selected_tab) const {
 
 void NavBar::draw_button(const NavButton& button, bool active) const {
     const uint16_t fill = active ? kColorNavActive : kColorNavIdle;
+    const uint8_t scale = 1;
 
     display_.fill_rect(button.rect.x, button.rect.y, button.rect.w, button.rect.h, fill);
     display_.draw_rect(button.rect.x, button.rect.y, button.rect.w, button.rect.h, COLOR_BORDER);
 
-    const int16_t text_x = static_cast<int16_t>(button.rect.x + (button.rect.w - display_.text_width(button.label, 1)) / 2);
-    const int16_t text_y = static_cast<int16_t>(button.rect.y + (button.rect.h - display_.text_height(1)) / 2);
-    display_.draw_text(text_x, text_y, button.label, COLOR_TEXT, fill, 1);
+    const int16_t text_x = static_cast<int16_t>(button.rect.x + (button.rect.w - display_.text_width(button.label, scale)) / 2);
+    const int16_t text_y = static_cast<int16_t>(button.rect.y + (button.rect.h - display_.text_height(scale)) / 2);
+    display_.draw_text(text_x, text_y, button.label, COLOR_TEXT, fill, scale);
 }

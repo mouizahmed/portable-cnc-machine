@@ -15,6 +15,8 @@ public:
 
     void render_chrome(const StatusSnapshot& status, NavTab active_tab) const;
     void render_status_bar(const StatusSnapshot& status) const;
+    void render_nav_bar(NavTab active_tab) const;
+    void clear_content() const;
     void draw_footer_status(const char* status_text) const;
     UiEventResult handle_event(const UiEvent& event) const;
 

@@ -7,8 +7,8 @@
 
 namespace {
 constexpr uint32_t kTouchSpiBaud = 2'000'000;
-constexpr int16_t kZThreshold = 300;
-constexpr uint32_t kMsThreshold = 3;
+constexpr int16_t kZThreshold = 180;
+constexpr uint32_t kMsThreshold = 1;
 }  // namespace
 
 Xpt2046::Xpt2046(spi_inst_t* spi) : spi_(spi) {}

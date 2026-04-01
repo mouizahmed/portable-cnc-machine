@@ -34,6 +34,7 @@ pico_sdk_init()
 
 add_executable(portable_cnc_machine
     src/app/portable_cnc_app.cpp
+    src/app/jog/jog_state_machine.cpp
     src/app/job/job_state_machine.cpp
     src/app/machine/machine_state_machine.cpp
     src/app/navigation/screen_router.cpp
@@ -54,6 +55,7 @@ add_executable(portable_cnc_machine
     src/ui/components/status_bar.cpp
     src/ui/helpers/ui_helpers.cpp
     src/ui/screens/files_screen.cpp
+    src/ui/screens/jog_screen.cpp
     src/ui/screens/main_menu_screen.cpp
     C:/Users/mouiz/.pico-sdk/sdk/2.2.0/lib/tinyusb/lib/fatfs/source/ff.c
     C:/Users/mouiz/.pico-sdk/sdk/2.2.0/lib/tinyusb/lib/fatfs/source/ffunicode.c

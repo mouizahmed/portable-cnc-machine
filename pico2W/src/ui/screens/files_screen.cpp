@@ -18,13 +18,13 @@ const UiPanelStyle FilesScreen::kPanelStyle{
     COLOR_BORDER,
     kColorPanelAccent,
     COLOR_TEXT,
-    UiLayout::kFilesListHeaderHeight,
+    UiLayout::kPanelHeaderHeight,
 };
 const UiButtonStyle FilesScreen::kRunButtonStyle{
     COLOR_SUCCESS,
     COLOR_BORDER,
     COLOR_TEXT,
-    1,
+    2,
 };
 
 FilesScreen::FilesScreen(Ili9488& display, AppFrame& frame, JobStateMachine& model)
@@ -40,6 +40,10 @@ NavTab FilesScreen::tab() const {
 
 void FilesScreen::render(const StatusSnapshot& status) {
     frame_.render_chrome(status, NavTab::Files);
+    render_content();
+}
+
+void FilesScreen::render_content() {
     draw_static_layout();
 
     for (std::size_t i = 0; i < model_.count(); ++i) {
@@ -105,44 +109,43 @@ void FilesScreen::draw_row(int16_t index) const {
 }
 
 void FilesScreen::draw_file_details() const {
-    painter_.fill_rect(UiRect{
-        static_cast<int16_t>(kDetailsPanelRect.x + 1),
-        static_cast<int16_t>(kDetailsPanelRect.y + kPanelStyle.header_height + 2),
-        static_cast<int16_t>(kDetailsPanelRect.w - 2),
-        static_cast<int16_t>(kDetailsPanelRect.h - kPanelStyle.header_height - 3),
-    }, kColorPanel);
+    const UiRect body = UiLayout::panel_body_rect(kDetailsPanelRect, kPanelStyle.header_height);
+    const int16_t text_x = UiLayout::panel_text_x(kDetailsPanelRect);
+    const int16_t text_top = UiLayout::panel_text_top(kDetailsPanelRect, kPanelStyle.header_height);
+
+    painter_.fill_rect(body, kColorPanel);
 
     if (model_.count() == 0) {
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 24, "SOURCE: SD", COLOR_TEXT, kColorPanel, 1);
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 48, "NO G-CODE", COLOR_TEXT, kColorPanel, 1);
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 64, "FILES FOUND", COLOR_TEXT, kColorPanel, 1);
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 96, "CHECK SD", COLOR_MUTED, kColorPanel, 1);
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 112, "CARD / ROOT", COLOR_MUTED, kColorPanel, 1);
+        display_.draw_text(text_x, text_top, "SOURCE: SD", COLOR_TEXT, kColorPanel, 1);
+        display_.draw_text(text_x, static_cast<int16_t>(text_top + 26), "NO G-CODE", COLOR_TEXT, kColorPanel, 1);
+        display_.draw_text(text_x, static_cast<int16_t>(text_top + 42), "FILES FOUND", COLOR_TEXT, kColorPanel, 1);
+        display_.draw_text(text_x, static_cast<int16_t>(text_top + 76), "CHECK SD", COLOR_MUTED, kColorPanel, 1);
+        display_.draw_text(text_x, static_cast<int16_t>(text_top + 92), "CARD / ROOT", COLOR_MUTED, kColorPanel, 1);
         return;
     }
 
     if (!model_.has_selection()) {
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 24, "SOURCE: SD", COLOR_TEXT, kColorPanel, 1);
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 44, "SIZE: --", COLOR_MUTED, kColorPanel, 1);
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 64, "TOOL: --", COLOR_MUTED, kColorPanel, 1);
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 84, "ZERO: --", COLOR_MUTED, kColorPanel, 1);
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 112, "TAP A FILE", COLOR_TEXT, kColorPanel, 1);
-        display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 128, "TO LOAD IT", COLOR_TEXT, kColorPanel, 1);
+        display_.draw_text(text_x, text_top, "SOURCE: SD", COLOR_TEXT, kColorPanel, 1);
+        display_.draw_text(text_x, static_cast<int16_t>(text_top + 22), "SIZE: --", COLOR_MUTED, kColorPanel, 1);
+        display_.draw_text(text_x, static_cast<int16_t>(text_top + 44), "TOOL: --", COLOR_MUTED, kColorPanel, 1);
+        display_.draw_text(text_x, static_cast<int16_t>(text_top + 66), "ZERO: --", COLOR_MUTED, kColorPanel, 1);
+        display_.draw_text(text_x, static_cast<int16_t>(text_top + 96), "TAP A FILE", COLOR_TEXT, kColorPanel, 1);
+        display_.draw_text(text_x, static_cast<int16_t>(text_top + 112), "TO LOAD IT", COLOR_TEXT, kColorPanel, 1);
         return;
     }
 
     const FileEntry& file = *model_.selected_entry();
     char line[32];
 
-    display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 24, file.name, COLOR_TEXT, kColorPanel, 1);
-    display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 44, file.summary, COLOR_MUTED, kColorPanel, 1);
+    display_.draw_text(text_x, text_top, file.name, COLOR_TEXT, kColorPanel, 1);
+    display_.draw_text(text_x, static_cast<int16_t>(text_top + 20), file.summary, COLOR_MUTED, kColorPanel, 1);
 
     std::snprintf(line, sizeof(line), "SIZE: %s", file.size_text);
-    display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 68, line, COLOR_TEXT, kColorPanel, 1);
+    display_.draw_text(text_x, static_cast<int16_t>(text_top + 48), line, COLOR_TEXT, kColorPanel, 1);
     std::snprintf(line, sizeof(line), "TOOL: %s", file.tool_text);
-    display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 88, line, COLOR_TEXT, kColorPanel, 1);
+    display_.draw_text(text_x, static_cast<int16_t>(text_top + 70), line, COLOR_TEXT, kColorPanel, 1);
     std::snprintf(line, sizeof(line), "ZERO: %s", file.zero_text);
-    display_.draw_text(kDetailsPanelRect.x + 10, kDetailsPanelRect.y + 108, line, COLOR_TEXT, kColorPanel, 1);
+    display_.draw_text(text_x, static_cast<int16_t>(text_top + 92), line, COLOR_TEXT, kColorPanel, 1);
     if (model_.can_run()) {
         painter_.draw_button(kRunButtonRect, "RUN", kRunButtonStyle);
     }

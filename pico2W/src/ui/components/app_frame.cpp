@@ -19,10 +19,23 @@ void AppFrame::render_status_bar(const StatusSnapshot& status) const {
     status_bar_.render(status);
 }
 
+void AppFrame::render_nav_bar(NavTab active_tab) const {
+    nav_bar_.render(active_tab);
+}
+
+void AppFrame::clear_content() const {
+    display_.fill_rect(0,
+                       UiLayout::kContentTopY,
+                       LCD_WIDTH,
+                       UiLayout::kContentHeight,
+                       COLOR_BG);
+}
+
 void AppFrame::draw_footer_status(const char* status_text) const {
     char line[48];
     std::snprintf(line, sizeof(line), "STATUS: %s", status_text);
-    display_.draw_text(UiLayout::kFooterStatusX, UiLayout::kFooterStatusY, line, COLOR_TEXT, COLOR_BG, 1);
+    const int16_t x = static_cast<int16_t>(LCD_WIDTH - display_.text_width(line, 1) - UiLayout::kScreenMarginX);
+    display_.draw_text(x, UiLayout::kFooterStatusY, line, COLOR_TEXT, COLOR_BG, 1);
 }
 
 UiEventResult AppFrame::handle_event(const UiEvent& event) const {
@@ -39,9 +52,9 @@ UiEventResult AppFrame::handle_event(const UiEvent& event) const {
 }
 
 int16_t AppFrame::content_top() const {
-    return static_cast<int16_t>(UiLayout::kTopBarHeight + 8);
+    return UiLayout::kContentTopY;
 }
 
 int16_t AppFrame::content_bottom() const {
-    return static_cast<int16_t>(LCD_HEIGHT - UiLayout::kBottomBarHeight - 1);
+    return UiLayout::kContentBottomY;
 }

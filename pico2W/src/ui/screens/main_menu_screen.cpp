@@ -4,7 +4,7 @@
 
 const std::array<MenuCardSpec, 6> MainMenuScreen::kCards{{
     {UiLayout::main_menu_card_rect(0), "RUN JOB", "START / RESUME", NavTab::Home, false},
-    {UiLayout::main_menu_card_rect(1), "JOG", "MOVE AXES", NavTab::Jog, false},
+    {UiLayout::main_menu_card_rect(1), "JOG", "MOVE AXES", NavTab::Jog, true},
     {UiLayout::main_menu_card_rect(2), "ZERO/HOME", "WORK OFFSETS", NavTab::Home, false},
     {UiLayout::main_menu_card_rect(3), "FILES", "LOAD G-CODE", NavTab::Files, true},
     {UiLayout::main_menu_card_rect(4), "PROBE/TOOL", "TOUCH-OFF SETUP", NavTab::Home, false},
@@ -20,12 +20,13 @@ NavTab MainMenuScreen::tab() const {
 
 void MainMenuScreen::render(const StatusSnapshot& status) {
     frame_.render_chrome(status, NavTab::Home);
+    render_content();
+}
 
+void MainMenuScreen::render_content() {
     for (const MenuCardSpec& card : kCards) {
         menu_card_.render(card);
     }
-
-    frame_.draw_footer_status("READY");
 }
 
 UiEventResult MainMenuScreen::handle_event(const UiEvent& event) {

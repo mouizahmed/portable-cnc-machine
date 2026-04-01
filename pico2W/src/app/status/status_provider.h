@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/jog/jog_state_machine.h"
 #include "app/job/job_state_machine.h"
 #include "app/machine/machine_state_machine.h"
 #include "app/storage/storage_service.h"
@@ -8,6 +9,7 @@
 class StatusProvider {
 public:
     StatusProvider(const MachineStateMachine& machine_state_machine,
+                   const JogStateMachine& jog_state_machine,
                    const JobStateMachine& job_state_machine,
                    const StorageService& storage_service);
 
@@ -15,6 +17,8 @@ public:
 
 private:
     const MachineStateMachine& machine_state_machine_;
+    const JogStateMachine& jog_state_machine_;
     const JobStateMachine& job_state_machine_;
     const StorageService& storage_service_;
+    mutable char xyz_text_[24]{};
 };

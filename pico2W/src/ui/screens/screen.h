@@ -9,5 +9,6 @@ public:
 
     virtual NavTab tab() const = 0;
     virtual void render(const StatusSnapshot& status) = 0;
+    virtual void render_content() = 0;
     virtual UiEventResult handle_event(const UiEvent& event) = 0;
 };

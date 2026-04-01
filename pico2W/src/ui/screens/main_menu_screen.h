@@ -13,6 +13,7 @@ public:
 
     NavTab tab() const override;
     void render(const StatusSnapshot& status) override;
+    void render_content() override;
     UiEventResult handle_event(const UiEvent& event) override;
 
 private:
