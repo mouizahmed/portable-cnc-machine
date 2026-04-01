@@ -23,8 +23,10 @@ inline constexpr int16_t kPanelHeaderTextInsetX = 10;
 inline constexpr int16_t kPanelBodyInsetX = 10;
 inline constexpr int16_t kPanelBodyInsetY = 10;
 
-inline constexpr int16_t kMainMenuCardWidth = LCD_WIDTH / 3;
-inline constexpr int16_t kMainMenuCardHeight = kContentHeight / 2;
+inline constexpr int16_t kMainMenuColumns = 2;
+inline constexpr int16_t kMainMenuRows = 2;
+inline constexpr int16_t kMainMenuCardWidth = LCD_WIDTH / kMainMenuColumns;
+inline constexpr int16_t kMainMenuCardHeight = kContentHeight / kMainMenuRows;
 
 inline constexpr int16_t kNavButtonWidth = LCD_WIDTH / 5;
 inline constexpr int16_t kNavButtonHeight = kBottomBarHeight;
@@ -43,8 +45,8 @@ inline constexpr UiRect nav_button_rect(std::size_t index) {
 
 inline constexpr UiRect main_menu_card_rect(std::size_t index) {
     return UiRect{
-        static_cast<int16_t>(kScreenMarginX + static_cast<int16_t>(index % 3) * (kMainMenuCardWidth + kScreenGap)),
-        static_cast<int16_t>(kContentTopY + static_cast<int16_t>(index / 3) * (kMainMenuCardHeight + kScreenGap)),
+        static_cast<int16_t>(kScreenMarginX + static_cast<int16_t>(index % kMainMenuColumns) * (kMainMenuCardWidth + kScreenGap)),
+        static_cast<int16_t>(kContentTopY + static_cast<int16_t>(index / kMainMenuColumns) * (kMainMenuCardHeight + kScreenGap)),
         kMainMenuCardWidth,
         kMainMenuCardHeight,
     };

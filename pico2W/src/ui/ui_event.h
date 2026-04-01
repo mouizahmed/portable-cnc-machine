@@ -20,4 +20,5 @@ struct UiEventResult {
     bool has_navigation = false;
     NavTab navigation_target = NavTab::Home;
     bool refresh_status_bar = false;
+    bool refresh_screen = false;
 };
