@@ -2,46 +2,36 @@
 
 ---
 
-## UI Architecture: Hybrid Web Interface + Desktop App
+## UI Architecture: USB Web Interface + Desktop App
 
 ### Concept
 Inspired by USB-emulated Ethernet web servers used on high-end industrial printers (badge/ID printers
-etc.) to serve a configuration interface without drivers or a dedicated app.
+etc.) to serve a configuration interface without a dedicated app.
 
-Primary access is via **USB CDC-ECM** (virtual network adapter over USB cable). The Pico 2W also has
-built-in Wi-Fi for wireless access from phones/tablets on the shop floor.
+Primary access is via **USB CDC-NCM** (virtual network adapter over USB cable). The Pico serves the web
+interface itself; the attached host just opens a browser to it over the private USB network.
 
-### USB CDC-ECM (Primary)
+### USB CDC-NCM (Primary)
 ```
 Laptop
-├── Wi-Fi adapter    → normal internet, office network (unchanged)
-└── USB adapter      → 192.168.7.1 (Pico only, isolated)
+├── Normal network   -> internet / office network (unchanged)
+└── USB adapter      -> 192.168.7.1 (Pico only, isolated)
         │
-        └── browser → http://192.168.7.1 → Pico web interface
+        └── browser -> http://192.168.7.1 -> Pico web interface
 ```
-- Laptop stays on its own network with full internet — USB adapter is completely separate
-- Fully driverless: Windows 10/11, Mac, Linux all support CDC-ECM natively
+- Laptop stays on its own network with full internet; the USB adapter is completely separate
 - USB cable also powers the Pico
-- Fixed IP `192.168.7.1` — no configuration needed
+- By default, only the directly connected computer can reach the UI
+- Fixed IP `192.168.7.1` or DHCP on a small private subnet
+- `Windows 11` has native `CDC-NCM` support; `Linux` should be fine; `macOS` should be verified on real hardware
 
-### Wi-Fi (Secondary — phones/tablets)
-```
-Shop Wi-Fi router
-    ├── Pico 2W  → http://cnc.local
-    └── Phone/tablet on same network
-```
-- Pico joins shop Wi-Fi and advertises via mDNS as `cnc.local`
-- Tech uses phone/tablet browser without needing a cable
-- Falls back to AP mode (Pico broadcasts its own network) if no shop Wi-Fi
-
-### Both Run Simultaneously
-```
-USB cable plugged in  → http://192.168.7.1   (laptop, always works)
-On shop Wi-Fi         → http://cnc.local      (phone/tablet, wireless)
-```
+### OS Support Notes
+- `CDC-NCM` is the preferred successor to `CDC-ECM`
+- `Windows 11` is the main reason to prefer `NCM` over `ECM`
+- If `Windows 10` support becomes a requirement, plan a fallback path instead of assuming `NCM`
 
 ### Pico Web Interface (day-to-day shop floor use)
-- No app to install — works on Windows, Mac, Linux, phone, tablet
+- No app to install - works in a browser on the connected computer
 - G-code file upload via HTTP multipart directly to SD card
 - Real-time DRO and job progress via WebSockets (50ms update rate)
 - Toolpath visualization via WebGL/JS (runs in browser, not on Pico)
@@ -60,30 +50,31 @@ On shop Wi-Fi         → http://cnc.local      (phone/tablet, wireless)
 | Select job | `POST /files/select` `{"file":"part.nc"}` |
 
 ### Desktop App (advanced use only)
+- Cross-platform desktop app uploads G-code to the Pico for local storage, letting operators start and manage jobs later from the built-in touchscreen without a computer
 - ML crash prediction and tool wear inference (ML.NET, needs PC resources)
 - Advanced toolpath visualizer with ML overlay
 - Diagnostics console and error history
 - Supervisor-level config and access control
 
 ### Pico-Side Stack (C++)
-- **lwIP** — TCP/IP stack, bundled in Pico SDK
-- **httpd** — lightweight HTTP server, part of lwIP
-- **WebSocket** — on top of lwIP
-- **LittleFS** — stores HTML/JS/CSS on Pico flash
-- **TinyUSB** — CDC-ECM virtual network adapter, bundled in Pico SDK
+- **lwIP** - TCP/IP stack, bundled in Pico SDK
+- **httpd** - lightweight HTTP server, part of lwIP
+- **WebSocket** - on top of lwIP
+- **LittleFS** - stores HTML/JS/CSS on Pico flash
+- **TinyUSB** - CDC-NCM virtual network adapter, bundled in Pico SDK
 
-### Why Hybrid
+### Why This Split
 | Feature | Web Interface | Desktop App |
 |---|---|---|
 | Basic control + DRO | ✓ | ✓ |
 | G-code file transfer | ✓ HTTP multipart | ✓ |
 | Toolpath visualization | ✓ WebGL | ✓ Avalonia/OpenGL |
 | ML crash prediction | ✗ needs PC | ✓ ML.NET |
-| Works from phone/tablet | ✓ | ✗ |
 | No install required | ✓ | ✗ |
+| Private point-to-point access | ✓ | ✗ |
 | Laptop keeps internet | ✓ (separate adapter) | ✓ |
 
-A technician on the shop floor uses a browser on their phone or tablet for day-to-day operation.
+A technician on the shop floor uses a browser on the connected laptop for day-to-day operation.
 The desktop app is only needed for ML-assisted features and advanced diagnostics.
 
 ---
@@ -132,7 +123,7 @@ The desktop app is only needed for ML-assisted features and advanced diagnostics
 - Useful for shops running multiple operators
 
 ### Remote Monitoring
-- Pico 2W Wi-Fi streams job status + webcam feed to a web dashboard
+- Optional future network path streams job status + webcam feed to a web dashboard
 - Supervisor can monitor from another room or phone
 
 ---
