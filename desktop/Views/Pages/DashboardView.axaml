@@ -1,0 +1,278 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             x:Class="PortableCncApp.Views.Pages.DashboardView"
+             x:DataType="vm:DashboardViewModel"
+             mc:Ignorable="d">
+
+  <Grid RowDefinitions="*,Auto">
+    
+    <!-- Main Content Grid -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,320">
+      
+      <!-- LEFT: G-code Visualization Area -->
+      <Border Background="{DynamicResource PanelBackgroundBrush}"
+              CornerRadius="8"
+              Padding="16"
+              Margin="0,0,16,0">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
+            <TextBlock Text="G-CODE VISUALIZATION"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       VerticalAlignment="Center"/>
+            <ToggleButton Margin="16,0,0,0"
+                          IsChecked="{Binding Show3DView}"
+                          Content="Toggle 2D/3D"
+                          Padding="8,4"/>
+          </StackPanel>
+          
+          <!-- Placeholder for G-code visualization -->
+          <Border Background="#1A1A1A"
+                  CornerRadius="4"
+                  BorderBrush="{DynamicResource BorderBrush}"
+                  BorderThickness="1">
+            <TextBlock Text="G-Code Toolpath Preview"
+                       FontSize="14"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+          </Border>
+        </DockPanel>
+      </Border>
+
+      <!-- RIGHT: Info Panels -->
+      <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="16">
+        
+        <!-- DRO Panel -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel>
+            <TextBlock Text="DIGITAL READOUT"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="40,*" RowDefinitions="Auto,Auto,Auto" Margin="0,0,0,8">
+              <!-- X -->
+              <Border Grid.Row="0" Background="#E06666" CornerRadius="4" Padding="8,4" Margin="0,0,0,8" VerticalAlignment="Stretch">
+                <TextBlock Text="X" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <Border Grid.Row="0" Grid.Column="1" Background="#2A2A2A" CornerRadius="4" Padding="12,8" Margin="8,0,0,8">
+                <TextBlock Text="{Binding MainVm.PositionX, StringFormat={}{0:F3}}"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           FontFamily="Consolas"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"/>
+              </Border>
+              
+              <!-- Y -->
+              <Border Grid.Row="1" Background="#93C47D" CornerRadius="4" Padding="8,4" Margin="0,0,0,8" VerticalAlignment="Stretch">
+                <TextBlock Text="Y" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <Border Grid.Row="1" Grid.Column="1" Background="#2A2A2A" CornerRadius="4" Padding="12,8" Margin="8,0,0,8">
+                <TextBlock Text="{Binding MainVm.PositionY, StringFormat={}{0:F3}}"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           FontFamily="Consolas"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"/>
+              </Border>
+              
+              <!-- Z -->
+              <Border Grid.Row="2" Background="#6FA8DC" CornerRadius="4" Padding="8,4" VerticalAlignment="Stretch">
+                <TextBlock Text="Z" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <Border Grid.Row="2" Grid.Column="1" Background="#2A2A2A" CornerRadius="4" Padding="12,8" Margin="8,0,0,0">
+                <TextBlock Text="{Binding MainVm.PositionZ, StringFormat={}{0:F3}}"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           FontFamily="Consolas"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Spindle & Feed Panel -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel>
+            <TextBlock Text="SPINDLE &amp; FEED"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+              <StackPanel Margin="0,0,8,8">
+                <TextBlock Text="Spindle" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.SpindleSpeed, StringFormat={}{0:F0} RPM}"
+                           FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Margin="8,0,0,8">
+                <TextBlock Text="Feed Rate" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.FeedRate, StringFormat={}{0:F0} mm/min}"
+                           FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+              
+              <StackPanel Grid.Row="1" Margin="0,0,8,0">
+                <TextBlock Text="Feed Override" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.FeedOverride, StringFormat={}{0}%}"
+                           FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Environment Panel -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel>
+            <TextBlock Text="ENVIRONMENT"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*">
+              <StackPanel>
+                <TextBlock Text="Temperature" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.Temperature, StringFormat={}{0:F1}°C}"
+                           FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="Humidity" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.Humidity, StringFormat={}{0:F0}%}"
+                           FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Program Info Panel -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel>
+            <TextBlock Text="PROGRAM"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <TextBlock Text="{Binding MainVm.CurrentFileName, TargetNullValue='No file loaded'}"
+                       FontSize="13"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       TextTrimming="CharacterEllipsis"/>
+            
+            <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,4">
+              <TextBlock Text="Progress" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              <TextBlock Grid.Column="1" 
+                         Text="{Binding MainVm.Progress, StringFormat={}{0:F1}%}"
+                         FontSize="11" 
+                         Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Grid>
+            
+            <ProgressBar Value="{Binding MainVm.Progress}" 
+                         Maximum="100"
+                         Height="8"
+                         CornerRadius="4"/>
+            
+            <TextBlock Text="{Binding MainVm.CurrentLine, StringFormat=Line {0}}"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       Margin="0,8,0,0"/>
+          </StackPanel>
+        </Border>
+        
+      </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <!-- Bottom Control Bar -->
+    <Border Grid.Row="1"
+            Background="{DynamicResource PanelBackgroundBrush}"
+            CornerRadius="8"
+            Padding="16"
+            Margin="0,16,0,0">
+      <Grid ColumnDefinitions="*,Auto">
+        
+        <!-- Main Control Buttons -->
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Button Classes="ControlButton Success"
+                  Command="{Binding MainVm.StartCommand}"
+                  IsEnabled="{Binding MainVm.CanStart}"
+                  Padding="24,12">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="▶" FontSize="14"/>
+              <TextBlock Text="START" FontWeight="SemiBold"/>
+            </StackPanel>
+          </Button>
+          
+          <Button Classes="ControlButton Warning"
+                  Command="{Binding MainVm.PauseCommand}"
+                  IsEnabled="{Binding MainVm.CanPause}"
+                  Padding="24,12">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="⏸" FontSize="14"/>
+              <TextBlock Text="PAUSE" FontWeight="SemiBold"/>
+            </StackPanel>
+          </Button>
+          
+          <Button Classes="ControlButton Danger"
+                  Command="{Binding MainVm.StopCommand}"
+                  IsEnabled="{Binding MainVm.CanStop}"
+                  Padding="24,12">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="⏹" FontSize="14"/>
+              <TextBlock Text="STOP" FontWeight="SemiBold"/>
+            </StackPanel>
+          </Button>
+
+          <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="8,0"/>
+
+          <Button Classes="ControlButton"
+                  Command="{Binding MainVm.HomeCommand}"
+                  IsEnabled="{Binding MainVm.CanHome}"
+                  Padding="24,12">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="H" FontSize="14"/>
+              <TextBlock Text="HOME ALL" FontWeight="SemiBold"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <!-- File Load Button -->
+        <Button Grid.Column="1"
+                Command="{Binding MainVm.GoFilesCommand}"
+                Padding="16,12">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="F" FontSize="14"/>
+            <TextBlock Text="Load File"/>
+          </StackPanel>
+        </Button>
+        
+      </Grid>
+    </Border>
+    
+  </Grid>
+</UserControl>

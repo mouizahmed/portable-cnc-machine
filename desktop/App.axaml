@@ -1,0 +1,126 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             xmlns:pages="clr-namespace:PortableCncApp.Views.Pages"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="PortableCncApp.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Styles>
+        <FluentTheme />
+        <materialIcons:MaterialIconStyles />
+        <!-- Custom Styles -->
+        <Style Selector="Button.NavButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="Button.NavButton:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#2A2A2A"/>
+        </Style>
+        <Style Selector="Button.NavButton:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#333333"/>
+        </Style>
+        
+        <!-- Control Button Styles -->
+        <Style Selector="Button.ControlButton">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.ControlButton.Success">
+            <Setter Property="Background" Value="#3BB273"/>
+        </Style>
+        <Style Selector="Button.ControlButton.Warning">
+            <Setter Property="Background" Value="#E0A100"/>
+        </Style>
+        <Style Selector="Button.ControlButton.Danger">
+            <Setter Property="Background" Value="#D83B3B"/>
+        </Style>
+        
+        <!-- Jog Button Styles -->
+        <Style Selector="Button.JogButton">
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.JogButton.XAxis">
+            <Setter Property="Background" Value="#E06666"/>
+        </Style>
+        <Style Selector="Button.JogButton.YAxis">
+            <Setter Property="Background" Value="#93C47D"/>
+        </Style>
+        <Style Selector="Button.JogButton.ZAxis">
+            <Setter Property="Background" Value="#6FA8DC"/>
+        </Style>
+        
+        <!-- Step Button Styles -->
+        <Style Selector="Button.StepButton">
+            <Setter Property="Background" Value="#3A3A3A"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="Button.StepButton:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#4A4A4A"/>
+        </Style>
+    </Application.Styles>
+
+    <Application.Resources>
+        <!-- Color Palette -->
+        <Color x:Key="AppBackgroundColor">#1A1A1A</Color>
+        <Color x:Key="PanelBackgroundColor">#242424</Color>
+        <Color x:Key="SidebarBackgroundColor">#1E1E1E</Color>
+        <Color x:Key="HeaderBackgroundColor">#1E1E1E</Color>
+        <Color x:Key="BorderColor">#333333</Color>
+        
+        <Color x:Key="TextPrimaryColor">#FFFFFF</Color>
+        <Color x:Key="TextSecondaryColor">#A0A0A0</Color>
+        <Color x:Key="TextTertiaryColor">#666666</Color>
+        
+        <Color x:Key="AccentColor">#4A9EFF</Color>
+        <Color x:Key="DangerColor">#D83B3B</Color>
+        <Color x:Key="SuccessColor">#3BB273</Color>
+        <Color x:Key="WarningColor">#E0A100</Color>
+        
+        <!-- Brushes -->
+        <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackgroundColor}"/>
+        <SolidColorBrush x:Key="PanelBackgroundBrush" Color="{StaticResource PanelBackgroundColor}"/>
+        <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="{StaticResource SidebarBackgroundColor}"/>
+        <SolidColorBrush x:Key="HeaderBackgroundBrush" Color="{StaticResource HeaderBackgroundColor}"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+        
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
+        <SolidColorBrush x:Key="TextTertiaryBrush" Color="{StaticResource TextTertiaryColor}"/>
+        
+        <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
+        <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
+        <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
+        
+        <!-- Thickness -->
+        <Thickness x:Key="PagePadding">20</Thickness>
+    </Application.Resources>
+
+    <!-- DataTemplates for page navigation -->
+    <Application.DataTemplates>
+        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+            <pages:DashboardView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:JogViewModel}">
+            <pages:JogView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:FilesViewModel}">
+            <pages:FilesView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ConnectViewModel}">
+            <pages:ConnectView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+            <pages:SettingsView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DiagnosticsViewModel}">
+            <pages:DiagnosticsView/>
+        </DataTemplate>
+    </Application.DataTemplates>
+
+</Application>

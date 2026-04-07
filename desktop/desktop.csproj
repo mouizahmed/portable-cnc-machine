@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    
+    <!-- Cross-platform settings -->
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>PortableCncApp</RootNamespace>
+    <AssemblyName>PortableCncApp</AssemblyName>
+    
+    <!-- Windows-specific manifest (ignored on other platforms) -->
+    <ApplicationManifest Condition="$([MSBuild]::IsOSPlatform('Windows'))">app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Avalonia UI Framework -->
+    <PackageReference Include="Avalonia" Version="11.3.11" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.11" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="2.4.1" />
+    
+    <!-- Serial port communication (cross-platform) -->
+    <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+
+    <!-- WMI — USB VID/PID device identification (Windows only) -->
+    <PackageReference Include="System.Management" Version="9.0.0" />
+    
+    <!-- Diagnostics (Debug only) -->
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.11">
+      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

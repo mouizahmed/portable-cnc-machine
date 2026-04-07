@@ -1,0 +1,364 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             x:Class="PortableCncApp.Views.Pages.JogView"
+             x:DataType="vm:JogViewModel"
+             mc:Ignorable="d">
+
+  <Grid RowDefinitions="Auto,*">
+    
+    <!-- Page Header -->
+    <StackPanel Margin="0,0,0,16">
+      <TextBlock Text="Jog Control"
+                 FontSize="24"
+                 FontWeight="SemiBold"
+                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+      <TextBlock Text="Manually move the machine axes and set work offsets"
+                 FontSize="13"
+                 Foreground="{DynamicResource TextSecondaryBrush}"
+                 Margin="0,4,0,0"/>
+    </StackPanel>
+
+    <!-- Main Content -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,300">
+      
+      <!-- LEFT: Jog Controls -->
+      <Border Background="{DynamicResource PanelBackgroundBrush}"
+              CornerRadius="8"
+              Padding="20"
+              Margin="0,0,16,0">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="20">
+          
+            <!-- Jog Settings Section -->
+            <StackPanel>
+              <TextBlock Text="JOG SETTINGS"
+                         FontSize="11"
+                         FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextTertiaryBrush}"
+                         LetterSpacing="1"
+                         Margin="0,0,0,12"/>
+              
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" HorizontalAlignment="Left">
+                <!-- Step Size -->
+                <StackPanel Margin="0,0,24,12">
+                  <TextBlock Text="Step Size (mm)" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Content="0.01" Command="{Binding SetStepCommand}" CommandParameter="0.01" Padding="8,6" Classes="StepButton" MinWidth="45"/>
+                    <Button Content="0.1" Command="{Binding SetStepCommand}" CommandParameter="0.1" Padding="8,6" Classes="StepButton" MinWidth="45"/>
+                    <Button Content="1" Command="{Binding SetStepCommand}" CommandParameter="1" Padding="8,6" Classes="StepButton" MinWidth="45"/>
+                    <Button Content="10" Command="{Binding SetStepCommand}" CommandParameter="10" Padding="8,6" Classes="StepButton" MinWidth="45"/>
+                    <Button Content="50" Command="{Binding SetStepCommand}" CommandParameter="50" Padding="8,6" Classes="StepButton" MinWidth="45"/>
+                  </StackPanel>
+                </StackPanel>
+                
+                <!-- Current Step Display -->
+                <StackPanel Grid.Column="1" Margin="0,0,0,12">
+                  <TextBlock Text="Current Step" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
+                  <Border Background="#2A2A2A" CornerRadius="4" Padding="16,8" MinWidth="100">
+                    <TextBlock Text="{Binding JogStep, StringFormat={}{0} mm}"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               FontFamily="Consolas"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               HorizontalAlignment="Center"/>
+                  </Border>
+                </StackPanel>
+                
+                <!-- Feed Rate -->
+                <StackPanel Grid.Row="1" Margin="0,0,24,0">
+                  <TextBlock Text="Jog Feed Rate (mm/min)" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
+                  <NumericUpDown Value="{Binding JogFeedRate}" 
+                                 Minimum="1" 
+                                 Maximum="5000" 
+                                 Increment="100"
+                                 FormatString="F0"
+                                 Width="180"/>
+                </StackPanel>
+                
+                <!-- Continuous Jog Toggle -->
+                <StackPanel Grid.Row="1" Grid.Column="1" VerticalAlignment="Bottom">
+                  <CheckBox Content="Continuous Jog"
+                            IsChecked="{Binding ContinuousJog}"
+                            Foreground="{DynamicResource TextSecondaryBrush}"/>
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+
+            <!-- Separator -->
+            <Border Height="1" Background="{DynamicResource BorderBrush}"/>
+
+            <!-- Jog Buttons Section -->
+            <StackPanel>
+              <TextBlock Text="JOG CONTROLS"
+                         FontSize="11"
+                         FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextTertiaryBrush}"
+                         LetterSpacing="1"
+                         Margin="0,0,0,16"/>
+              
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="40">
+                
+                <!-- XY Jog Pad -->
+                <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,Auto,Auto">
+                  <!-- Y+ -->
+                  <Button Grid.Row="0" Grid.Column="1"
+                          Classes="JogButton YAxis"
+                          Command="{Binding JogYPlusCommand}"
+                          Width="65" Height="65"
+                          Margin="4"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                      <TextBlock Text="Y+" FontWeight="Bold" HorizontalAlignment="Center"/>
+                      <TextBlock Text="▲" FontSize="18" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  
+                  <!-- X- -->
+                  <Button Grid.Row="1" Grid.Column="0"
+                          Classes="JogButton XAxis"
+                          Command="{Binding JogXMinusCommand}"
+                          Width="65" Height="65"
+                          Margin="4"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                      <TextBlock Text="◀" FontSize="18" VerticalAlignment="Center"/>
+                      <TextBlock Text="X-" FontWeight="Bold" VerticalAlignment="Center" Margin="2,0,0,0"/>
+                    </StackPanel>
+                  </Button>
+                  
+                  <!-- Center (Home) -->
+                  <Button Grid.Row="1" Grid.Column="1"
+                          Command="{Binding HomeAllCommand}"
+                          Width="65" Height="65"
+                          Margin="4"
+                          Background="#3A3A3A"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                      <TextBlock Text="H" FontSize="18" HorizontalAlignment="Center"/>
+                      <TextBlock Text="HOME" FontSize="9" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  
+                  <!-- X+ -->
+                  <Button Grid.Row="1" Grid.Column="2"
+                          Classes="JogButton XAxis"
+                          Command="{Binding JogXPlusCommand}"
+                          Width="65" Height="65"
+                          Margin="4"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                      <TextBlock Text="X+" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,2,0"/>
+                      <TextBlock Text="▶" FontSize="18" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  
+                  <!-- Y- -->
+                  <Button Grid.Row="2" Grid.Column="1"
+                          Classes="JogButton YAxis"
+                          Command="{Binding JogYMinusCommand}"
+                          Width="65" Height="65"
+                          Margin="4"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                      <TextBlock Text="▼" FontSize="18" HorizontalAlignment="Center"/>
+                      <TextBlock Text="Y-" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                </Grid>
+
+                <!-- Z Jog -->
+                <StackPanel VerticalAlignment="Center" Spacing="8">
+                  <Button Classes="JogButton ZAxis"
+                          Command="{Binding JogZPlusCommand}"
+                          Width="65" Height="65"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                      <TextBlock Text="Z+" FontWeight="Bold" HorizontalAlignment="Center"/>
+                      <TextBlock Text="▲" FontSize="18" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                  
+                  <Button Classes="JogButton ZAxis"
+                          Command="{Binding JogZMinusCommand}"
+                          Width="65" Height="65"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                      <TextBlock Text="▼" FontSize="18" HorizontalAlignment="Center"/>
+                      <TextBlock Text="Z-" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+                
+              </StackPanel>
+            </StackPanel>
+
+            <!-- Separator -->
+            <Border Height="1" Background="{DynamicResource BorderBrush}"/>
+
+            <!-- Home & Zero Commands Section -->
+            <Grid ColumnDefinitions="*,*">
+              <!-- Home Buttons -->
+              <StackPanel Margin="0,0,12,0">
+                <TextBlock Text="HOMING"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextTertiaryBrush}"
+                           LetterSpacing="1"
+                           Margin="0,0,0,10"/>
+                <WrapPanel>
+                  <Button Content="Home All" Command="{Binding HomeAllCommand}" Padding="10,8" Margin="0,0,6,6"/>
+                  <Button Command="{Binding HomeXCommand}" Padding="10,8" Margin="0,0,6,6" Background="#E06666" Foreground="White" MinWidth="36" HorizontalContentAlignment="Center">
+                    <TextBlock Text="X" FontWeight="SemiBold"/>
+                  </Button>
+                  <Button Command="{Binding HomeYCommand}" Padding="10,8" Margin="0,0,6,6" Background="#93C47D" Foreground="White" MinWidth="36" HorizontalContentAlignment="Center">
+                    <TextBlock Text="Y" FontWeight="SemiBold"/>
+                  </Button>
+                  <Button Command="{Binding HomeZCommand}" Padding="10,8" Margin="0,0,6,6" Background="#6FA8DC" Foreground="White" MinWidth="36" HorizontalContentAlignment="Center">
+                    <TextBlock Text="Z" FontWeight="SemiBold"/>
+                  </Button>
+                </WrapPanel>
+              </StackPanel>
+              
+              <!-- Zero Buttons -->
+              <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                <TextBlock Text="SET ZERO (Work Offset)"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextTertiaryBrush}"
+                           LetterSpacing="1"
+                           Margin="0,0,0,10"/>
+                <WrapPanel>
+                  <Button Content="Zero All" Command="{Binding ZeroAllCommand}" Padding="10,8" Margin="0,0,6,6"/>
+                  <Button Content="X=0" Command="{Binding ZeroXCommand}" Padding="10,8" Margin="0,0,6,6"/>
+                  <Button Content="Y=0" Command="{Binding ZeroYCommand}" Padding="10,8" Margin="0,0,6,6"/>
+                  <Button Content="Z=0" Command="{Binding ZeroZCommand}" Padding="10,8" Margin="0,0,6,6"/>
+                </WrapPanel>
+              </StackPanel>
+            </Grid>
+          
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <!-- RIGHT: Position Display -->
+      <StackPanel Grid.Column="1" Spacing="16">
+        
+        <!-- Large DRO -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel>
+            <TextBlock Text="CURRENT POSITION"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,16"/>
+            
+            <!-- X -->
+            <Border Background="#2A2A2A" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+              <Grid ColumnDefinitions="40,*">
+                <Border Background="#E06666" CornerRadius="4" Padding="6,4" VerticalAlignment="Center">
+                  <TextBlock Text="X" FontWeight="Bold" FontSize="16" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Grid.Column="1" 
+                           Text="{Binding MainVm.PositionX, StringFormat={}{0:F3}}"
+                           FontSize="24"
+                           FontWeight="Bold"
+                           FontFamily="Consolas"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+            
+            <!-- Y -->
+            <Border Background="#2A2A2A" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+              <Grid ColumnDefinitions="40,*">
+                <Border Background="#93C47D" CornerRadius="4" Padding="6,4" VerticalAlignment="Center">
+                  <TextBlock Text="Y" FontWeight="Bold" FontSize="16" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Grid.Column="1" 
+                           Text="{Binding MainVm.PositionY, StringFormat={}{0:F3}}"
+                           FontSize="24"
+                           FontWeight="Bold"
+                           FontFamily="Consolas"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+            
+            <!-- Z -->
+            <Border Background="#2A2A2A" CornerRadius="6" Padding="12">
+              <Grid ColumnDefinitions="40,*">
+                <Border Background="#6FA8DC" CornerRadius="4" Padding="6,4" VerticalAlignment="Center">
+                  <TextBlock Text="Z" FontWeight="Bold" FontSize="16" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Grid.Column="1" 
+                           Text="{Binding MainVm.PositionZ, StringFormat={}{0:F3}}"
+                           FontSize="24"
+                           FontWeight="Bold"
+                           FontFamily="Consolas"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+          </StackPanel>
+        </Border>
+
+        <!-- Machine State Info -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel>
+            <TextBlock Text="MACHINE STATUS"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"
+                       Margin="0,0,0,12"/>
+            
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+              <StackPanel Margin="0,0,8,8">
+                <TextBlock Text="Motion State" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.MotionStateLabel}"
+                           FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+              
+              <StackPanel Grid.Column="1" Margin="8,0,0,8">
+                <TextBlock Text="Safety State" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.SafetyStateLabel}"
+                           FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+              
+              <StackPanel Grid.Row="1" Margin="0,0,8,0">
+                <TextBlock Text="Limits" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.LimitsStatusText}"
+                           FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+              
+              <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,0,0,0">
+                <TextBlock Text="Spindle" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.SpindleStatusText}"
+                           FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+        
+      </StackPanel>
+    </Grid>
+  </Grid>
+</UserControl>
