@@ -1,0 +1,2959 @@
+/*
+  report.c - reporting and messaging methods
+
+  Part of grblHAL
+
+  Copyright (c) 2017-2026 Terje Io
+  Copyright (c) 2012-2016 Sungeun K. Jeon for Gnea Research LLC
+
+  grblHAL is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  grblHAL is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with grblHAL. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+  This file functions as the primary feedback interface for grblHAL. Any outgoing data, such
+  as the protocol status messages, feedback messages, and status reports, are stored here.
+  For the most part, these functions primarily are called from protocol.c methods. If a
+  different style feedback is desired (i.e. JSON), then a user can change these following
+  methods to accommodate their needs.
+*/
+
+#include <math.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "hal.h"
+#include "report.h"
+#include "nvs_buffer.h"
+#include "machine_limits.h"
+#include "state_machine.h"
+#include "canbus.h"
+#include "regex.h"
+
+#if ENABLE_SPINDLE_LINEARIZATION
+#include <stdio.h>
+#endif
+
+static char buf[(STRLEN_COORDVALUE + 1) * N_AXIS];
+static char *(*get_axis_values)(float *axis_values);
+static char *(*get_axis_value)(float value);
+static char *(*get_rate_value)(float value);
+static const char vbar[2] = { '|', '\0' };
+
+// Append a number of strings to the static buffer
+// NOTE: do NOT use for several int/float conversions as these share the same underlying buffer!
+static char *appendbuf (int argc, ...)
+{
+    char c, *s = buf, *arg;
+
+    va_list list;
+    va_start(list, argc);
+
+    while(argc--) {
+        arg = va_arg(list, char *);
+        do {
+            c = *s++ = *arg++;
+        } while(c);
+        s--;
+    }
+
+    va_end(list);
+
+    return buf;
+}
+
+// Convert axis position values to null terminated string (mm).
+static char *get_axis_values_mm (float *axis_values)
+{
+    uint_fast32_t idx;
+
+    buf[0] = '\0';
+
+    for (idx = 0; idx < N_AXIS; idx++) {
+        if(idx == X_AXIS && gc_state.modal.diameter_mode)
+            strcat(buf, ftoa(axis_values[idx] * 2.0f, N_DECIMAL_COORDVALUE_MM));
+        else
+            strcat(buf, ftoa(axis_values[idx], N_DECIMAL_COORDVALUE_MM));
+        if (idx < (N_AXIS - 1))
+            strcat(buf, ",");
+    }
+
+    return buf;
+}
+
+// Convert axis position values to null terminated string (inch).
+static char *get_axis_values_inches (float *axis_values)
+{
+    uint_fast32_t idx;
+
+    buf[0] = '\0';
+
+    for (idx = 0; idx < N_AXIS; idx++) {
+        if(idx == X_AXIS && gc_state.modal.diameter_mode)
+            strcat(buf, ftoa(axis_values[idx] * INCH_PER_MM * 2.0f, N_DECIMAL_COORDVALUE_INCH));
+#if N_AXIS > 3
+        else if(idx > Z_AXIS && bit_istrue(settings.steppers.is_rotary.mask, bit(idx)))
+            strcat(buf, ftoa(axis_values[idx], N_DECIMAL_COORDVALUE_MM));
+#endif
+        else
+             strcat(buf, ftoa(axis_values[idx] * INCH_PER_MM, N_DECIMAL_COORDVALUE_INCH));
+        if (idx < (N_AXIS - 1))
+            strcat(buf, ",");
+    }
+
+    return buf;
+}
+
+// Convert rate value to null terminated string (mm).
+static char *get_axis_value_mm (float value)
+{
+    return strcpy(buf, ftoa(value, N_DECIMAL_COORDVALUE_MM));
+}
+
+// Convert rate value to null terminated string (mm).
+static char *get_axis_value_inches (float value)
+{
+    return strcpy(buf, ftoa(value * INCH_PER_MM, N_DECIMAL_COORDVALUE_INCH));
+}
+
+// Convert rate value to null terminated string (mm).
+static char *get_rate_value_mm (float value)
+{
+    return uitoa((uint32_t)value);
+}
+
+// Convert rate value to null terminated string (mm).
+static char *get_rate_value_inch (float value)
+{
+    return uitoa((uint32_t)(value * INCH_PER_MM));
+}
+
+// Convert axes signals bits to string representation.
+// NOTE: returns pointer to null terminator!
+inline static char *axis_signals_tostring (char *buf, axes_signals_t signals)
+{
+    uint_fast16_t idx = 0;
+
+    signals.mask &= AXES_BITMASK;
+
+    while(signals.mask) {
+        if(signals.mask & 0x01)
+            *buf++ = *axis_letter[idx];
+        idx++;
+        signals.mask >>= 1;
+    };
+
+    *buf = '\0';
+
+    return buf;
+}
+
+// Convert control signals bits to string representation.
+// NOTE: returns pointer to null terminator!
+inline static char *control_signals_tostring (char *buf, control_signals_t signals)
+{
+    static const char signals_map[] = "RHSDLTEOFM Q  P ";
+
+    char *map = (char *)signals_map;
+
+    if(!signals.deasserted)
+      while(signals.mask) {
+
+        if(signals.mask & 0x01) {
+
+            switch(*map) {
+
+                case ' ':
+                    break;
+
+                case 'D':
+                    if(hal.signals_cap.safety_door_ajar)
+                        *buf++ = *map;
+                    break;
+
+                default:
+                    *buf++ = *map;
+                    break;
+            }
+        }
+
+        map++;
+        signals.mask >>= 1;
+    }
+
+    *buf = '\0';
+
+    return buf;
+}
+
+FLASHMEM void report_init (void)
+{
+    get_axis_value = settings.flags.report_inches ? get_axis_value_inches : get_axis_value_mm;
+    get_axis_values = settings.flags.report_inches ? get_axis_values_inches : get_axis_values_mm;
+    get_rate_value = settings.flags.report_inches ? get_rate_value_inch : get_rate_value_mm;
+}
+
+// Handles the primary confirmation protocol response for streaming interfaces and human-feedback.
+// For every incoming line, this method responds with an 'ok' for a successful command or an
+// 'error:'  to indicate some error event with the line or some critical system error during
+// operation. Errors events can originate from the g-code parser, settings module, or asynchronously
+// from a critical error, such as a triggered hard limit. Interface should always monitor for these
+// responses.
+FLASHMEM static status_code_t report_status_message (status_code_t status_code)
+{
+    switch(status_code) {
+
+        case Status_Handled:
+            status_code = Status_OK;
+            // no break
+        case Status_OK: // STATUS_OK
+            hal.stream.write("ok" ASCII_EOL);
+            break;
+
+        default:
+            hal.stream.write(appendbuf(3, "error:", uitoa((uint32_t)status_code), ASCII_EOL));
+            break;
+    }
+
+    return status_code;
+}
+
+// Prints alarm messages.
+FLASHMEM static alarm_code_t report_alarm_message (alarm_code_t alarm_code)
+{
+    hal.stream.write_all(appendbuf(3, "ALARM:", uitoa((uint32_t)alarm_code), ASCII_EOL));
+    hal.delay_ms(100, NULL); // Force delay to ensure message clears output stream buffer.
+
+    return alarm_code;
+}
+
+// Prints feedback message, typically from gcode.
+FLASHMEM void report_message (const char *msg, message_type_t type)
+{
+    if(hal.stream.is_connected()) {
+
+        hal.stream.write("[MSG:");
+
+        switch(type) {
+
+            case Message_Info:
+                hal.stream.write("Info: ");
+                break;
+
+            case Message_Warning:
+                hal.stream.write("Warning: ");
+                break;
+
+            case Message_Error:
+                hal.stream.write("Error: ");
+                break;
+
+            case Message_Debug:
+                hal.stream.write("Debug: ");
+                break;
+
+            default:
+                break;
+        }
+
+        hal.stream.write(msg);
+        hal.stream.write("]" ASCII_EOL);
+    }
+}
+
+// Message helper to be run as foreground task
+FLASHMEM void report_plain (void *message)
+{
+    report_message((char *)message, Message_Plain);
+}
+
+// Message helper to be run as foreground task
+FLASHMEM void report_info (void *message)
+{
+    report_message((char *)message, Message_Info);
+}
+
+// Message helper to be run as foreground task
+FLASHMEM void report_warning (void *message)
+{
+    report_message((char *)message, Message_Warning);
+}
+
+// Prints feedback messages. This serves as a centralized method to provide additional
+// user feedback for things that are not of the status/alarm message protocol. These are
+// messages such as setup warnings, switch toggling, and how to exit alarms.
+// NOTE: For interfaces, messages are always placed within brackets. And if silent mode
+// is installed, the message number codes are less than zero.
+FLASHMEM static message_code_t report_feedback_message (message_code_t id)
+{
+    const message_t *msg = message_get(id);
+
+    report_message(msg ? msg->text : "", msg ? msg->type : Message_Plain);
+
+    if(id == Message_None && grbl.on_gcode_message)
+        grbl.on_gcode_message("");
+
+    return id;
+}
+
+// Welcome message
+FLASHMEM static void report_init_message (stream_write_ptr write)
+{
+    hal.stream.report.override_counter = hal.stream.report.wco_counter = 0;
+
+#if COMPATIBILITY_LEVEL == 0
+    write(ASCII_EOL "GrblHAL " GRBL_VERSION " ['$' or '$HELP' for help]" ASCII_EOL);
+#else
+    write(ASCII_EOL "Grbl " GRBL_VERSION " ['$' for help]" ASCII_EOL);
+#endif
+}
+
+// grblHAL help message
+FLASHMEM static void report_help_message (void)
+{
+    hal.stream.write("[HLP:$$ $# $G $I $N $x=val $Nx=line $J=line $SLP $C $X $H $B ~ ! ? ctrl-x]" ASCII_EOL);
+}
+
+// Prints plugin info.
+FLASHMEM void report_plugin (const char *name, const char *version)
+{
+    hal.stream.write("[PLUGIN:");
+    hal.stream.write(name);
+    hal.stream.write(" v");
+    hal.stream.write(version);
+    hal.stream.write("]" ASCII_EOL);
+}
+
+FLASHMEM static bool report_group_settings (const setting_group_detail_t *groups, const uint_fast8_t n_groups, char *args)
+{
+    bool found = false;
+    uint_fast8_t idx;
+    char c, *s1, *s2, group[26];
+
+    for(idx = 0; idx < n_groups; idx++) {
+
+        s1 = s2 = group;
+        strncpy(group, groups[idx].name, sizeof(group) - 1);
+
+        // Remove spaces and uppercase group name
+        while((c = *s1++)) {
+            if(c != ' ')
+                *s2++ = CAPS(c);
+        }
+        *s2 = '\0';
+
+        if((found = matchhere(args, group))) {
+            hal.stream.write(ASCII_EOL "---- ");
+            hal.stream.write(groups[idx].name);
+            hal.stream.write(":" ASCII_EOL);
+            report_settings_details(SettingsFormat_HumanReadable, Setting_SettingsAll, groups[idx].id);
+            break;
+        }
+    }
+
+    return found;
+}
+
+FLASHMEM status_code_t report_help (char *args)
+{
+    if(*args == '\0') {
+
+        hal.stream.write("Help topics:" ASCII_EOL);
+        hal.stream.write(" Commands" ASCII_EOL);
+        hal.stream.write(" Settings" ASCII_EOL);
+        report_setting_group_details(false, " ");
+
+    } else {
+
+        char c, *s = args;
+
+        // Upper case argument
+        while((c = *s))
+            *s++ = CAPS(c);
+
+        if(matchhere(args, "COMMANDS")) {
+            if(grbl.on_report_command_help)
+                grbl.on_report_command_help();
+
+        } else if(matchhere(args, "SETTINGS"))
+            report_settings_details(SettingsFormat_HumanReadable, Setting_SettingsAll, Group_All);
+
+        else {
+
+            bool found = false;
+            setting_details_t *settings_info = settings_get_details();
+
+            found = report_group_settings(settings_info->groups, settings_info->n_groups, args);
+
+            if(!found && (settings_info = settings_info->next)) do {
+                if(settings_info->groups && (found = report_group_settings(settings_info->groups, settings_info->n_groups, args)))
+                    break;
+            } while((settings_info = settings_info->next));
+
+            if(!found)
+                hal.stream.write( ASCII_EOL "N/A" ASCII_EOL);
+        }
+    }
+
+    return Status_OK;
+}
+
+
+// grblHAL settings print out.
+
+FLASHMEM static int cmp_settings (const void *a, const void *b)
+{
+  return (*(setting_detail_t **)(a))->id - (*(setting_detail_t **)(b))->id;
+}
+
+FLASHMEM static bool report_setting (const setting_detail_t *setting, uint_fast16_t offset, void *data)
+{
+    appendbuf(3, "$", uitoa(setting->id + offset), "=");
+
+    char *value = setting_get_value(setting, offset);
+
+    if(value) {
+        hal.stream.write(buf);
+        hal.stream.write(value);
+        hal.stream.write(ASCII_EOL);
+    }
+
+    return true;
+}
+
+FLASHMEM status_code_t report_grbl_setting (setting_id_t id, void *data)
+{
+    status_code_t status = Status_OK;
+
+    const setting_detail_t *setting = setting_get_details(id, NULL);
+
+    if(setting /*?? hide? && !setting->flags.hidden*/)
+        grbl.report.setting(setting, id - setting->id, data);
+    else
+        status = Status_SettingDisabled;
+
+    return status;
+}
+
+FLASHMEM static bool print_setting (const setting_detail_t *setting, uint_fast16_t offset, void *data)
+{
+    if(setting->value != NULL)
+        grbl.report.setting(setting, offset, data);
+    else {
+        hal.stream.write("$");
+        hal.stream.write(uitoa(setting->id));
+        hal.stream.write("=N/A" ASCII_EOL);
+    }
+
+    return true;
+}
+
+static inline bool is_hidden (const setting_detail_t *setting)
+{
+    return (setting->id == Setting_HomingFeedRate || setting->id == Setting_HomingSeekRate) ? settings.homing.flags.per_axis_feedrates : setting->flags.hidden;
+}
+
+FLASHMEM void report_grbl_settings (bool all, void *data)
+{
+
+    uint_fast16_t idx, n_settings = 0;
+    const setting_detail_t *setting;
+    setting_detail_t **all_settings, **psetting;
+    setting_details_t *details = settings_get_details();
+
+    do {
+        n_settings += details->n_settings;
+    } while((details = details->next));
+
+    details = settings_get_details();
+
+    if((all_settings = psetting = calloc(n_settings, sizeof(setting_detail_t *)))) {
+
+        n_settings = 0;
+
+        // Report core settings
+        for(idx = 0; idx < details->n_settings; idx++) {
+            setting = &details->settings[idx];
+            if(!is_hidden(setting) && (all || setting->type == Setting_IsLegacy || setting->type == Setting_IsLegacyFn) &&
+                  (setting->is_available == NULL ||setting->is_available(setting, 0))) {
+                *psetting++ = (setting_detail_t *)setting;
+                n_settings++;
+            }
+        }
+
+        // Report driver and plugin settings
+        if(all && (details = details->next)) do {
+            for(idx = 0; idx < details->n_settings; idx++) {
+                setting = &details->settings[idx];
+                if(!setting->flags.hidden && (setting->is_available == NULL || setting->is_available(setting, 0))) {
+                    *psetting++ = (setting_detail_t *)setting;
+                    n_settings++;
+                }
+            }
+        } while((details = details->next));
+
+        qsort(all_settings, n_settings, sizeof(setting_detail_t *), cmp_settings);
+
+        for(idx = 0; idx < n_settings; idx++)
+            settings_iterator(all_settings[idx], print_setting, data);
+
+        free(all_settings);
+
+    } else do {
+        for(idx = 0; idx < n_settings; idx++)
+            settings_iterator(&details->settings[idx], print_setting, data);
+    } while((details = details->next));
+}
+
+
+// Prints current probe parameters. Upon a probe command, these parameters are updated upon a
+// successful probe or upon a failed probe with the G38.3 without errors command (if supported).
+// These values are retained until grblHAL is power-cycled, whereby they will be re-zeroed.
+FLASHMEM void report_probe_parameters (void)
+{
+    // Report in terms of machine position.
+    float print_position[N_AXIS];
+    system_convert_array_steps_to_mpos(print_position, sys.probe_position);
+    hal.stream.write("[PRB:");
+    hal.stream.write(get_axis_values(print_position));
+    hal.stream.write(sys.flags.probe_succeeded ? ":1" : ":0");
+    hal.stream.write("]" ASCII_EOL);
+}
+
+// Prints current home position in terms of machine position.
+// Bitmask for homed axes attached.
+FLASHMEM void report_home_position (void)
+{
+    hal.stream.write("[HOME:");
+    hal.stream.write(get_axis_values(sys.home_position));
+    hal.stream.write(":");
+    hal.stream.write(uitoa(sys.homed.mask));
+    hal.stream.write("]" ASCII_EOL);
+}
+
+// Prints current tool offsets.
+FLASHMEM void report_tool_offsets (void)
+{
+    hal.stream.write("[TLO:");
+#if TOOL_LENGTH_OFFSET_AXIS >= 0
+    hal.stream.write(get_axis_value(gc_state.modal.tool_length_offset[TOOL_LENGTH_OFFSET_AXIS]));
+#else
+    hal.stream.write(get_axis_values(gc_state.modal.tool_length_offset));
+#endif
+    hal.stream.write("]" ASCII_EOL);
+}
+
+#if NGC_PARAMETERS_ENABLE
+
+// Prints NIST/LinuxCNC NGC parameter value
+FLASHMEM status_code_t report_ngc_parameter (ngc_param_id_t id)
+{
+    float value;
+
+    hal.stream.write("[PARAM:");
+    hal.stream.write(uitoa(id));
+    if(ngc_param_get(id, &value)) {
+        hal.stream.write("=");
+        hal.stream.write(trim_float(ftoa(value, ngc_float_decimals())));
+    } else
+        hal.stream.write("=N/A");
+    hal.stream.write("]" ASCII_EOL);
+
+    return Status_OK;
+}
+
+// Prints named LinuxCNC NGC parameter value
+FLASHMEM status_code_t report_named_ngc_parameter (char *arg)
+{
+    float value;
+
+    hal.stream.write("[PARAM:");
+    hal.stream.write(arg);
+    if(ngc_named_param_get(arg, &value)) {
+        hal.stream.write("=");
+        hal.stream.write(trim_float(ftoa(value, ngc_float_decimals())));
+    } else
+        hal.stream.write("=N/A");
+    hal.stream.write("]" ASCII_EOL);
+
+    return Status_OK;
+}
+
+#endif
+
+// Prints grblHAL NGC parameters (coordinate offsets, probing, tool table)
+FLASHMEM void report_ngc_parameters (void)
+{
+    uint_fast8_t idx;
+    coord_system_data_t offset;
+
+    if(gc_state.modal.scaling_active) {
+        hal.stream.write("[G51:");
+        hal.stream.write(get_axis_values(gc_get_scaling()));
+        hal.stream.write("]" ASCII_EOL);
+    }
+
+    for(idx = 0; idx < N_CoordinateSystems; idx++) {
+
+        if(!(settings_read_coord_data((coord_system_id_t)idx, &offset))) {
+            grbl.report.status_message(Status_SettingReadFail);
+            return;
+        }
+
+        hal.stream.write("[G");
+
+        switch(idx) {
+
+            case CoordinateSystem_G28:
+                hal.stream.write("28");
+                break;
+
+            case CoordinateSystem_G30:
+                hal.stream.write("30");
+                break;
+
+            case CoordinateSystem_G92:
+                break;
+
+            default: // G54-G59
+                hal.stream.write(gc_coord_system_to_str((coord_system_id_t)idx) + 1);
+                break;
+        }
+
+        if(idx != CoordinateSystem_G92) {
+            hal.stream.write(":");
+            hal.stream.write(get_axis_values(offset.coord.values));
+#ifdef ROTATION_ENABLE
+            if(idx < N_WorkCoordinateSystems) {
+                hal.stream.write(":");
+                hal.stream.write(ftoa(offset.rotation * DEGRAD, 2));
+            }
+#endif
+            hal.stream.write("]" ASCII_EOL);
+        }
+    }
+
+    // Print G92, G92.1 which are not persistent in memory
+    hal.stream.write("92:");
+    hal.stream.write(get_axis_values(gc_state.g92_offset.coord.values));
+    hal.stream.write("]" ASCII_EOL);
+
+    tool_data_t *tool_data;
+    tool_table_entry_t *tool;
+
+    for (idx = 1; idx <= grbl.tool_table.n_tools; idx++) {
+        if((tool_data = (tool = grbl.tool_table.get_tool_by_idx((uint32_t)idx))->data) &&
+            (settings.macro_atc_flags.random_toolchanger ? tool_data->tool_id >= 0 : tool_data->tool_id > 0)) {
+            hal.stream.write("[T:");
+            hal.stream.write(uitoa(tool_data->tool_id));
+            hal.stream.write("|");
+            hal.stream.write(get_axis_values(tool_data->offset.values));
+            hal.stream.write("|");
+            hal.stream.write(get_axis_value(tool_data->radius));
+            hal.stream.write("|6,0,0|");
+            hal.stream.write(tool->name ? tool->name : ""); // TODO: sanitize name? (| not allowed)
+            if(tool->pocket >= 0) {
+                hal.stream.write("|");
+                hal.stream.write(uitoa((uint32_t)tool->pocket));
+            }
+            hal.stream.write("]" ASCII_EOL);
+            if(tool->name)
+                hal.delay_ms(5, NULL);
+        }
+    }
+
+#if COMPATIBILITY_LEVEL < 10
+    if(settings.homing.flags.enabled)
+        report_home_position();
+#endif
+
+    report_tool_offsets();              // Print tool length offset value.
+    report_probe_parameters();          // Print probe parameters. Not persistent in memory.
+    if(sys.tlo_reference_set.mask) {    // Print tool length reference offset. Not persistent in memory.
+        plane_t plane;
+        gc_get_plane_data(&plane, gc_state.modal.plane_select);
+        hal.stream.write("[TLR:");
+        hal.stream.write(get_axis_value(sys.tlo_reference[plane.axis_linear] / settings.axis[plane.axis_linear].steps_per_mm));
+        hal.stream.write("]" ASCII_EOL);
+    }
+
+    if(grbl.on_report_ngc_parameters)
+        grbl.on_report_ngc_parameters();
+}
+
+static inline bool is_g92_active (void)
+{
+    bool active = false;
+    uint_fast32_t idx = N_AXIS;
+
+    do {
+        idx--;
+        active = !(gc_state.g92_offset.coord.values[idx] == 0.0f || gc_state.g92_offset.coord.values[idx] == -0.0f);
+    } while(idx && !active);
+
+    return active;
+}
+
+// Convert motion mode (G0, G1, ...) to string.
+FLASHMEM static char *motionmode_to_str (char *buf, motion_mode_t mode)
+{
+    strcpy(buf, "G");
+
+    if(mode == MotionMode_QuadraticSpline || mode == MotionMode_RigidTapping) {
+        strcat(buf, uitoa(mode / 10));
+        strcat(buf, ".1");
+    } else if(mode >= MotionMode_ProbeToward) {
+        strcat(buf, "38.");
+        strcat(buf, uitoa((uint32_t)(mode - (MotionMode_ProbeToward - 2))));
+    } else
+        strcat(buf, uitoa((uint32_t)mode));
+
+    return buf;
+}
+
+// Print current gcode parser mode state
+FLASHMEM void report_gcode_modes (stream_write_ptr stream_write)
+{
+    stream_write("[GC:");
+    stream_write(motionmode_to_str(buf, gc_state.modal.motion));
+    stream_write(" ");
+    stream_write(gc_coord_system_to_str(gc_state.modal.g5x_offset.id));
+
+#if COMPATIBILITY_LEVEL < 10
+
+    if(is_g92_active())
+        stream_write(" G92");
+
+#endif
+
+    if(settings.mode == Mode_Lathe)
+        stream_write(gc_state.modal.diameter_mode ? " G7" : " G8");
+
+    stream_write(" G");
+    stream_write(uitoa((uint32_t)(gc_state.modal.plane_select + 17)));
+
+    stream_write(gc_state.modal.units_imperial ? " G20" : " G21");
+
+#if NGC_PARAMETERS_ENABLE
+    if(gc_state.g66_args)
+        stream_write(" G66");
+#endif
+
+    stream_write(gc_state.modal.distance_incremental ? " G91" : " G90");
+
+    stream_write(" G");
+    stream_write(uitoa((uint32_t)(93 + (gc_state.modal.feed_mode == FeedMode_UnitsPerRev ? 2 : gc_state.modal.feed_mode ^ 1))));
+
+    if(settings.mode == Mode_Lathe && gc_spindle_get(0)->hal->cap.variable)
+        stream_write(gc_spindle_get(0)->rpm_mode == SpindleSpeedMode_RPM ? " G97" : " G96");
+
+#if COMPATIBILITY_LEVEL < 10
+
+    if(gc_state.modal.tool_offset_mode == ToolLengthOffset_Cancel)
+        stream_write(" G49");
+    else {
+        stream_write(" G43");
+        if(gc_state.modal.tool_offset_mode != ToolLengthOffset_Enable)
+            stream_write(gc_state.modal.tool_offset_mode == ToolLengthOffset_EnableDynamic ? ".1" : ".2");
+    }
+
+    stream_write(gc_state.modal.retract_mode == CCRetractMode_RPos ? " G99" : " G98");
+
+    if(gc_state.modal.scaling_active) {
+        stream_write(" G51:");
+        axis_signals_tostring(buf, gc_get_g51_state());
+        stream_write(buf);
+    } else
+        stream_write(" G50");
+
+#endif
+
+    if (gc_state.modal.program_flow) {
+
+        switch (gc_state.modal.program_flow) {
+
+            case ProgramFlow_Paused:
+                stream_write(" M0");
+                break;
+
+            case ProgramFlow_OptionalStop:
+                stream_write(" M1");
+                break;
+
+            case ProgramFlow_CompletedM2:
+                stream_write(" M2");
+                break;
+
+            case ProgramFlow_CompletedM30:
+                stream_write(" M30");
+                break;
+
+            case ProgramFlow_CompletedM60:
+                stream_write(" M60");
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    stream_write(gc_spindle_get(0)->state.on ? (gc_spindle_get(0)->state.ccw ? " M4" : " M3") : " M5");
+
+    if(gc_state.tool_change)
+        stream_write(" M6");
+
+    if (gc_state.modal.coolant.value) {
+
+        if (gc_state.modal.coolant.mist)
+             stream_write(" M7");
+
+        if (gc_state.modal.coolant.flood)
+            stream_write(" M8");
+
+    } else
+        stream_write(" M9");
+
+    if (sys.override.control.feed_rates_disable)
+        stream_write(" M50");
+
+    if (sys.override.control.spindle_rpm_disable)
+        stream_write(" M51");
+
+    if (sys.override.control.feed_hold_disable)
+        stream_write(" M53");
+
+    if (settings.parking.flags.enable_override_control && sys.override.control.parking_disable)
+        stream_write(" M56");
+
+    stream_write(appendbuf(2, " T", uitoa((uint32_t)gc_state.tool->tool_id)));
+
+    stream_write(appendbuf(2, " F", get_rate_value(gc_state.feed_rate)));
+
+    if(gc_spindle_get(0)->hal->cap.variable)
+        stream_write(appendbuf(2, " S", ftoa(gc_spindle_get(0)->rpm, N_DECIMAL_RPMVALUE)));
+
+    stream_write("]" ASCII_EOL);
+}
+
+// Prints specified startup line
+FLASHMEM void report_startup_line (uint8_t n, char *line)
+{
+    hal.stream.write(appendbuf(3, "$N", uitoa((uint32_t)n), "="));
+    hal.stream.write(line);
+    hal.stream.write(ASCII_EOL);
+}
+
+FLASHMEM void report_execute_startup_message (char *line, status_code_t status_code)
+{
+    hal.stream.write(">");
+    hal.stream.write(line);
+    hal.stream.write(":");
+    grbl.report.status_message(status_code);
+}
+
+// Prints build info line
+FLASHMEM void report_build_info (char *line, bool extended)
+{
+    char buf[100];
+
+    hal.stream.write("[VER:" GRBL_VERSION ".");
+    hal.stream.write(uitoa(GRBL_BUILD));
+    hal.stream.write(":");
+    hal.stream.write(line);
+    hal.stream.write("]" ASCII_EOL);
+
+#if COMPATIBILITY_LEVEL == 0
+    extended = true;
+#endif
+
+    // Generate compile-time build option list
+
+    char *append = &buf[5];
+    spindle_ptrs_t *spindle = spindle_get(0);
+
+    strcpy(buf, "[OPT:");
+
+    if(spindle && spindle->cap.variable)
+        *append++ = 'V';
+
+    *append++ = 'N';
+
+    if(hal.coolant_cap.mist)
+        *append++ = 'M';
+
+#if COREXY
+    *append++ = 'C';
+#endif
+
+    if(settings.parking.flags.enabled)
+        *append++ = 'P';
+
+    if(settings.homing.flags.force_set_origin)
+        *append++ = 'Z';
+
+    if(settings.homing.flags.single_axis_commands)
+        *append++ = 'H';
+
+    if(settings.limits.flags.two_switches)
+        *append++ = 'T';
+
+    if(settings.probe.allow_feed_override)
+        *append++ = 'A';
+
+    if(spindle && !spindle->cap.direction) // NOTE: Shown when disabled.
+        *append++ = 'D';
+
+    if(settings.pwm_spindle.flags.enable_rpm_controlled)
+        *append++ = '0';
+
+    if(hal.driver_cap.software_debounce)
+        *append++ = 'S';
+
+    if(settings.parking.flags.enable_override_control)
+        *append++ = 'R';
+
+    if(!settings.homing.flags.init_lock)
+        *append++ = 'L';
+
+    if(hal.signals_cap.safety_door_ajar)
+        *append++ = '+';
+
+  #if !ENABLE_RESTORE_NVS_WIPE_ALL // NOTE: Shown when disabled.
+    *append++ = '*';
+  #endif
+
+  #if !ENABLE_RESTORE_NVS_DEFAULT_SETTINGS // NOTE: Shown when disabled.
+    *append++ = '$';
+  #endif
+
+  #if !ENABLE_RESTORE_NVS_CLEAR_PARAMETERS // NOTE: Shown when disabled.
+    *append++ = '#';
+  #endif
+
+  #if DISABLE_BUILD_INFO_WRITE_COMMAND // NOTE: Shown when disabled.
+    *append++ = 'I';
+  #endif
+
+    if(!settings.status_report.sync_on_wco_change) // NOTE: Shown when disabled.
+        *append++ = 'W';
+
+    if(hal.stepper.get_ganged)
+        *append++ = '2';
+
+    *append++ = ',';
+    *append = '\0';
+    hal.stream.write(buf);
+
+    // NOTE: Compiled values, like override increments/max/min values, may be added at some point later.
+    hal.stream.write(uitoa((uint32_t)plan_get_buffer_size()));
+    hal.stream.write(",");
+    hal.stream.write(uitoa(hal.rx_buffer_size));
+    if(extended) {
+        hal.stream.write(",");
+        hal.stream.write(uitoa((uint32_t)N_AXIS));
+        hal.stream.write(",");
+        hal.stream.write(uitoa(grbl.tool_table.n_tools));
+    }
+    hal.stream.write("]" ASCII_EOL);
+
+    if(extended) {
+
+        uint_fast8_t idx;
+        nvs_io_t *nvs = nvs_buffer_get_physical();
+        atc_status_t atc = hal.tool.atc_get_state();
+
+        strcat(strcpy(buf, "[AXS:"), uitoa(N_AXIS));
+
+        append = &buf[6];
+        *append++ = ':';
+
+        for(idx = 0; idx < N_AXIS; idx++)
+            *append++ = *axis_letter[idx];
+
+        *append = '\0';
+
+        hal.stream.write(strcat(buf, "]" ASCII_EOL));
+
+        strcpy(buf, "[NEWOPT:ENUMS,RT");
+        strcat(buf, settings.flags.legacy_rt_commands ? "+," : "-,");
+
+        if(settings.homing.flags.enabled)
+            strcat(buf, "HOME,");
+
+        if(hal.probe.get_state == NULL)
+            strcat(buf, "NOPROBE,");
+        else {
+            if(hal.probe.select) {
+                strcat(buf, "PROBES=");
+                strcat(buf, uitoa(hal.driver_cap.probe | (hal.driver_cap.toolsetter << 1) | (hal.driver_cap.probe2 << 2)));
+                strcat(buf, ",");
+            }
+            if(hal.signals_cap.probe_disconnected)
+                strcat(buf, "PC,");
+        }
+
+        if(hal.signals_cap.stop_disable)
+            strcat(buf, "OS,");
+
+        if(hal.signals_cap.block_delete)
+            strcat(buf, "BD,");
+
+        if(hal.signals_cap.e_stop)
+            strcat(buf, "ES,");
+
+        if(hal.driver_cap.mpg_mode)
+            strcat(buf, "MPG,");
+
+#if LATHE_UVW_OPTION
+        strcat(buf, "LATHE,LATHEUVW,");
+#else
+        if(settings.mode == Mode_Lathe)
+            strcat(buf, "LATHE,");
+#endif
+
+        if(hal.driver_cap.laser_ppi_mode)
+            strcat(buf, "PPI,");
+
+        if(hal.reboot)
+            strcat(buf, "REBOOT,");
+
+    #if NGC_EXPRESSIONS_ENABLE
+        strcat(buf, "EXPR,");
+    #endif
+
+        if(atc != ATC_None || (settings.tool_change.mode != ToolChange_Ignore && !!hal.stream.suspend_read))
+            strcat(buf, atc == ATC_None ? "TC," : (atc == ATC_Online ? "ATC=1," : "ATC=0,")); // Tool change supported (M6)
+
+        if(hal.driver_cap.spindle_sync)
+            strcat(buf, "SS,");
+
+        strcat(buf, "SED,");
+
+        if(hal.driver_cap.rtc)
+            strcat(buf, "RTC,");
+
+        if(canbus_enabled())
+            strcat(buf, "CAN,");
+
+    #ifdef PID_LOG
+        strcat(buf, "PID,");
+    #endif
+
+        append = &buf[strlen(buf) - 1];
+        if(*append == ',')
+            *append = '\0';
+
+        hal.stream.write(buf);
+        grbl.on_report_options(true);
+        hal.stream.write("]" ASCII_EOL);
+
+        hal.stream.write("[FIRMWARE:grblHAL]" ASCII_EOL);
+
+        hal.stream.write("[SIGNALS:");
+        control_signals_tostring(buf, hal.signals_cap);
+        hal.stream.write(buf);
+        hal.stream.write("]" ASCII_EOL);
+
+#if N_SYS_SPINDLE > 1
+        hal.stream.write("[SPINDLES:");
+        hal.stream.write(uitoa(N_SYS_SPINDLE));
+        hal.stream.write("]" ASCII_EOL);
+#endif
+
+        if(!(nvs->type == NVS_None || nvs->type == NVS_Emulated)) {
+            hal.stream.write("[NVS STORAGE:");
+            *buf = '\0';
+            if(hal.nvs.type == NVS_Emulated)
+                strcat(buf, "*");
+            strcat(buf, nvs->type == NVS_Flash ? "FLASH" : (nvs->type == NVS_FRAM ? "FRAM" : "EEPROM"));
+            if(hal.nvs.size_max) {
+                strcat(buf, " ");
+                strcat(buf, uitoa(hal.nvs.size_max / 1024));
+                strcat(buf, "K");
+            }
+            hal.stream.write(buf);
+            hal.stream.write("]" ASCII_EOL);
+        }
+
+        if(hal.get_free_mem) {
+            hal.stream.write("[FREE MEMORY:");
+            hal.stream.write(uitoa(hal.get_free_mem() / 1024));
+            hal.stream.write("K]" ASCII_EOL);
+        }
+
+        if(hal.info) {
+            hal.stream.write("[DRIVER:");
+            hal.stream.write(hal.info);
+            hal.stream.write("]" ASCII_EOL);
+        }
+
+        if(hal.driver_version) {
+            hal.stream.write("[DRIVER VERSION:");
+            hal.stream.write(hal.driver_version);
+            hal.stream.write("]" ASCII_EOL);
+        }
+
+        if(hal.driver_options) {
+            hal.stream.write("[DRIVER OPTIONS:");
+            hal.stream.write(hal.driver_options);
+            hal.stream.write("]" ASCII_EOL);
+        }
+
+        if(hal.board) {
+            hal.stream.write("[BOARD:");
+            hal.stream.write(hal.board);
+            hal.stream.write("]" ASCII_EOL);
+        }
+
+        if(hal.max_step_rate) {
+            hal.stream.write("[MAX STEP RATE:");
+            hal.stream.write(uitoa(hal.max_step_rate));
+            hal.stream.write(" Hz]" ASCII_EOL);
+        }
+
+#if COMPATIBILITY_LEVEL > 0
+        hal.stream.write("[COMPATIBILITY LEVEL:");
+        hal.stream.write(uitoa(COMPATIBILITY_LEVEL));
+        hal.stream.write("]" ASCII_EOL);
+#endif
+
+        uint8_t digital_in = ioports_unclaimed(Port_Digital, Port_Input),
+                digital_out = ioports_unclaimed(Port_Digital, Port_Output),
+                analog_in = ioports_unclaimed(Port_Analog, Port_Input),
+                analog_out = ioports_unclaimed(Port_Analog, Port_Output);
+
+        if(digital_in || digital_out || analog_in || analog_out) {
+            hal.stream.write("[AUX IO:");
+            hal.stream.write(uitoa(digital_in));
+            hal.stream.write(",");
+            hal.stream.write(uitoa(digital_out));
+            hal.stream.write(",");
+            hal.stream.write(uitoa(analog_in));
+            hal.stream.write(",");
+            hal.stream.write(uitoa(analog_out));
+            hal.stream.write("]" ASCII_EOL);
+        }
+
+        grbl.on_report_options(false);
+    }
+}
+
+// Prints the character string line grblHAL has received from the user, which has been pre-parsed,
+// and has been sent into protocol_execute_line() routine to be executed by grblHAL.
+FLASHMEM void report_echo_line_received (char *line)
+{
+    hal.stream.write("[echo: ");
+    hal.stream.write(line);
+    hal.stream.write("]" ASCII_EOL);
+}
+
+#if N_SYS_SPINDLE == 1 && N_SPINDLE > 1
+
+typedef struct {
+    spindle_id_t spindle_id;
+    stream_write_ptr stream_write;
+} spindle_r_t;
+
+FLASHMEM static bool report_spindle_num (spindle_info_t *spindle, void *data)
+{
+    bool ok;
+
+    if((ok = spindle->id == ((spindle_r_t *)data)->spindle_id))
+        ((spindle_r_t *)data)->stream_write(appendbuf(2, "|S:", uitoa((uint32_t)spindle->num)));
+
+    return ok;
+}
+
+#endif
+
+ // Prints real-time data. This function grabs a real-time snapshot of the stepper subprogram
+ // and the actual location of the CNC machine. Users may change the following function to their
+ // specific needs, but the desired real-time data report must be as short as possible. This is
+ // requires as it minimizes the computational overhead and allows grblHAL to keep running smoothly,
+ // especially during g-code programs with fast, short line segments and high frequency reports (5-20Hz).
+void report_realtime_status (stream_write_ptr stream_write, status_report_tracking_t *report)
+{
+    static bool probing = false;
+
+    uint_fast8_t idx;
+    bool gcode_mode_changed = false;
+    float print_position[N_AXIS], wco[N_AXIS], dist_remaining[N_AXIS];
+    report_tracking_flags_t delayed_report = {0};
+    probe_state_t probe_state = {
+        .connected = On,
+        .triggered = Off
+    };
+
+    if(hal.probe.get_state)
+        probe_state = hal.probe.get_state();
+
+    // Report current machine state and sub-states
+    stream_write("<");
+
+    sys_state_t state = state_get();
+
+    switch (gc_state.tool_change && state == STATE_CYCLE ? STATE_TOOL_CHANGE : state) {
+
+        case STATE_IDLE:
+            stream_write("Idle");
+            break;
+
+        case STATE_CYCLE:
+            stream_write("Run");
+            if(sys.probing_state == Probing_Active && settings.status_report.run_substate)
+                probing = true;
+            else if (probing)
+                probing = probe_state.triggered;
+            if(sys.flags.feed_hold_pending)
+                stream_write(":1");
+            else if(probing)
+                stream_write(":2");
+            break;
+
+        case STATE_HOLD:
+            stream_write(appendbuf(2, "Hold:", uitoa((uint32_t)(sys.holding_state - 1))));
+            break;
+
+        case STATE_JOG:
+            stream_write("Jog");
+            break;
+
+        case STATE_HOMING:
+            stream_write("Home");
+            break;
+
+        case STATE_ESTOP:
+        case STATE_ALARM:
+            if((report->flags.all || settings.status_report.alarm_substate) && sys.alarm)
+                stream_write(appendbuf(2, "Alarm:", uitoa((uint32_t)sys.alarm)));
+            else
+                stream_write("Alarm");
+            break;
+
+        case STATE_CHECK_MODE:
+            stream_write("Check");
+            break;
+
+        case STATE_SAFETY_DOOR:
+            stream_write(appendbuf(2, "Door:", uitoa((uint32_t)sys.parking_state)));
+            break;
+
+        case STATE_SLEEP:
+            stream_write("Sleep");
+            break;
+
+        case STATE_TOOL_CHANGE:
+            stream_write("Tool");
+            break;
+    }
+
+    system_convert_array_steps_to_mpos(print_position, sys.position);
+
+    if((report->flags.distance_to_go = settings.status_report.distance_to_go)) {
+        // Calculate distance-to-go in current block (i.e., difference between target / end-of-block) and current position)
+        plan_block_t *cur_block = plan_get_current_block();
+        if((report->flags.distance_to_go = !!cur_block)) {
+            for(idx = 0; idx < N_AXIS; idx++) {
+                dist_remaining[idx] = cur_block->target_mm[idx] - print_position[idx];
+            }
+        }
+    }
+
+    if(!settings.status_report.machine_position) {
+        // Apply work coordinate offsets and tool length offset to current position.
+        for(idx = 0; idx < N_AXIS; idx++) {
+            wco[idx] = gc_get_offset(idx, true);
+            print_position[idx] -= wco[idx];
+        }
+    }
+
+    // Report position
+    stream_write(settings.status_report.machine_position ? "|MPos:" : "|WPos:");
+    stream_write(get_axis_values(print_position));
+
+    // Returns planner and output stream buffer states.
+
+    if(settings.status_report.buffer_state) {
+        stream_write("|Bf:");
+        stream_write(uitoa((uint32_t)plan_get_block_buffer_available()));
+        stream_write(",");
+        stream_write(uitoa(hal.stream.get_rx_buffer_free()));
+    }
+
+    if(settings.status_report.line_numbers) {
+        // Report current line number
+        plan_block_t *cur_block = plan_get_current_block();
+        uint32_t line_number = cur_block ? cur_block->line_number : gc_state.line_number;
+        if(line_number)
+            stream_write(appendbuf(2, "|Ln:", uitoa(line_number)));
+    }
+
+    if(report->flags.distance_to_go) {
+        // Report distance-to-go.
+        stream_write("|DTG:");
+        stream_write(get_axis_values(dist_remaining));
+    }   
+
+    spindle_ptrs_t *spindle_0;
+    spindle_state_t spindle_0_state;
+
+    spindle_0 = spindle_get(0);
+    spindle_0_state = spindle_0->get_state(spindle_0);
+
+    // Report realtime feed speed
+    if(settings.status_report.feed_speed) {
+        if(spindle_0->cap.variable) {
+            stream_write(appendbuf(2, "|FS:", get_rate_value(st_get_realtime_rate())));
+            stream_write(appendbuf(2, ",", uitoa(spindle_0_state.on ? lroundf(spindle_0->param->rpm_overridden) : 0)));
+            if(spindle_0->get_data /* && sys.mpg_mode */)
+                stream_write(appendbuf(2, ",", uitoa(lroundf(spindle_0->get_data(SpindleData_RPM)->rpm))));
+        } else
+            stream_write(appendbuf(2, "|F:", get_rate_value(st_get_realtime_rate())));
+    }
+
+#if N_SYS_SPINDLE > 1
+
+    for(idx = 1; idx < N_SYS_SPINDLE; idx++) {
+
+        spindle_ptrs_t *spindle_n;
+        spindle_state_t spindle_n_state;
+
+        if((spindle_n = spindle_get(idx))) {
+            spindle_n_state = spindle_n->get_state(spindle_n);
+            stream_write(appendbuf(3, "|SP", uitoa(idx), ":"));
+            stream_write(appendbuf(3, uitoa(spindle_n_state.on ? lroundf(spindle_n->param->rpm_overridden) : 0), ",,", spindle_n_state.on ? (spindle_n_state.ccw ? "C" : "S") : ""));
+            if(settings.status_report.overrides)
+                stream_write(appendbuf(2, ",", uitoa(spindle_n->param->override_pct)));
+        }
+    }
+
+#elif N_SPINDLE > 1
+    if(report->flags.spindle_id) {
+        spindle_r_t data = {
+            .spindle_id = spindle_0->id,
+            .stream_write = stream_write
+        };
+        spindle_enumerate_spindles(report_spindle_num, &data);
+    }
+#endif
+
+    if(settings.status_report.pin_state) {
+
+        static const system_flags_t sys_switches = {
+            .block_delete_enabled = On,
+            .optional_stop_disable = On,
+            .single_block = On
+        };
+
+        axes_signals_t lim_pin_state = limit_signals_merge(hal.limits.get_state());
+        control_signals_t ctrl_pin_state = hal.control.get_state();
+
+        ctrl_pin_state.probe_triggered = probe_state.triggered;
+        ctrl_pin_state.probe_disconnected = !probe_state.connected;
+        ctrl_pin_state.cycle_start |= report->flags.cycle_start;
+        if(sys.flags.value & sys_switches.value) {
+            if(!hal.signals_cap.stop_disable)
+                ctrl_pin_state.stop_disable = sys.flags.optional_stop_disable;
+            if(!hal.signals_cap.block_delete)
+                ctrl_pin_state.block_delete = sys.flags.block_delete_enabled;
+            if(!hal.signals_cap.single_block)
+                ctrl_pin_state.single_block = sys.flags.single_block;
+        }
+
+        if((lim_pin_state.value && !ctrl_pin_state.limits_override) || ctrl_pin_state.value) {
+
+            char *append = &buf[4];
+
+            strcpy(buf, "|Pn:");
+
+            if(lim_pin_state.value && !ctrl_pin_state.limits_override)
+                append = axis_signals_tostring(append, lim_pin_state);
+
+            if(ctrl_pin_state.value)
+                append = control_signals_tostring(append, ctrl_pin_state);
+
+            *append = '\0';
+            stream_write(buf);
+        }
+    }
+
+    if(settings.status_report.overrides) {
+
+        if((report->flags.overrides = report->override_counter == 0 || report->flags.overrides)) {
+
+            report->override_counter = state & (STATE_HOMING|STATE_CYCLE|STATE_HOLD|STATE_JOG|STATE_SAFETY_DOOR)
+                                        ? (REPORT_OVERRIDE_REFRESH_BUSY_COUNT - 1) // Reset counter for slow refresh
+                                        : (REPORT_OVERRIDE_REFRESH_IDLE_COUNT - 1);
+
+            if(!report->flags.all) {
+                report->flags.spindle = report->flags.spindle || spindle_0_state.on;
+                report->flags.coolant = report->flags.coolant || hal.coolant.get_state().value != 0;
+            }
+        } else
+            report->override_counter--;
+
+        if(report->override_counter > (REPORT_OVERRIDE_REFRESH_IDLE_COUNT - 1) && state == STATE_IDLE)
+            report->override_counter = REPORT_OVERRIDE_REFRESH_IDLE_COUNT - 1;
+    } else
+        report->flags.overrides = Off;
+
+    if(settings.status_report.work_coord_offset) {
+
+        if(report->wco_counter == 0 || report->flags.wco || report->flags.force_wco || report->flags.gwco || report->flags.all) {
+
+            report->wco_counter = state & (STATE_HOMING|STATE_CYCLE|STATE_HOLD|STATE_JOG|STATE_SAFETY_DOOR)
+                                   ? (REPORT_WCO_REFRESH_BUSY_COUNT - 1) // Reset counter for slow refresh
+                                   : (REPORT_WCO_REFRESH_IDLE_COUNT - 1);
+
+            if(!(report->flags.wco = !report->flags.overrides || report->flags.all || report->flags.force_wco || report->flags.gwco))
+                delayed_report.wco = On;
+        } else
+            report->wco_counter--;
+
+        if(report->wco_counter > (REPORT_WCO_REFRESH_IDLE_COUNT - 1) && state == STATE_IDLE)
+            report->wco_counter = REPORT_WCO_REFRESH_IDLE_COUNT - 1;
+    } else
+        report->flags.wco = Off;
+
+    if(report->flags.value || gc_state.tool_change) {
+
+        if(report->flags.wco) {
+            if(settings.status_report.machine_position) {
+                for(idx = 0; idx < N_AXIS; idx++)
+                    wco[idx] = gc_get_offset(idx, true);
+            }
+            stream_write("|WCO:");
+            stream_write(get_axis_values(wco));
+#ifdef ROTATION_ENABLE
+//            stream_write(":");
+//            stream_write(ftoa(gc_state.modal.g5x_offset.data.rotation, 2));
+#endif
+        }
+
+        if(report->flags.gwco) {
+            stream_write("|WCS:");
+            stream_write(gc_coord_system_to_str(gc_state.modal.g5x_offset.id));
+        }
+
+        if(report->flags.overrides) {
+            stream_write(appendbuf(2, "|Ov:", uitoa((uint32_t)sys.override.feed_rate)));
+            stream_write(appendbuf(2, ",", uitoa((uint32_t)sys.override.rapid_rate)));
+            stream_write(appendbuf(2, ",", uitoa((uint32_t)spindle_0->param->override_pct)));
+        }
+
+        if(report->flags.spindle || report->flags.coolant || report->flags.tool || gc_state.tool_change) {
+
+            coolant_state_t cl_state = hal.coolant.get_state();
+
+            char *append = &buf[3];
+
+            strcpy(buf, "|A:");
+
+            if (spindle_0_state.on)
+
+                *append++ = spindle_0_state.ccw ? 'C' : 'S';
+
+#if COMPATIBILITY_LEVEL == 0
+            if(spindle_0_state.encoder_error && hal.driver_cap.spindle_sync)
+                *append++ = 'E';
+#endif
+
+            if (cl_state.flood)
+                *append++ = 'F';
+
+            if (cl_state.mist)
+                *append++ = 'M';
+
+            if(gc_state.tool_change && !report->flags.tool)
+                *append++ = 'T';
+
+            *append = '\0';
+            stream_write(buf);
+        }
+
+        if(report->flags.scaling) {
+            axis_signals_tostring(buf, gc_get_g51_state());
+            stream_write("|Sc:");
+            stream_write(buf);
+        }
+
+#if COMPATIBILITY_LEVEL <= 1
+        if((report->flags.all || report->flags.mpg_mode) && settings.report_interval) {
+            stream_write(sys.flags.auto_reporting ? "|AR:" : "|AR");
+            if(sys.flags.auto_reporting)
+                stream_write(uitoa(settings.report_interval));
+        }
+#endif
+
+        if(report->flags.mpg_mode)
+            stream_write(sys.mpg_mode ? "|MPG:1" : "|MPG:0");
+
+        if(report->flags.homed && (sys.homing.mask || settings.homing.flags.single_axis_commands || settings.homing.flags.manual)) {
+            axes_signals_t homing = {sys.homing.mask ? sys.homing.mask : AXES_BITMASK};
+            stream_write(appendbuf(2, "|H:", (homing.mask & sys.homed.mask) == homing.mask ? "1" : "0"));
+            if(settings.homing.flags.single_axis_commands)
+                stream_write(appendbuf(2, ",", uitoa(sys.homed.mask)));
+        }
+
+        if(report->flags.xmode && settings.mode == Mode_Lathe)
+            stream_write(gc_state.modal.diameter_mode ? "|D:1" : "|D:0");
+
+        if(report->flags.tool)
+            stream_write(appendbuf(2, "|T:", uitoa((uint32_t)gc_state.tool->tool_id)));
+
+        if(report->flags.probe_id || report->flags.probe_protect) {
+            stream_write(appendbuf(2, "|P:", uitoa((uint32_t)probe_state.probe_id)));
+            if(report->flags.probe_protect && !probe_state.is_probing && probe_state.irq_enabled)
+                stream_write(",P");
+        }
+
+        if(report->flags.tlo_reference)
+            stream_write(appendbuf(2, "|TLR:", uitoa(sys.tlo_reference_set.mask != 0)));
+
+        if(report->flags.m66result && sys.var5399 > -2) { // M66 result
+            if(sys.var5399 >= 0)
+                stream_write(appendbuf(2, "|In:", uitoa(sys.var5399)));
+            else
+                stream_write("|In:-1");
+        }
+    }
+
+    if(grbl.on_realtime_report)
+        grbl.on_realtime_report(stream_write, report->flags);
+
+#if COMPATIBILITY_LEVEL <= 1
+    if(report->flags.all) {
+        stream_write("|FW:grblHAL");
+        if(sys.blocking_event)
+            stream_write("|$C:1");
+    } else
+#endif
+
+    if(settings.status_report.parser_state) {
+
+        static tool_id_t tool_id;
+        static float feed_rate, spindle_rpm;
+        static gc_modal_t last_state;
+        static bool g92_active;
+#if NGC_PARAMETERS_ENABLE
+        static bool g66_active;
+#endif
+
+        spindle_t *spindle = gc_spindle_get(0);
+
+        gcode_mode_changed = feed_rate != gc_state.feed_rate ||
+                              spindle_rpm != spindle->rpm ||
+                               tool_id != gc_state.tool->tool_id
+#if NGC_PARAMETERS_ENABLE
+                                || g66_active != !!gc_state.g66_args;
+#else
+;
+#endif
+
+        if(gcode_mode_changed) {
+            feed_rate = gc_state.feed_rate;
+            tool_id = gc_state.tool->tool_id;
+            spindle_rpm = spindle->rpm;
+#if NGC_PARAMETERS_ENABLE
+            g66_active = !!gc_state.g66_args;
+#endif
+        } else if((gcode_mode_changed = g92_active != is_g92_active()))
+            g92_active = !g92_active;
+        else if(memcmp(&last_state, &gc_state.modal, sizeof(gc_modal_t))) {
+            last_state = gc_state.modal;
+            gcode_mode_changed = true;
+        }
+
+        if(report->flags.tool_offset)
+            system_set_exec_state_flag(EXEC_TLO_REPORT);
+    }
+
+    stream_write(">" ASCII_EOL);
+
+    if(stream_write == hal.stream.write_all) {
+        report_add_realtime(Report_ClearAll);
+        if(delayed_report.wco)
+            report_add_realtime(Report_WCO); // Set to report on next request
+    } else
+        report->flags.value = delayed_report.value;
+
+    if(gcode_mode_changed) {
+        system_set_exec_state_flag(EXEC_GCODE_REPORT);
+        if(grbl.on_gcode_mode_changed)
+            grbl.on_gcode_mode_changed();
+    }
+}
+
+static void report_bitfield (const char *format, bool bitmap)
+{
+    char *s;
+    uint_fast8_t bit = 0;
+    uint_fast16_t val = 1;
+
+    // Copy string from Flash to RAM, strtok cannot be used unless doing so.
+    if((s = (char *)malloc(strlen(format) + 1))) {
+
+        strcpy(s, format);
+        char *element = strtok(s, ",");
+
+        while(element) {
+            if(strcmp(element, "N/A")) {
+                hal.stream.write(ASCII_EOL);
+                hal.stream.write("    ");
+                hal.stream.write(uitoa(bit));
+                hal.stream.write(" - ");
+                if(*element)
+                hal.stream.write(element);
+                if(bitmap) {
+                    hal.stream.write(" (");
+                    hal.stream.write(uitoa(val));
+                    hal.stream.write(")");
+                }
+            }
+            bit++;
+            val <<= 1;
+            element = strtok(NULL, ",");
+        }
+
+        free(s);
+    }
+}
+
+FLASHMEM static void write_quoted (const char *s, const char *sep)
+{
+    hal.stream.write("\"");
+    hal.stream.write(s); // TODO: escape double quoutes
+    hal.stream.write("\"");
+    if(sep)
+        hal.stream.write(sep);
+}
+
+FLASHMEM static void write_name (const char *s, uint_fast8_t offset)
+{
+    char *q = hal.stream.write_n ? strchr(s, '?') : NULL;
+
+    if(q) {
+        if(q != s)
+            hal.stream.write_n((uint8_t *)s, q - s);
+        hal.stream.write(uitoa(offset + 1));
+        hal.stream.write(q + 1);
+    } else
+        hal.stream.write(s);
+}
+
+FLASHMEM static void report_settings_detail (settings_format_t format, const setting_detail_t *setting, uint_fast8_t offset)
+{
+    uint_fast8_t suboffset = setting->flags.subgroups ? offset / setting->flags.increment : offset;
+
+    switch(format)
+    {
+        case SettingsFormat_HumanReadable:
+            {
+                bool reboot_newline = false;
+
+                hal.stream.write(ASCII_EOL "$");
+                hal.stream.write(uitoa(setting->id + offset));
+                hal.stream.write(": ");
+                if(setting->group == Group_Axis0)
+                    hal.stream.write(axis_letter[offset]);
+                write_name(setting->name, suboffset);
+
+                switch(setting_datatype_to_external(setting->datatype)) {
+
+                    case Format_AxisMask:
+                        hal.stream.write(" as axismask");
+                        break;
+
+                    case Format_Bool:
+                        hal.stream.write(" as boolean");
+                        break;
+
+                    case Format_Bitfield:
+                        hal.stream.write(" as bitfield:");
+                        report_bitfield(setting->format, true);
+                        reboot_newline = true;
+                        break;
+
+                    case Format_XBitfield:
+                        hal.stream.write(" as bitfield where setting bit 0 enables the rest:");
+                        report_bitfield(setting->format, true);
+                        reboot_newline = true;
+                        break;
+
+                    case Format_RadioButtons:
+                        hal.stream.write(":");
+                        report_bitfield(setting->format, false);
+                        reboot_newline = true;
+                        break;
+
+                    case Format_IPv4:
+                        hal.stream.write(" as IP address");
+                        break;
+
+                    default:
+                        if(setting->unit) {
+                            hal.stream.write(" in ");
+                            hal.stream.write(setting->unit);
+                        }
+                        break;
+                }
+
+                if(setting->min_value && setting->max_value) {
+                    hal.stream.write(", range: ");
+                    hal.stream.write(setting->min_value);
+                    hal.stream.write(" - ");
+                    hal.stream.write(setting->max_value);
+                } else if(!setting_is_list(setting)) {
+                    if(setting->min_value) {
+                        hal.stream.write(", min: ");
+                        hal.stream.write(setting->min_value);
+                    }
+                    if(setting->max_value) {
+                        hal.stream.write(", max: ");
+                        hal.stream.write(setting->max_value);
+                    }
+                }
+
+                if(setting->flags.reboot_required)
+                    hal.stream.write(reboot_newline ? ASCII_EOL ASCII_EOL "Reboot required." : ", reboot required");
+
+                // Add description if driver is capable of outputting it...
+                if(hal.stream.write_n) {
+                    const char *description = setting_get_description((setting_id_t)(setting->id + offset));
+                    if(description && *description != '\0') {
+                        char *lf;
+                        hal.stream.write(ASCII_EOL);
+                        if((lf = strstr(description, "\\n"))) while(lf) {
+                            hal.stream.write(ASCII_EOL);
+                            hal.stream.write_n((uint8_t *)description, lf - description);
+                            description = lf + 2;
+                            lf = strstr(description, "\\n");
+                        }
+                        if(*description != '\0') {
+                            hal.stream.write(ASCII_EOL);
+                            hal.stream.write(description);
+                        }
+                    }
+                    if(setting->flags.reboot_required) {
+                        if(description && *description != '\0')
+                            hal.stream.write(ASCII_EOL ASCII_EOL);
+                        hal.stream.write(SETTINGS_HARD_RESET_REQUIRED + 4);
+                    }
+                }
+            }
+            break;
+
+        case SettingsFormat_MachineReadable:
+            hal.stream.write("[SETTING:");
+            hal.stream.write(uitoa(setting->id + offset));
+            hal.stream.write(vbar);
+            hal.stream.write(uitoa(setting->group + (setting->flags.subgroups ? suboffset : 0)));
+            hal.stream.write(vbar);
+            if(setting->group == Group_Axis0)
+                hal.stream.write(axis_letter[offset]);
+            write_name(setting->name, suboffset);
+            hal.stream.write(vbar);
+            if(setting->unit)
+                hal.stream.write(setting->unit);
+            hal.stream.write(vbar);
+            hal.stream.write(uitoa(setting_datatype_to_external(setting->datatype)));
+            hal.stream.write(vbar);
+            if(setting->format)
+                hal.stream.write(setting->format);
+            hal.stream.write(vbar);
+            if(setting->min_value && !setting_is_list(setting))
+                hal.stream.write(setting->min_value);
+            hal.stream.write(vbar);
+            if(setting->max_value)
+                hal.stream.write(setting->max_value);
+            hal.stream.write(vbar);
+            hal.stream.write(uitoa(setting->flags.reboot_required));
+            hal.stream.write(vbar);
+            hal.stream.write(uitoa(setting->flags.allow_null));
+            hal.stream.write("]");
+            break;
+
+        case SettingsFormat_Grbl:
+            {
+                write_quoted(uitoa(setting->id + offset), ",");
+                hal.stream.write("\"");
+                if(setting->group == Group_Axis0)
+                    hal.stream.write(axis_letter[offset]);
+                write_name(setting->name, suboffset);
+                hal.stream.write("\",");
+                if(setting->unit) {
+                    write_quoted(setting->unit, ",");
+                } else // TODO: output sensible unit from datatype
+                    write_quoted("", ",");
+                const char *description = setting_get_description((setting_id_t)(setting->id + offset));
+                write_quoted(description ? description : "", ",");
+            }
+            break;
+
+        case SettingsFormat_grblHAL:
+            {
+                hal.stream.write(uitoa(setting->id + offset));
+
+                hal.stream.write("\t");
+
+                if(setting->group == Group_Axis0)
+                    hal.stream.write(axis_letter[offset]);
+                write_name(setting->name, suboffset);
+
+                hal.stream.write("\t");
+
+                if(setting->unit)
+                    hal.stream.write(setting->unit);
+                else if(setting->datatype == Format_AxisMask || setting->datatype == Format_Bitfield || setting->datatype == Format_XBitfield)
+                    hal.stream.write("mask");
+                else if(setting->datatype == Format_Bool)
+                    hal.stream.write("boolean");
+                else if(setting->datatype == Format_RadioButtons)
+                    hal.stream.write("integer");
+
+                hal.stream.write("\t");
+    /*
+                Format_Bool = 0,
+                Format_Bitfield,
+                Format_XBitfield,
+                Format_RadioButtons,
+                Format_AxisMask,
+                Format_Integer, // 32 bit
+                ,
+                Format_String,
+                Format_Password,
+                Format_IPv4,
+                // For internal use only
+                Format_Int8,
+                Format_Int16,
+    */
+                switch(setting_datatype_to_external(setting->datatype)) {
+
+                    case Format_Integer:
+                        hal.stream.write("integer");
+                        break;
+
+                    case Format_Decimal:
+                        hal.stream.write("float");
+                        break;
+
+                    case Format_Bool:
+                        hal.stream.write("bool");
+                        break;
+
+                    case Format_AxisMask:
+                    case Format_Bitfield:
+                        hal.stream.write("bitfield");
+                        break;
+
+                    case Format_XBitfield:
+                        hal.stream.write("xbitfield");
+                        break;
+
+                    case Format_RadioButtons:
+                        hal.stream.write("radiobuttons");
+                        break;
+
+                    case Format_IPv4:
+                        hal.stream.write("ipv4");
+                        break;
+
+                    case Format_String:
+                        hal.stream.write("string");
+                        break;
+
+                    case Format_Password:
+                        hal.stream.write("password");
+                        break;
+
+                    default:
+                        break;
+                }
+
+                hal.stream.write("\t");
+
+                if(setting->format)
+                    hal.stream.write(setting->format);
+                else if (setting->datatype == Format_AxisMask)
+                    hal.stream.write("axes");
+
+                hal.stream.write("\t");
+
+                const char *description = setting_get_description((setting_id_t)(setting->id + offset));
+                hal.stream.write(description ? description : "");
+                if(setting->flags.reboot_required)
+                    hal.stream.write(SETTINGS_HARD_RESET_REQUIRED + (description && *description != '\0' ? 0 : 4));
+
+                hal.stream.write("\t");
+
+                if(setting->min_value)
+                    hal.stream.write(setting->min_value);
+
+                hal.stream.write("\t");
+
+                if(setting->max_value)
+                    hal.stream.write(setting->max_value);
+
+                hal.stream.write("\t");
+                hal.stream.write(uitoa(setting->flags.reboot_required));
+                hal.stream.write("\t");
+                hal.stream.write(uitoa(setting->flags.allow_null));
+            }
+            break;
+    }
+
+    hal.stream.write(ASCII_EOL);
+}
+
+typedef struct {
+    settings_format_t format;
+    setting_group_t group;
+    uint_fast16_t offset;
+} report_args_t;
+
+FLASHMEM static bool print_sorted (const setting_detail_t *setting, uint_fast16_t offset, void *args)
+{
+    if(!(((report_args_t *)args)->group == setting->group && ((report_args_t *)args)->offset != offset))
+        report_settings_detail (((report_args_t *)args)->format, setting, offset);
+
+    return true;
+}
+
+FLASHMEM static bool print_unsorted (const setting_detail_t *setting, uint_fast16_t offset, void *args)
+{
+    if(!(((report_args_t *)args)->group == setting->group && ((report_args_t *)args)->offset != offset) &&
+       (setting->is_available == NULL ||setting->is_available(setting, 0)))
+        report_settings_detail(((report_args_t *)args)->format, setting, offset);
+
+    return true;
+}
+
+FLASHMEM static status_code_t print_settings_details (settings_format_t format, setting_group_t group)
+{
+    uint_fast16_t idx, n_settings = 0;
+    bool reported = group == Group_All;
+    const setting_detail_t *setting;
+    report_args_t args;
+    setting_detail_t **all_settings, **psetting;
+    setting_details_t *details = settings_get_details();
+
+    args.group = settings_normalize_group(group);
+    args.offset = group - args.group;
+    args.format = format;
+
+    do {
+        n_settings += details->n_settings;
+    } while((details = details->next));
+
+    if(format == SettingsFormat_Grbl)
+        hal.stream.write("\"$-Code\",\" Setting\",\" Units\",\" Setting Description\"" ASCII_EOL);
+    else if(format == SettingsFormat_grblHAL)
+        hal.stream.write("$-Code\tSetting\tUnits\tDatatype\tData format\tSetting Description\tMin\tMax" ASCII_EOL);
+
+    details = settings_get_details();
+
+    if((all_settings = psetting = calloc(n_settings, sizeof(setting_detail_t *)))) {
+
+        n_settings = 0;
+
+        do {
+            for(idx = 0; idx < details->n_settings; idx++) {
+                setting = &details->settings[idx];
+                if(!is_hidden(setting) && (group == Group_All || setting->group == args.group) && (setting->is_available == NULL || setting->is_available(setting, 0))) {
+                    *psetting++ = (setting_detail_t *)setting;
+                    n_settings++;
+                }
+            }
+        } while((details = details->next));
+
+        qsort(all_settings, n_settings, sizeof(setting_detail_t *), cmp_settings);
+
+        for(idx = 0; idx < n_settings; idx++) {
+            if(settings_iterator(all_settings[idx], print_sorted, &args))
+                reported = true;
+        }
+
+        free(all_settings);
+
+    } else do {
+        for(idx = 0; idx < details->n_settings; idx++) {
+
+            setting = &details->settings[idx];
+
+            if(!is_hidden(setting) && (group == Group_All || setting->group == args.group)) {
+                if(settings_iterator(setting, print_unsorted, &args))
+                    reported = true;
+            }
+        }
+    } while((details = details->next));
+
+    return reported ? Status_OK : Status_SettingDisabled;
+}
+
+FLASHMEM status_code_t report_settings_details (settings_format_t format, setting_id_t id, setting_group_t group)
+{
+    if(id != Setting_SettingsAll) {
+        status_code_t status = Status_OK;
+
+        const setting_detail_t *setting = setting_get_details(id, NULL);
+
+        if(setting && !is_hidden(setting))
+            report_settings_detail(format, setting, id - setting->id);
+        else
+            status = Status_SettingDisabled;
+
+        return status;
+    }
+
+    return print_settings_details(format, group);
+}
+
+FLASHMEM status_code_t report_setting_description (settings_format_t format, setting_id_t id)
+{
+    const setting_detail_t *setting;
+
+    if((setting = setting_get_details(id, NULL)) && !is_hidden(setting)) {
+
+        const char *description = setting_get_description(id);
+
+        if(format == SettingsFormat_MachineReadable) {
+            hal.stream.write("[SETTINGDESCR:");
+            hal.stream.write(uitoa(id));
+            hal.stream.write(vbar);
+        }
+    //    hal.stream.write(description == NULL ? (is_setting_available(setting_get_details(id, NULL)) ? "" : "N/A") : description); // TODO?
+        hal.stream.write(description ? description : (setting ? "" : "N/A"));
+        if(setting && setting->flags.reboot_required)
+            hal.stream.write(SETTINGS_HARD_RESET_REQUIRED + (description && *description != '\0' ? 0 : 4));
+
+        if(format == SettingsFormat_MachineReadable)
+            hal.stream.write("]" ASCII_EOL);
+    }
+
+    return Status_OK;
+}
+
+FLASHMEM static int cmp_alarms (const void *a, const void *b)
+{
+  return (*(alarm_detail_t **)(a))->id - (*(alarm_detail_t **)(b))->id;
+}
+
+FLASHMEM static void print_alarm (const alarm_detail_t *alarm, bool grbl_format)
+{
+    if(grbl_format) {
+        write_quoted(uitoa(alarm->id), ",");
+        write_quoted("N/A", ",");
+        write_quoted(alarm->description ? alarm->description : "", NULL);
+        hal.stream.write(ASCII_EOL);
+    } else {
+        hal.stream.write("[ALARMCODE:");
+        hal.stream.write(uitoa(alarm->id));
+        hal.stream.write(vbar);
+        hal.stream.write(vbar);
+        if(alarm->description)
+            hal.stream.write(alarm->description);
+        hal.stream.write("]" ASCII_EOL);
+    }
+}
+
+FLASHMEM status_code_t report_alarm_details (bool grbl_format)
+{
+    uint_fast16_t idx, n_alarms = 0;
+    alarm_details_t *details = grbl.on_get_alarms();
+    alarm_detail_t **all_alarms, **palarm;
+
+    if(grbl_format)
+        hal.stream.write("\"Alarm Code in v1.1+\",\" Alarm Message in v1.0-\",\" Alarm Description\"" ASCII_EOL);
+
+    do {
+        n_alarms += details->n_alarms;
+    } while((details = details->next));
+
+    details = grbl.on_get_alarms();
+
+    if((all_alarms = palarm = calloc(n_alarms, sizeof(alarm_detail_t *)))) {
+
+        do {
+            for(idx = 0; idx < details->n_alarms; idx++)
+                *palarm++ = (alarm_detail_t *)&(details->alarms[idx]);
+        } while((details = details->next));
+
+        qsort(all_alarms, n_alarms, sizeof(alarm_detail_t *), cmp_alarms);
+
+        for(idx = 0; idx < n_alarms; idx++)
+            print_alarm(all_alarms[idx], grbl_format);
+
+        free(all_alarms);
+
+    } else do {
+        for(idx = 0; idx < details->n_alarms; idx++)
+            print_alarm(&details->alarms[idx], grbl_format);
+    } while((details = details->next));
+
+    return Status_OK;
+}
+
+FLASHMEM static int cmp_errors (const void *a, const void *b)
+{
+  return (*(status_detail_t **)(a))->id - (*(status_detail_t **)(b))->id;
+}
+
+FLASHMEM static void print_error (const status_detail_t *error, bool grbl_format)
+{
+    if(grbl_format) {
+        write_quoted(uitoa(error->id), ",");
+        write_quoted("N/A", ",");
+        write_quoted(error->description ? error->description : "", NULL);
+        hal.stream.write(ASCII_EOL);
+    } else {
+        hal.stream.write("[ERRORCODE:");
+        hal.stream.write(uitoa(error->id));
+        hal.stream.write(vbar);
+        hal.stream.write(vbar);
+        if(error->description)
+            hal.stream.write(error->description);
+        hal.stream.write("]" ASCII_EOL);
+    }
+}
+
+FLASHMEM status_code_t report_error_details (bool grbl_format)
+{
+    uint_fast16_t idx, n_errors = 0;
+    error_details_t *details = grbl.on_get_errors();
+    status_detail_t **all_errors, **perror;
+
+    if(grbl_format)
+        hal.stream.write("\"Error Code in v1.1+\",\"Error Message in v1.0-\",\"Error Description\"" ASCII_EOL);
+
+    do {
+        n_errors += details->n_errors;
+    } while((details = details->next));
+
+    details = grbl.on_get_errors();
+
+    if((all_errors = perror = calloc(n_errors, sizeof(status_detail_t *)))) {
+
+        do {
+            for(idx = 0; idx < details->n_errors; idx++)
+                *perror++ = (status_detail_t *)&(details->errors[idx]);
+        } while((details = details->next));
+
+        qsort(all_errors, n_errors, sizeof(status_detail_t *), cmp_errors);
+
+        for(idx = 0; idx < n_errors; idx++)
+            print_error(all_errors[idx], grbl_format);
+
+        free(all_errors);
+
+    } else do {
+        for(idx = 0; idx < details->n_errors; idx++)
+            print_error(&details->errors[idx], grbl_format);
+    } while((details = details->next));
+
+    return Status_OK;
+}
+
+FLASHMEM static void print_setting_group (const setting_group_detail_t *group, char *prefix)
+{
+    if(settings_is_group_available(group->id)) {
+        if(!prefix) {
+            hal.stream.write("[SETTINGGROUP:");
+            hal.stream.write(uitoa(group->id));
+            hal.stream.write(vbar);
+            hal.stream.write(uitoa(group->parent));
+            hal.stream.write(vbar);
+            hal.stream.write(group->name);
+            hal.stream.write("]" ASCII_EOL);
+        } else if(group->id != Group_Root) {
+            hal.stream.write(prefix);
+            hal.stream.write(group->name);
+            hal.stream.write(ASCII_EOL);
+        }
+    }
+}
+
+FLASHMEM static int cmp_setting_group_id (const void *a, const void *b)
+{
+    return (*(setting_group_detail_t **)(a))->id - (*(setting_group_detail_t **)(b))->id;
+}
+
+FLASHMEM static int cmp_setting_group_name (const void *a, const void *b)
+{
+    return strcmp((*(setting_group_detail_t **)(a))->name, (*(setting_group_detail_t **)(b))->name);
+}
+
+FLASHMEM static bool group_is_dup (setting_group_detail_t **groups, setting_group_t group)
+{
+    while(*groups) {
+        if((*groups)->id == group)
+            return true;
+        groups++;
+    }
+
+    return false;
+}
+
+FLASHMEM status_code_t report_setting_group_details (bool by_id, char *prefix)
+{
+    uint_fast16_t idx, n_groups = 0;
+    setting_details_t *details = settings_get_details();
+    setting_group_detail_t **all_groups, **group;
+
+    do {
+        n_groups += details->n_groups;
+    } while((details = details->next));
+
+    details = settings_get_details();
+
+    if((all_groups = group = calloc(n_groups, sizeof(setting_group_detail_t *)))) {
+
+        uint_fast16_t idx;
+
+        do {
+            for(idx = 0; idx < details->n_groups; idx++) {
+                if(group_is_dup(all_groups, details->groups[idx].id))
+                    n_groups--;
+                else
+                    *group++ = (setting_group_detail_t *)&details->groups[idx];
+            }
+        } while((details = details->next));
+
+        qsort(all_groups, n_groups, sizeof(setting_group_detail_t *), by_id ? cmp_setting_group_id : cmp_setting_group_name);
+
+        for(idx = 0; idx < n_groups; idx++)
+            print_setting_group(all_groups[idx], prefix);
+
+        free(all_groups);
+
+    } else do {
+        for(idx = 0; idx < details->n_groups; idx++)
+            print_setting_group(&details->groups[idx], prefix);
+    } while((details = details->next));
+
+    return Status_OK;
+}
+
+FLASHMEM static char *add_limits (char *buf, limit_signals_t limits)
+{
+    buf = axis_signals_tostring(buf, limits.min);
+    *buf++ = ',';
+    buf = axis_signals_tostring(buf, limits.max);
+    *buf++ = ',';
+    buf = axis_signals_tostring(buf, limits.min2);
+    *buf++ = ',';
+    buf = axis_signals_tostring(buf, limits.max2);
+
+    return buf;
+}
+
+FLASHMEM status_code_t report_last_signals_event (sys_state_t state, char *args)
+{
+    char *append = &buf[12];
+
+    strcpy(buf, "[LASTEVENTS:");
+
+    append = control_signals_tostring(append, sys.last_event.control);
+    *append++ = ',';
+    append = add_limits(append, sys.last_event.limits);
+
+    hal.stream.write(buf);
+    hal.stream.write("]" ASCII_EOL);
+
+    return Status_OK;
+}
+
+FLASHMEM status_code_t report_current_limit_state (sys_state_t state, char *args)
+{
+    char *append = &buf[8];
+
+    strcpy(buf, "[LIMITS:");
+
+    append = add_limits(append, hal.limits.get_state());
+
+    hal.stream.write(buf);
+    hal.stream.write("]" ASCII_EOL);
+
+    return Status_OK;
+}
+
+FLASHMEM status_code_t report_current_home_signal_state (sys_state_t state, char *args)
+{
+    char *append = &buf[7];
+    home_signals_t home = hal.homing.get_state();
+
+    strcpy(buf, "[HOMES:");
+
+    append = axis_signals_tostring(append, home.a);
+    *append++ = ',';
+    append = axis_signals_tostring(append, home.b);
+
+    strcat(append, hal.home_cap.a.mask ? ":H" : ":L");
+
+    hal.stream.write(buf);
+    hal.stream.write("]" ASCII_EOL);
+
+    return Status_OK;
+}
+
+// Prints spindle data (encoder pulse and index count, angular position).
+FLASHMEM status_code_t report_spindle_data (sys_state_t state, char *args)
+{
+    spindle_t *spindle = gc_spindle_get(-1);
+
+    if(spindle->hal->get_data) {
+
+        float apos = spindle->hal->get_data(SpindleData_AngularPosition)->angular_position;
+        spindle_data_t *data = spindle->hal->get_data(SpindleData_Counters);
+
+        hal.stream.write("[SPINDLEENCODER:");
+        hal.stream.write(uitoa(data->index_count));
+        hal.stream.write(",");
+        hal.stream.write(uitoa(data->pulse_count));
+        hal.stream.write(",");
+        hal.stream.write(uitoa(data->error_count));
+        hal.stream.write(",");
+        hal.stream.write(ftoa(apos, 3));
+        hal.stream.write("]" ASCII_EOL);
+    }
+
+    return spindle->hal->get_data ? Status_OK : Status_InvalidStatement;
+}
+
+// Prints info about registered pins.
+
+typedef struct {
+    uint8_t pin;
+    pin_function_t function;
+    char port[14];
+    const char *description;
+    uint32_t sortkey;
+} pin_info_t;
+
+typedef struct {
+    uint32_t idx;
+    uint32_t n_pins;
+    pin_info_t *pins;
+} pin_data_t;
+
+FLASHMEM static void report_pin_info (pin_info_t *pin)
+{
+    hal.stream.write("[PIN:");
+    if(*pin->port)
+        hal.stream.write(pin->port);
+    hal.stream.write(uitoa(pin->pin));
+    hal.stream.write(",");
+    hal.stream.write(xbar_fn_to_pinname(pin->function));
+    if(pin->description) {
+        hal.stream.write(",");
+        hal.stream.write(pin->description);
+    }
+    hal.stream.write("]" ASCII_EOL);
+}
+
+FLASHMEM static pin_info_t *get_pin_info (xbar_t *pin, pin_info_t *info)
+{
+    info->function = pin->function;
+    info->pin = pin->pin;
+    info->description = pin->description;
+    info->sortkey = (pin->function << 8) | pin->id | (pin->group >= PinGroup_UART1 && pin->group <= PinGroup_UART4 ? pin->group << 16 : 0);
+    if(pin->port)
+        strcpy(info->port, (char *)pin->port);
+    else
+        *info->port = '\0';
+
+    return info;
+}
+
+FLASHMEM static void count_pins (xbar_t *pin, void *data)
+{
+    ((pin_data_t *)data)->n_pins++;
+}
+
+FLASHMEM static void get_pins (xbar_t *pin, void *data)
+{
+    get_pin_info(pin, &((pin_data_t *)data)->pins[((pin_data_t *)data)->idx++]);
+}
+
+FLASHMEM static int cmp_pins (const void *a, const void *b)
+{
+    return ((pin_info_t *)a)->sortkey - ((pin_info_t *)b)->sortkey;
+}
+
+FLASHMEM static void report_pin (xbar_t *pin, void *data)
+{
+    pin_info_t info;
+
+    report_pin_info(get_pin_info(pin, &info));
+}
+
+FLASHMEM status_code_t report_pins (sys_state_t state, char *args)
+{
+    pin_data_t pin_data = {0};
+
+    if(hal.enumerate_pins) {
+
+        hal.enumerate_pins(false, count_pins, (void *)&pin_data);
+
+        if((pin_data.pins = malloc(pin_data.n_pins * sizeof(pin_info_t)))) {
+
+            hal.enumerate_pins(false, get_pins, (void *)&pin_data);
+
+            qsort(pin_data.pins, pin_data.n_pins, sizeof(pin_info_t), cmp_pins);
+            for(pin_data.idx = 0; pin_data.idx < pin_data.n_pins; pin_data.idx++)
+                report_pin_info(&pin_data.pins[pin_data.idx]);
+
+            free(pin_data.pins);
+
+        } else
+            hal.enumerate_pins(false, report_pin, NULL);
+    }
+
+    return Status_OK;
+}
+
+typedef struct {
+    uint32_t idx;
+    const io_stream_properties_t *port;
+} port_data_t;
+
+typedef struct {
+    uint8_t instance;
+    uint32_t n_pins;
+    pin_info_t data[2];
+} port_pins_t;
+
+FLASHMEM static void get_uart_pins (xbar_t *pin, void *data)
+{
+    if(pin->group == PinGroup_UART + ((port_pins_t *)data)->instance)
+        get_pin_info(pin, &((port_pins_t *)data)->data[((port_pins_t *)data)->n_pins++]);
+}
+
+FLASHMEM static bool report_port_info (const io_stream_properties_t *port, void *data)
+{
+    if(!stream_is_uart(port->type))
+        return false;
+
+    port_pins_t pins = {0};
+    const io_stream_status_t *status;
+
+    hal.stream.write("[PORT:");
+    hal.stream.write(uitoa(port->instance));
+    hal.stream.write("|");
+    if(port->type == StreamType_Bluetooth) {
+        hal.stream.write("BT||");
+    } else {
+        uint32_t idx = 0;
+        pins.instance = port->instance;
+        if(hal.enumerate_pins)
+            hal.enumerate_pins(false, get_uart_pins, &pins);
+        if(pins.n_pins) {
+            hal.stream.write(pins.data[0].description);
+            for(idx = 0; idx < pins.n_pins; idx++) {
+                hal.stream.write("|");
+                if(*pins.data[idx].port)
+                    hal.stream.write(pins.data[idx].port);
+                hal.stream.write(uitoa(pins.data[idx].pin));
+                hal.stream.write(",");
+                hal.stream.write(xbar_fn_to_pinname(pins.data[idx].function));
+            }
+            for(; idx < 2; idx++)
+                hal.stream.write("|");
+        } else
+            hal.stream.write("UART||");
+    }
+
+    if(hal.stream.write_char && (status = stream_get_uart_status(port->instance))) {
+        hal.stream.write("|");
+        hal.stream.write(uitoa(status->baud_rate));
+        hal.stream.write(",");
+        hal.stream.write_char("87"[status->format.width]);
+        hal.stream.write(",");
+        hal.stream.write_char("NEOMS"[status->format.parity]);
+        hal.stream.write(",");
+        hal.stream.write(((const char * const[]){"1", "1.5", "2", "0.5"})[status->format.stopbits]);
+        if(status->flags.rts_handshake)
+            hal.stream.write(",P");
+        hal.stream.write("|");
+        hal.stream.write_char("FC"[status->flags.claimed]);
+    }
+
+    hal.stream.write("]" ASCII_EOL);
+
+    return false;
+}
+
+FLASHMEM bool get_ports (io_stream_properties_t const *port, void *data)
+{
+    if(stream_is_uart(port->type)) {
+        ((port_data_t *)data)[((port_data_t *)data)->idx].port = port;
+        ((port_data_t *)data)->idx++;
+    }
+
+    return false;
+}
+
+FLASHMEM bool count_ports (io_stream_properties_t const *port, void *data)
+{
+    if(stream_is_uart(port->type))
+        (*(uint32_t *)data)++;
+
+    return false;
+}
+
+FLASHMEM static int cmp_ports (const void *a, const void *b)
+{
+    return ((port_data_t *)a)->port->instance - ((port_data_t *)b)->port->instance;
+}
+
+FLASHMEM status_code_t report_uart_ports (sys_state_t state, char *args)
+{
+    uint32_t n_ports = 0;
+    port_data_t *port_data;
+
+    stream_enumerate_streams(count_ports, &n_ports);
+    if(n_ports) {
+        if((port_data = malloc(n_ports * sizeof(port_data_t)))) {
+
+            port_data->idx = 0;
+            stream_enumerate_streams(get_ports, port_data);
+
+            qsort(port_data, n_ports, sizeof(port_data_t), cmp_ports);
+            for(port_data->idx = 0; port_data->idx < n_ports; port_data->idx++)
+                report_port_info(port_data[port_data->idx].port, NULL);
+
+            free(port_data);
+        } else
+            stream_enumerate_streams(report_port_info, NULL);   
+    } 
+  
+    return Status_OK;
+}
+
+FLASHMEM static char *irq_mode (pin_irq_mode_t mode)
+{
+    switch(mode) {
+        case IRQ_Mode_Rising:
+            return "R";
+        case IRQ_Mode_Falling:
+            return "F";
+        case IRQ_Mode_RisingFalling:
+            return "T";
+        case IRQ_Mode_Change:
+            return "C";
+        case IRQ_Mode_Edges:
+            return "E";
+        case IRQ_Mode_High:
+            return "H";
+        case IRQ_Mode_Low:
+            return "L";
+        case IRQ_Mode_All:
+            return "A";
+        default:
+            break;
+    }
+
+    return "-";
+}
+
+FLASHMEM static char *pull_mode (pull_mode_t mode)
+{
+    switch(mode) {
+        case PullMode_Up:
+            return "U";
+        case PullMode_Down:
+            return "D";
+        case PullMode_UpDown:
+            return "B";
+        default:
+            break;
+    }
+
+    return "-";
+}
+
+FLASHMEM static bool print_aux_din (xbar_t *port, uint8_t pnum, void *data)
+{
+    hal.stream.write("[PINSTATE:DIN|");
+    hal.stream.write(port->description ? port->description : xbar_fn_to_pinname(port->function));
+    hal.stream.write("|");
+    hal.stream.write(uitoa(port->pin));
+    hal.stream.write("|");
+    hal.stream.write(port->mode.inverted ? "I" : "N");
+    hal.stream.write(pull_mode((pull_mode_t)port->mode.pull_mode));
+    hal.stream.write(irq_mode((pin_irq_mode_t)port->mode.irq_mode));
+    hal.stream.write(port->mode.debounce ? "D" : "-");
+    hal.stream.write("|");
+    hal.stream.write(port->cap.invert ? "I" : "-");
+    hal.stream.write(pull_mode((pull_mode_t)port->cap.pull_mode));
+    hal.stream.write(irq_mode((pin_irq_mode_t)port->cap.irq_mode));
+    hal.stream.write(port->cap.debounce ? "D" : "-");
+    hal.stream.write("|");
+    hal.stream.write(port->get_value ? uitoa((uint32_t)port->get_value(port)) : "?");
+    hal.stream.write("]" ASCII_EOL);
+
+    return false;
+}
+
+FLASHMEM static bool print_aux_dout (xbar_t *port, uint8_t pnum, void *data)
+{
+    hal.stream.write("[PINSTATE:DOUT|");
+    hal.stream.write(port->description ? port->description : xbar_fn_to_pinname(port->function));
+    hal.stream.write("|");
+    hal.stream.write(uitoa(port->pin));
+    hal.stream.write("|");
+    hal.stream.write(port->mode.inverted ? "I" : "N");
+//                hal.stream.write(port->mode.pwm ? "P" : (port->mode.servo_pwm ? "S" : "N"));
+//                hal.stream.write(port->mode.open_drain ? "O" : "-");
+    hal.stream.write("|");
+    hal.stream.write(port->cap.invert ? "I" : "-");
+//                hal.stream.write(port->cap.pwm ? "P" : (port->cap.servo_pwm ? "S" : "N"));
+//                hal.stream.write(port->cap.open_drain ? "O" : "-");
+    hal.stream.write("|");
+    hal.stream.write(port->get_value ? uitoa((uint32_t)port->get_value(port)) : "?");
+    hal.stream.write("]" ASCII_EOL);
+
+    return false;
+}
+
+FLASHMEM static bool print_aux_ain (xbar_t *port, uint8_t pnum, void *data)
+{
+    hal.stream.write("[PINSTATE:AIN|");
+    hal.stream.write(port->description);
+    hal.stream.write("|");
+    hal.stream.write(uitoa(port->pin));
+    hal.stream.write("|||");
+    hal.stream.write(port->get_value ? uitoa((uint32_t)port->get_value(port)) : "?");
+    hal.stream.write("|");
+    hal.stream.write(xbar_resolution_to_string(port->cap));
+    hal.stream.write("]" ASCII_EOL);
+
+    return false;
+}
+
+FLASHMEM static bool print_aux_aout (xbar_t *port, uint8_t pnum, void *data)
+{
+    hal.stream.write("[PINSTATE:AOUT|");
+    hal.stream.write(port->description);
+    hal.stream.write("|");
+    hal.stream.write(uitoa(port->pin));
+    hal.stream.write("|");
+    hal.stream.write(port->mode.pwm ? "P" : (port->mode.servo_pwm ? "S" : "N"));
+    hal.stream.write("|");
+    hal.stream.write(port->cap.pwm ? "P" : (port->cap.servo_pwm ? "S" : "N"));
+    hal.stream.write("|");
+    hal.stream.write(port->get_value ? (port->mode.pwm || port->mode.servo_pwm
+                                         ? ftoa(port->get_value(port), 2)
+                                         : uitoa((uint32_t)port->get_value(port)))
+                                     : "?");
+    if(!(port->mode.pwm || port->mode.servo_pwm)) {
+        hal.stream.write("|");
+        hal.stream.write(xbar_resolution_to_string(port->cap));
+    }
+    hal.stream.write("]" ASCII_EOL);
+
+    return false;
+}
+
+FLASHMEM status_code_t report_pin_states (sys_state_t state, char *args)
+{
+    ioports_enumerate(Port_Digital, Port_Input, (pin_cap_t){}, print_aux_din, NULL);
+    ioports_enumerate(Port_Digital, Port_Output, (pin_cap_t){}, print_aux_dout, NULL);
+    ioports_enumerate(Port_Analog, Port_Input, (pin_cap_t){}, print_aux_ain, NULL);
+    ioports_enumerate(Port_Analog, Port_Output, (pin_cap_t){}, print_aux_aout, NULL);
+
+    return Status_OK;
+}
+
+FLASHMEM static void print_uito2a (char *prefix, uint32_t v)
+{
+    hal.stream.write(prefix);
+    if(v < 10)
+        hal.stream.write("0");
+    hal.stream.write(uitoa(v));
+}
+
+FLASHMEM status_code_t report_time (void)
+{
+    bool ok = false;
+
+    if(hal.rtc.get_datetime) {
+        struct tm time;
+        if((ok = hal.rtc.get_datetime(&time))) {
+            hal.stream.write("[RTC:");
+            hal.stream.write(uitoa(time.tm_year + 1900));
+            print_uito2a("-", time.tm_mon + 1);
+            print_uito2a("-", time.tm_mday);
+            print_uito2a("T", time.tm_hour);
+            print_uito2a(":", time.tm_min);
+            print_uito2a(":", time.tm_sec);
+            hal.stream.write("]" ASCII_EOL);
+        }
+    }
+
+    return ok ? Status_OK : Status_InvalidStatement;
+}
+
+FLASHMEM static bool report_spindle (spindle_info_t *spindle, void *data)
+{
+    if(data) {
+        char *caps = buf;
+        hal.stream.write("[SPINDLE:");
+        hal.stream.write(uitoa(spindle->id));
+        hal.stream.write("|");
+        hal.stream.write(spindle->enabled ? uitoa(spindle->num) : "-");
+        hal.stream.write("|");
+        hal.stream.write(uitoa(spindle->hal->type));
+        *caps++ = '|';
+#if N_SYS_SPINDLE == 1
+        if(spindle->is_current)
+            *caps++ = '*';
+#endif
+        if(spindle->hal->cap.at_speed)
+            *caps++ = 'S';
+        if(spindle->hal->cap.direction)
+            *caps++ = 'D';
+        if(spindle->hal->cap.laser)
+            *caps++ = 'L';
+        if(spindle->hal->cap.laser && spindle->hal->pulse_on)
+            *caps++ = 'A';
+        if(spindle->hal->cap.pid)
+            *caps++ = 'P';
+        if(spindle->hal->cap.pwm_invert)
+            *caps++ = 'I';
+        if(spindle->hal->cap.pwm_linearization)
+            *caps++ = 'N';
+        if(spindle->hal->cap.rpm_range_locked)
+            *caps++ = 'R';
+        if(spindle->hal->cap.variable)
+            *caps++ = 'V';
+        if(spindle->hal->get_data)
+            *caps++ = 'E';
+        *caps++ = '|';
+        *caps = '\0';
+        hal.stream.write(buf);
+        hal.stream.write(spindle->name);
+        if(spindle->hal->rpm_max > 0.0f) {
+            hal.stream.write("|");
+            hal.stream.write(ftoa(spindle->hal->rpm_min, 1));
+            hal.stream.write(",");
+            hal.stream.write(ftoa(spindle->hal->rpm_max, 1));
+        }
+        hal.stream.write("]" ASCII_EOL);
+    } else {
+        hal.stream.write(uitoa(spindle->id));
+        hal.stream.write(" - ");
+        hal.stream.write(spindle->name);
+        if(spindle->enabled) {
+#if N_SPINDLE > 1
+            hal.stream.write(", enabled as spindle ");
+            hal.stream.write(uitoa(spindle->num));
+ #if N_SYS_SPINDLE == 1
+            if(spindle->is_current)
+                hal.stream.write(", active");
+ #endif
+#endif
+        }
+        hal.stream.write(ASCII_EOL);
+    }
+
+    return false;
+}
+
+#if N_SPINDLE > 1
+
+typedef struct {
+    uint32_t idx;
+    uint32_t n_spindles;
+    spindle_info_t *spindles;
+} spindle_rdata_t;
+
+FLASHMEM static bool get_spindles (spindle_info_t *spindle, void *data)
+{
+    memcpy(&((spindle_rdata_t *)data)->spindles[((spindle_rdata_t *)data)->idx++], spindle, sizeof(spindle_info_t));
+
+    return false;
+}
+
+FLASHMEM static int cmp_spindles (const void *a, const void *b)
+{
+    uint32_t key_a = ((spindle_info_t *)a)->num == -1 ? ((((spindle_info_t *)a)->hal->type + 1) << 8) | ((spindle_info_t *)a)->id : ((spindle_info_t *)a)->num,
+             key_b = ((spindle_info_t *)b)->num == -1 ? ((((spindle_info_t *)b)->hal->type + 1) << 8) | ((spindle_info_t *)b)->id : ((spindle_info_t *)b)->num;
+
+    return key_a - key_b;
+}
+
+#endif
+
+FLASHMEM status_code_t report_spindles (bool machine_readable)
+{
+#if N_SPINDLE > 1
+
+    spindle_rdata_t spindle_data = {0};
+
+    if((spindle_data.spindles = malloc(N_SPINDLE * sizeof(spindle_info_t)))) {
+
+        spindle_enumerate_spindles(get_spindles, &spindle_data);
+
+        spindle_data.n_spindles = spindle_data.idx;
+
+        qsort(spindle_data.spindles, spindle_data.n_spindles, sizeof(spindle_info_t), cmp_spindles);
+        for(spindle_data.idx = 0; spindle_data.idx < spindle_data.n_spindles; spindle_data.idx++)
+            report_spindle(&spindle_data.spindles[spindle_data.idx], (void *)machine_readable);
+
+        free(spindle_data.spindles);
+
+    } else
+
+#endif
+
+    spindle_enumerate_spindles(report_spindle, (void *)machine_readable);
+
+    if(!machine_readable && spindle_get_count() == 0)
+        hal.stream.write("No spindles registered." ASCII_EOL);
+
+    return Status_OK;
+}
+
+FLASHMEM status_code_t report_stepper_status (sys_state_t state, char *args)
+{
+    if(hal.stepper.status) {
+
+        char *append = buf;
+        stepper_status_t status = hal.stepper.status(false);
+
+        if(status.warning.state) {
+            hal.stream.write("[MOTORWARNING:");
+            append = axis_signals_tostring(buf, status.warning.details.a);
+            if(status.warning.details.b.bits) {
+                *append++ = ',';
+                axis_signals_tostring(append, status.warning.details.b);
+            }
+            hal.stream.write(buf);
+            hal.stream.write("]" ASCII_EOL);
+        }
+
+        if(status.fault.state) {
+            hal.stream.write("[MOTORFAULT:");
+            append = axis_signals_tostring(buf, status.fault.details.a);
+            if(status.fault.details.b.bits) {
+                *append++ = ',';
+                axis_signals_tostring(append, status.fault.details.b);
+            }
+            hal.stream.write(buf);
+            hal.stream.write("]" ASCII_EOL);
+        }
+    }
+
+    return hal.stepper.status ? Status_OK : Status_InvalidStatement;
+}
+
+FLASHMEM void report_pid_log (void)
+{
+#ifdef PID_LOG
+    uint_fast16_t idx = 0;
+
+    hal.stream.write("[PID:");
+    hal.stream.write(ftoa(sys.pid_log.setpoint, N_DECIMAL_PIDVALUE));
+    hal.stream.write(",");
+    hal.stream.write(ftoa(sys.pid_log.t_sample, N_DECIMAL_PIDVALUE));
+    hal.stream.write(",2|"); // 2 is number of values per sample!
+
+    if(sys.pid_log.idx) do {
+        hal.stream.write(ftoa(sys.pid_log.target[idx], N_DECIMAL_PIDVALUE));
+        hal.stream.write(",");
+        hal.stream.write(ftoa(sys.pid_log.actual[idx], N_DECIMAL_PIDVALUE));
+        idx++;
+        if(idx != sys.pid_log.idx)
+            hal.stream.write(",");
+    } while(idx != sys.pid_log.idx);
+
+    hal.stream.write("]" ASCII_EOL);
+    grbl.report.status_message(Status_OK);
+#else
+    grbl.report.status_message(Status_GcodeUnsupportedCommand);
+#endif
+}
+
+PROGMEM static const report_t report_fns = {
+    .init_message = report_init_message,
+    .help_message = report_help_message,
+    .status_message = report_status_message,
+    .feedback_message = report_feedback_message,
+    .alarm_message = report_alarm_message,
+    .setting = report_setting
+};
+
+FLASHMEM void report_init_fns (void)
+{
+    memcpy(&grbl.report, &report_fns, sizeof(report_t));
+
+    if(grbl.on_report_handlers_init)
+        grbl.on_report_handlers_init();
+}
+
+FLASHMEM report_tracking_flags_t report_get_rt_flags_all (void)
+{
+    report_tracking_flags_t report;
+
+    report.value = (uint32_t)Report_All;
+    report.tool_offset = hal.stream.report.flags.tool_offset;
+    report.m66result = sys.var5399 > -2;
+    report.probe_id = !!hal.probe.select;
+
+    return report;
+}
+
+/*! \brief Set(s) or clear all active realtime report addon flag(s) for the next report.
+
+Fires the \ref grbl.on_rt_reports_added event.
+\param report a #report_tracking_t enum containing the flag(s) to set or clear.
+ */
+ISR_CODE void report_add_realtime (report_tracking_t report)
+{
+    report_tracking_flags_t flags = { .value = (uint32_t)report };
+
+    switch(report) {
+
+        case Report_ClearAll:
+            hal.stream.report.flags.value = 0;
+            return;
+
+        case Report_MPGMode:
+            if(!hal.driver_cap.mpg_mode)
+                return;
+            break;
+
+        case Report_LatheXMode:
+            flags.wco = settings.status_report.work_coord_offset;
+            break;
+
+        case Report_ProbeId:
+            if(hal.probe.select == NULL)
+                return;
+            break;
+
+        case Report_CycleStart:
+            if(!settings.status_report.pin_state)
+                return;
+            return;
+
+        default:
+            break;
+    }
+
+    hal.stream.report.flags.value |= flags.value;
+
+    if(grbl.on_rt_reports_added && (flags.value || report == Report_ClearAll))
+        grbl.on_rt_reports_added(flags);
+}
