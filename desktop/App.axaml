@@ -9,12 +9,25 @@
     <Application.Styles>
         <FluentTheme />
         <materialIcons:MaterialIconStyles />
+        <!-- Global cursors -->
+        <Style Selector="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Slider">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
         <!-- Custom Styles -->
         <Style Selector="Button.NavButton">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
-            <Setter Property="Padding" Value="12,10"/>
-            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="CornerRadius" Value="4"/>
         </Style>
         <Style Selector="Button.NavButton:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#2A2A2A"/>
@@ -33,7 +46,7 @@
         
         <!-- Control Button Styles -->
         <Style Selector="Button.ControlButton">
-            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
         <Style Selector="Button.ControlButton.Success">
@@ -48,7 +61,7 @@
         
         <!-- Jog Button Styles -->
         <Style Selector="Button.JogButton">
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>

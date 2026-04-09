@@ -8,10 +8,11 @@
         x:Class="PortableCncApp.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         mc:Ignorable="d"
-        Width="1280"
-        Height="800"
+        Width="1024"
+        Height="700"
         MinWidth="1024"
         MinHeight="700"
+        CanResize="False"
         Title="Portable CNC Control"
         Background="{DynamicResource AppBackgroundBrush}">
 
@@ -24,10 +25,9 @@
             Background="{DynamicResource SidebarBackgroundBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="*,Auto">
 
         <!-- Tab Buttons -->
-        <StackPanel Orientation="Horizontal" Spacing="2" Margin="4,0">
+        <StackPanel Orientation="Horizontal" Spacing="2" Margin="8,0">
 
           <Button Classes="NavButton"
                   Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Dashboard}"
@@ -85,57 +85,12 @@
 
         </StackPanel>
 
-        <!-- Right: Connection Status + E-STOP -->
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0" VerticalAlignment="Center">
-
-          <!-- Connection Status -->
-          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-            <Ellipse Width="8" Height="8" Fill="{Binding ConnectionStatusBrush}"/>
-            <TextBlock Text="{Binding ConnectionStatusText}"
-                       FontSize="11"
-                       Foreground="{DynamicResource TextSecondaryBrush}"
-                       VerticalAlignment="Center"/>
-          </StackPanel>
-
-          <!-- Motion State Pill -->
-          <Border IsVisible="{Binding IsConnected}"
-                  Padding="10,4"
-                  CornerRadius="4"
-                  Background="{Binding MotionStateBrush}">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="MOTION:"
-                         FontSize="10"
-                         Foreground="#CCFFFFFF"
-                         VerticalAlignment="Center"/>
-              <TextBlock Text="{Binding MotionStateLabel}"
-                         FontSize="11"
-                         FontWeight="SemiBold"
-                         Foreground="White"
-                         VerticalAlignment="Center"/>
-            </StackPanel>
-          </Border>
-
-          <!-- E-STOP -->
-          <Button IsVisible="{Binding IsConnected}"
-                  Padding="16,6"
-                  Background="{DynamicResource DangerBrush}"
-                  Foreground="White"
-                  FontWeight="Bold"
-                  FontSize="13"
-                  CornerRadius="4"
-                  Command="{Binding EStopCommand}">
-            E-STOP
-          </Button>
-
-        </StackPanel>
-
-      </Grid>
     </Border>
 
     <!-- ══════════════════════════════════════════════════════════════════ -->
     <!-- PAGE CONTENT -->
     <!-- ══════════════════════════════════════════════════════════════════ -->
-    <Border Grid.Row="1" Padding="20">
+    <Border Grid.Row="1" Padding="8">
       <ContentControl Content="{Binding CurrentPage}"/>
     </Border>
 
@@ -144,52 +99,127 @@
     <!-- ══════════════════════════════════════════════════════════════════ -->
     <Border Grid.Row="2"
             Background="{DynamicResource HeaderBackgroundBrush}"
-            Padding="16,8"
+            Padding="8"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,1,0,0">
-      <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+
+        <!-- Machine Control Buttons -->
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <Button Classes="ControlButton Success"
+                  Command="{Binding StartCommand}"
+                  IsEnabled="{Binding CanStart}"
+                  Padding="12,4">
+            <TextBlock Text="START" FontWeight="SemiBold" FontSize="11"/>
+          </Button>
+
+          <Button Classes="ControlButton Warning"
+                  Command="{Binding PauseCommand}"
+                  IsEnabled="{Binding CanPause}"
+                  Padding="12,4">
+            <TextBlock Text="PAUSE" FontWeight="SemiBold" FontSize="11"/>
+          </Button>
+
+          <Button Classes="ControlButton Danger"
+                  Command="{Binding StopCommand}"
+                  IsEnabled="{Binding CanStop}"
+                  Padding="12,4">
+            <TextBlock Text="STOP" FontWeight="SemiBold" FontSize="11"/>
+          </Button>
+
+          <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="4,0"/>
+
+          <Button Classes="ControlButton"
+                  Command="{Binding HomeCommand}"
+                  IsEnabled="{Binding CanHome}"
+                  Padding="12,4">
+            <TextBlock Text="HOME ALL" FontWeight="SemiBold" FontSize="11"/>
+          </Button>
+
+          <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="4,0"/>
+
+          <Button Command="{Binding GoFilesCommand}"
+                  Padding="12,4">
+            <TextBlock Text="Load File" FontSize="11"/>
+          </Button>
+        </StackPanel>
 
         <!-- Status Message -->
-        <StackPanel Orientation="Horizontal" Spacing="8">
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0">
           <TextBlock Text="Status:"
-                     FontSize="12"
-                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+                     FontSize="11"
+                     Foreground="{DynamicResource TextSecondaryBrush}"
+                     VerticalAlignment="Center"/>
           <TextBlock Text="{Binding StatusMessage}"
-                     FontSize="12"
+                     FontSize="11"
                      FontWeight="SemiBold"
-                     Foreground="{DynamicResource TextPrimaryBrush}"/>
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     VerticalAlignment="Center"/>
         </StackPanel>
 
         <!-- Feed Rate -->
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="20,0"
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="8,0"
                     IsVisible="{Binding IsConnected}">
           <TextBlock Text="Feed:"
                      FontSize="11"
-                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+                     Foreground="{DynamicResource TextSecondaryBrush}"
+                     VerticalAlignment="Center"/>
           <TextBlock Text="{Binding FeedRate, StringFormat={}{0:F0}}"
                      FontSize="11"
-                     Foreground="{DynamicResource TextPrimaryBrush}"/>
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     VerticalAlignment="Center"/>
           <TextBlock Text="mm/min"
                      FontSize="11"
-                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+                     Foreground="{DynamicResource TextSecondaryBrush}"
+                     VerticalAlignment="Center"/>
         </StackPanel>
 
         <!-- Temperature -->
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="20,0"
+        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" Margin="8,0"
                     IsVisible="{Binding IsConnected}">
           <TextBlock Text="Temp:"
                      FontSize="11"
-                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+                     Foreground="{DynamicResource TextSecondaryBrush}"
+                     VerticalAlignment="Center"/>
           <TextBlock Text="{Binding Temperature, StringFormat={}{0:F1}°C}"
                      FontSize="11"
-                     Foreground="{DynamicResource TextPrimaryBrush}"/>
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     VerticalAlignment="Center"/>
         </StackPanel>
 
-        <!-- Current Page Indicator -->
-        <TextBlock Grid.Column="3"
-                   Text="{Binding CurrentPageName}"
-                   FontSize="11"
-                   Foreground="{DynamicResource TextTertiaryBrush}"/>
+        <!-- Motion State Pill -->
+        <Border Grid.Column="4"
+                IsVisible="{Binding IsConnected}"
+                Padding="8,4"
+                Margin="8,0,0,0"
+                CornerRadius="4"
+                Background="{Binding MotionStateBrush}"
+                VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="MOTION:"
+                       FontSize="11"
+                       Foreground="#CCFFFFFF"
+                       VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding MotionStateLabel}"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="White"
+                       VerticalAlignment="Center"/>
+          </StackPanel>
+        </Border>
+
+        <!-- E-STOP -->
+        <Button Grid.Column="5"
+                IsEnabled="{Binding IsConnected}"
+                Padding="12,4"
+                Background="{DynamicResource DangerBrush}"
+                Foreground="White"
+                FontWeight="Bold"
+                FontSize="11"
+                CornerRadius="4"
+                Command="{Binding EStopCommand}">
+          E-STOP
+        </Button>
 
       </Grid>
     </Border>

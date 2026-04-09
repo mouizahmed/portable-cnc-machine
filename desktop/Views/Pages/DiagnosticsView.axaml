@@ -9,28 +9,16 @@
 
   <Grid RowDefinitions="Auto,*">
     
-    <!-- Page Header -->
-    <StackPanel Margin="0,0,0,16">
-      <TextBlock Text="Diagnostics"
-                 FontSize="24"
-                 FontWeight="SemiBold"
-                 Foreground="{DynamicResource TextPrimaryBrush}"/>
-      <TextBlock Text="Advanced debugging console, sensor data, and system diagnostics"
-                 FontSize="13"
-                 Foreground="{DynamicResource TextSecondaryBrush}"
-                 Margin="0,4,0,0"/>
-    </StackPanel>
-
     <!-- Main Content -->
     <Grid Grid.Row="1" ColumnDefinitions="*,320">
       
       <!-- LEFT: Console -->
       <Border Background="{DynamicResource PanelBackgroundBrush}"
-              CornerRadius="8"
-              Padding="16"
-              Margin="0,0,8,0">
+              CornerRadius="4"
+              Padding="8"
+              Margin="0,0,16,0">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
             <TextBlock Text="COMMAND CONSOLE"
                        FontSize="11"
                        FontWeight="SemiBold"
@@ -43,7 +31,7 @@
           <Border DockPanel.Dock="Top"
                   Background="#0D0D0D"
                   CornerRadius="4"
-                  Padding="12"
+                  Padding="8"
                   Height="300"
                   BorderBrush="{DynamicResource BorderBrush}"
                   BorderThickness="1">
@@ -80,9 +68,9 @@
                      Watermark="Enter GRBL command (e.g., $$ for settings, ? for status)..."
                      FontFamily="Consolas"/>
             <Button Grid.Column="1" 
-                    Content="Send" 
-                    Command="{Binding SendCommandCommand}" 
-                    Padding="16,8"
+                    Content="Send"
+                    Command="{Binding SendCommandCommand}"
+                    Padding="12,4"
                     Margin="8,0,0,0"
                     Background="{DynamicResource AccentBrush}"/>
           </Grid>
@@ -94,12 +82,12 @@
                        Foreground="{DynamicResource TextTertiaryBrush}"
                        Margin="0,0,0,8"/>
             <WrapPanel>
-              <Button Content="? Status" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
-              <Button Content="$$ Settings" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
-              <Button Content="$# Parameters" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
-              <Button Content="$G Parser State" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
-              <Button Content="$I Build Info" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
-              <Button Content="$N Startup Blocks" Margin="0,0,8,8" Padding="10,6" FontSize="11"/>
+              <Button Content="? Status" Margin="0,0,4,4" Padding="12,4" FontSize="11"/>
+              <Button Content="$$ Settings" Margin="0,0,4,4" Padding="12,4" FontSize="11"/>
+              <Button Content="$# Parameters" Margin="0,0,4,4" Padding="12,4" FontSize="11"/>
+              <Button Content="$G Parser State" Margin="0,0,4,4" Padding="12,4" FontSize="11"/>
+              <Button Content="$I Build Info" Margin="0,0,4,4" Padding="12,4" FontSize="11"/>
+              <Button Content="$N Startup Blocks" Margin="0,0,4,4" Padding="12,4" FontSize="11"/>
             </WrapPanel>
           </StackPanel>
           
@@ -107,49 +95,49 @@
       </Border>
 
       <!-- RIGHT: Sensor Data & Status -->
-      <StackPanel Grid.Column="1" Spacing="16">
+      <StackPanel Grid.Column="1" Spacing="8">
         
         <!-- Recovery Actions -->
         <Border Background="{DynamicResource PanelBackgroundBrush}"
-                CornerRadius="8"
-                Padding="16">
+                CornerRadius="4"
+                Padding="8">
           <StackPanel>
             <TextBlock Text="RECOVERY ACTIONS"
                        FontSize="11"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextTertiaryBrush}"
                        LetterSpacing="1"
-                       Margin="0,0,0,12"/>
+                       Margin="0,0,0,8"/>
             
             <StackPanel Spacing="8">
               <Button Content="Reset Fault"
                       Command="{Binding ResetFaultCommand}"
                       HorizontalAlignment="Stretch"
-                      Padding="12,10"/>
+                      Padding="12,4"/>
               <Button Content="Unlock (Clear E-Stop)"
                       Command="{Binding UnlockCommand}"
                       HorizontalAlignment="Stretch"
-                      Padding="12,10"
+                      Padding="12,4"
                       Background="{DynamicResource DangerBrush}"/>
               <Button Content="Refresh Sensors"
                       Command="{Binding RefreshSensorsCommand}"
                       HorizontalAlignment="Stretch"
-                      Padding="12,10"/>
+                      Padding="12,4"/>
             </StackPanel>
           </StackPanel>
         </Border>
 
         <!-- Sensor Readings -->
         <Border Background="{DynamicResource PanelBackgroundBrush}"
-                CornerRadius="8"
-                Padding="16">
+                CornerRadius="4"
+                Padding="8">
           <StackPanel>
             <TextBlock Text="SENSOR READINGS"
                        FontSize="11"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextTertiaryBrush}"
                        LetterSpacing="1"
-                       Margin="0,0,0,12"/>
+                       Margin="0,0,0,8"/>
             
             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
               <TextBlock Text="CPU Temperature" Foreground="{DynamicResource TextSecondaryBrush}"/>
@@ -177,15 +165,15 @@
 
         <!-- Driver Status -->
         <Border Background="{DynamicResource PanelBackgroundBrush}"
-                CornerRadius="8"
-                Padding="16">
+                CornerRadius="4"
+                Padding="8">
           <StackPanel>
             <TextBlock Text="DRIVER STATUS"
                        FontSize="11"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextTertiaryBrush}"
                        LetterSpacing="1"
-                       Margin="0,0,0,12"/>
+                       Margin="0,0,0,8"/>
             
             <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
               <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
@@ -210,15 +198,15 @@
 
         <!-- Limit Switches -->
         <Border Background="{DynamicResource PanelBackgroundBrush}"
-                CornerRadius="8"
-                Padding="16">
+                CornerRadius="4"
+                Padding="8">
           <StackPanel>
             <TextBlock Text="LIMIT SWITCHES"
                        FontSize="11"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextTertiaryBrush}"
                        LetterSpacing="1"
-                       Margin="0,0,0,12"/>
+                       Margin="0,0,0,8"/>
             
             <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto">
               <TextBlock Text="" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}"/>

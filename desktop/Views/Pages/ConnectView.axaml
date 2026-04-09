@@ -9,27 +9,15 @@
 
   <Grid RowDefinitions="Auto,*">
     
-    <!-- Page Header -->
-    <StackPanel Margin="0,0,0,16">
-      <TextBlock Text="Connection"
-                 FontSize="24"
-                 FontWeight="SemiBold"
-                 Foreground="{DynamicResource TextPrimaryBrush}"/>
-      <TextBlock Text="Connect to the Pico 2W controller via USB CDC Serial"
-                 FontSize="13"
-                 Foreground="{DynamicResource TextSecondaryBrush}"
-                 Margin="0,4,0,0"/>
-    </StackPanel>
-
     <!-- Main Content -->
     <Grid Grid.Row="1" ColumnDefinitions="*,*">
       
       <!-- LEFT: Connection Settings -->
       <Border Background="{DynamicResource PanelBackgroundBrush}"
-              CornerRadius="8"
-              Padding="20"
-              Margin="0,0,8,0">
-        <StackPanel Spacing="20">
+              CornerRadius="4"
+              Padding="8"
+              Margin="0,0,16,0">
+        <StackPanel Spacing="8">
           
           <TextBlock Text="USB SERIAL CONNECTION"
                      FontSize="11"
@@ -53,20 +41,20 @@
           </StackPanel>
 
           <!-- Connect/Disconnect Buttons -->
-          <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,8,0,0">
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
             <Button Content="Connect"
                     Command="{Binding ConnectCommand}"
-                    Padding="24,12"
+                    Padding="12,4"
                     Background="{DynamicResource AccentBrush}"
                     Foreground="White"
                     FontWeight="SemiBold"
                     IsEnabled="{Binding !IsConnecting}"/>
             <Button Content="Disconnect"
                     Command="{Binding DisconnectCommand}"
-                    Padding="24,12"/>
+                    Padding="12,4"/>
             <Button Content="Test"
                     Command="{Binding TestConnectionCommand}"
-                    Padding="16,12"
+                    Padding="12,4"
                     ToolTip.Tip="Send status query to verify connection"/>
           </StackPanel>
 
@@ -85,10 +73,10 @@
       <!-- RIGHT: Device Info -->
       <Border Grid.Column="1"
               Background="{DynamicResource PanelBackgroundBrush}"
-              CornerRadius="8"
-              Padding="20"
-              Margin="8,0,0,0">
-        <StackPanel Spacing="20">
+              CornerRadius="4"
+              Padding="8"
+              Margin="0">
+        <StackPanel Spacing="8">
           
           <TextBlock Text="DEVICE STATUS"
                      FontSize="11"
@@ -97,7 +85,7 @@
                      LetterSpacing="1"/>
 
           <!-- Connection Status -->
-          <Border Background="#2A2A2A" CornerRadius="6" Padding="16">
+          <Border Background="#2A2A2A" CornerRadius="4" Padding="8">
             <StackPanel Spacing="12">
               <TextBlock Text="Connection Status" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"/>
               
@@ -108,7 +96,7 @@
                   <TextBlock Text="Safety Supervisor" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}"/>
                 </StackPanel>
                 <Border Grid.Column="1"
-                        Padding="10,4"
+                        Padding="8,4"
                         CornerRadius="4"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
@@ -125,7 +113,7 @@
                   <TextBlock Text="Motion Controller" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}"/>
                 </StackPanel>
                 <Border Grid.Row="1" Grid.Column="1"
-                        Padding="10,4"
+                        Padding="8,4"
                         CornerRadius="4"
                         Margin="0,12,0,0"
                         HorizontalAlignment="Center"
@@ -141,7 +129,7 @@
           </Border>
 
           <!-- Firmware Versions -->
-          <Border Background="#2A2A2A" CornerRadius="6" Padding="16">
+          <Border Background="#2A2A2A" CornerRadius="4" Padding="8">
             <StackPanel Spacing="8">
               <TextBlock Text="Firmware Versions" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"/>
               

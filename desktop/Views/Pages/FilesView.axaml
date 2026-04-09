@@ -9,33 +9,20 @@
 
   <Grid RowDefinitions="Auto,*">
     
-    <!-- Page Header -->
-    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
-      <StackPanel>
-        <TextBlock Text="G-Code Files"
-                   FontSize="24"
-                   FontWeight="SemiBold"
-                   Foreground="{DynamicResource TextPrimaryBrush}"/>
-        <TextBlock Text="Browse, preview, and load G-code files for machining"
-                   FontSize="13"
-                   Foreground="{DynamicResource TextSecondaryBrush}"
-                   Margin="0,4,0,0"/>
-      </StackPanel>
-      
-      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-        <Button Content="Browse..." Command="{Binding BrowseCommand}" Padding="12,8"/>
-        <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="12,8"/>
-      </StackPanel>
-    </Grid>
+    <!-- Browse/Refresh -->
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8" HorizontalAlignment="Right">
+      <Button Content="Browse..." Command="{Binding BrowseCommand}" Padding="12,4"/>
+      <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="12,4"/>
+    </StackPanel>
 
     <!-- Main Content -->
     <Grid Grid.Row="1" ColumnDefinitions="*,*">
       
       <!-- LEFT: File List -->
       <Border Background="{DynamicResource PanelBackgroundBrush}"
-              CornerRadius="8"
-              Padding="16"
-              Margin="0,0,8,0">
+              CornerRadius="4"
+              Padding="8"
+              Margin="0,0,16,0">
         <DockPanel>
           <TextBlock DockPanel.Dock="Top"
                      Text="AVAILABLE FILES"
@@ -43,18 +30,18 @@
                      FontWeight="SemiBold"
                      Foreground="{DynamicResource TextTertiaryBrush}"
                      LetterSpacing="1"
-                     Margin="0,0,0,12"/>
+                     Margin="0,0,0,8"/>
           
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
             <Button Content="Load Selected"
                     Command="{Binding LoadSelectedCommand}"
                     IsEnabled="{Binding HasSelectedFile}"
-                    Padding="16,8"
+                    Padding="12,4"
                     Background="{DynamicResource AccentBrush}"/>
             <Button Content="Remove"
                     Command="{Binding RemoveCommand}"
                     IsEnabled="{Binding HasSelectedFile}"
-                    Padding="16,8"
+                    Padding="12,4"
                     Background="{DynamicResource DangerBrush}"/>
           </StackPanel>
           
@@ -64,11 +51,11 @@
                    BorderThickness="0">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:GCodeFileInfo">
-                <Border Padding="12,10" Margin="0,2">
+                <Border Padding="8,4" Margin="0,2">
                   <Grid ColumnDefinitions="*,Auto,Auto">
                     <StackPanel>
                       <TextBlock Text="{Binding Name}"
-                                 FontSize="14"
+                                 FontSize="13"
                                  FontWeight="SemiBold"
                                  Foreground="{DynamicResource TextPrimaryBrush}"/>
                       <TextBlock Text="{Binding Modified}"
@@ -77,7 +64,7 @@
                     </StackPanel>
                     <TextBlock Grid.Column="1"
                                Text="{Binding Size}"
-                               FontSize="12"
+                               FontSize="11"
                                Foreground="{DynamicResource TextSecondaryBrush}"
                                VerticalAlignment="Center"
                                Margin="16,0"/>
@@ -92,9 +79,9 @@
       <!-- RIGHT: File Preview -->
       <Border Grid.Column="1"
               Background="{DynamicResource PanelBackgroundBrush}"
-              CornerRadius="8"
-              Padding="16"
-              Margin="8,0,0,0">
+              CornerRadius="4"
+              Padding="8"
+              Margin="0">
         <DockPanel>
           <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
             <StackPanel>
@@ -120,13 +107,13 @@
           
           <Border Background="#1A1A1A"
                   CornerRadius="4"
-                  Padding="12"
+                  Padding="8"
                   BorderBrush="{DynamicResource BorderBrush}"
                   BorderThickness="1">
             <ScrollViewer>
               <TextBlock Text="{Binding FilePreview}"
                          FontFamily="Consolas"
-                         FontSize="12"
+                         FontSize="11"
                          Foreground="{DynamicResource TextSecondaryBrush}"
                          TextWrapping="NoWrap"/>
             </ScrollViewer>

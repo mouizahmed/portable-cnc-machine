@@ -9,28 +9,16 @@
 
   <Grid RowDefinitions="Auto,*">
     
-    <!-- Page Header -->
-    <StackPanel Margin="0,0,0,16">
-      <TextBlock Text="Jog Control"
-                 FontSize="24"
-                 FontWeight="SemiBold"
-                 Foreground="{DynamicResource TextPrimaryBrush}"/>
-      <TextBlock Text="Manually move the machine axes and set work offsets"
-                 FontSize="13"
-                 Foreground="{DynamicResource TextSecondaryBrush}"
-                 Margin="0,4,0,0"/>
-    </StackPanel>
-
     <!-- Main Content -->
     <Grid Grid.Row="1" ColumnDefinitions="*,300">
       
       <!-- LEFT: Jog Controls -->
       <Border Background="{DynamicResource PanelBackgroundBrush}"
-              CornerRadius="8"
-              Padding="20"
+              CornerRadius="4"
+              Padding="8"
               Margin="0,0,16,0">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-          <StackPanel Spacing="20">
+          <StackPanel Spacing="8">
           
             <!-- Jog Settings Section -->
             <StackPanel>
@@ -39,27 +27,27 @@
                          FontWeight="SemiBold"
                          Foreground="{DynamicResource TextTertiaryBrush}"
                          LetterSpacing="1"
-                         Margin="0,0,0,12"/>
+                         Margin="0,0,0,8"/>
               
               <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" HorizontalAlignment="Left">
                 <!-- Step Size -->
-                <StackPanel Margin="0,0,24,12">
-                  <TextBlock Text="Step Size (mm)" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
+                <StackPanel Margin="0,0,0,8">
+                  <TextBlock Text="Step Size (mm)" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
                   <StackPanel Orientation="Horizontal" Spacing="6">
-                    <Button Content="0.01" Command="{Binding SetStepCommand}" CommandParameter="0.01" Padding="8,6" Classes="StepButton" MinWidth="45"/>
-                    <Button Content="0.1" Command="{Binding SetStepCommand}" CommandParameter="0.1" Padding="8,6" Classes="StepButton" MinWidth="45"/>
-                    <Button Content="1" Command="{Binding SetStepCommand}" CommandParameter="1" Padding="8,6" Classes="StepButton" MinWidth="45"/>
-                    <Button Content="10" Command="{Binding SetStepCommand}" CommandParameter="10" Padding="8,6" Classes="StepButton" MinWidth="45"/>
-                    <Button Content="50" Command="{Binding SetStepCommand}" CommandParameter="50" Padding="8,6" Classes="StepButton" MinWidth="45"/>
+                    <Button Content="0.01" Command="{Binding SetStepCommand}" CommandParameter="0.01" Padding="12,4" Classes="StepButton" MinWidth="45"/>
+                    <Button Content="0.1" Command="{Binding SetStepCommand}" CommandParameter="0.1" Padding="12,4" Classes="StepButton" MinWidth="45"/>
+                    <Button Content="1" Command="{Binding SetStepCommand}" CommandParameter="1" Padding="12,4" Classes="StepButton" MinWidth="45"/>
+                    <Button Content="10" Command="{Binding SetStepCommand}" CommandParameter="10" Padding="12,4" Classes="StepButton" MinWidth="45"/>
+                    <Button Content="50" Command="{Binding SetStepCommand}" CommandParameter="50" Padding="12,4" Classes="StepButton" MinWidth="45"/>
                   </StackPanel>
                 </StackPanel>
                 
                 <!-- Current Step Display -->
-                <StackPanel Grid.Column="1" Margin="0,0,0,12">
-                  <TextBlock Text="Current Step" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
-                  <Border Background="#2A2A2A" CornerRadius="4" Padding="16,8" MinWidth="100">
+                <StackPanel Grid.Column="1" Margin="0,0,0,8">
+                  <TextBlock Text="Current Step" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
+                  <Border Background="#2A2A2A" CornerRadius="4" Padding="8,4" MinWidth="100">
                     <TextBlock Text="{Binding JogStep, StringFormat={}{0} mm}"
-                               FontSize="18"
+                               FontSize="16"
                                FontWeight="SemiBold"
                                FontFamily="Consolas"
                                Foreground="{DynamicResource TextPrimaryBrush}"
@@ -69,7 +57,7 @@
                 
                 <!-- Feed Rate -->
                 <StackPanel Grid.Row="1" Margin="0,0,24,0">
-                  <TextBlock Text="Jog Feed Rate (mm/min)" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
+                  <TextBlock Text="Jog Feed Rate (mm/min)" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
                   <NumericUpDown Value="{Binding JogFeedRate}" 
                                  Minimum="1" 
                                  Maximum="5000" 
@@ -97,7 +85,7 @@
                          FontWeight="SemiBold"
                          Foreground="{DynamicResource TextTertiaryBrush}"
                          LetterSpacing="1"
-                         Margin="0,0,0,16"/>
+                         Margin="0,0,0,8"/>
               
               <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="40">
                 
@@ -218,14 +206,14 @@
                            LetterSpacing="1"
                            Margin="0,0,0,10"/>
                 <WrapPanel>
-                  <Button Content="Home All" Command="{Binding HomeAllCommand}" Padding="10,8" Margin="0,0,6,6"/>
-                  <Button Command="{Binding HomeXCommand}" Padding="10,8" Margin="0,0,6,6" Background="#E06666" Foreground="White" MinWidth="36" HorizontalContentAlignment="Center">
+                  <Button Content="Home All" Command="{Binding HomeAllCommand}" Padding="12,4" Margin="0,0,6,6"/>
+                  <Button Command="{Binding HomeXCommand}" Padding="12,4" Margin="0,0,6,6" Background="#E06666" Foreground="White" MinWidth="36" HorizontalContentAlignment="Center">
                     <TextBlock Text="X" FontWeight="SemiBold"/>
                   </Button>
-                  <Button Command="{Binding HomeYCommand}" Padding="10,8" Margin="0,0,6,6" Background="#93C47D" Foreground="White" MinWidth="36" HorizontalContentAlignment="Center">
+                  <Button Command="{Binding HomeYCommand}" Padding="12,4" Margin="0,0,6,6" Background="#93C47D" Foreground="White" MinWidth="36" HorizontalContentAlignment="Center">
                     <TextBlock Text="Y" FontWeight="SemiBold"/>
                   </Button>
-                  <Button Command="{Binding HomeZCommand}" Padding="10,8" Margin="0,0,6,6" Background="#6FA8DC" Foreground="White" MinWidth="36" HorizontalContentAlignment="Center">
+                  <Button Command="{Binding HomeZCommand}" Padding="12,4" Margin="0,0,6,6" Background="#6FA8DC" Foreground="White" MinWidth="36" HorizontalContentAlignment="Center">
                     <TextBlock Text="Z" FontWeight="SemiBold"/>
                   </Button>
                 </WrapPanel>
@@ -240,10 +228,10 @@
                            LetterSpacing="1"
                            Margin="0,0,0,10"/>
                 <WrapPanel>
-                  <Button Content="Zero All" Command="{Binding ZeroAllCommand}" Padding="10,8" Margin="0,0,6,6"/>
-                  <Button Content="X=0" Command="{Binding ZeroXCommand}" Padding="10,8" Margin="0,0,6,6"/>
-                  <Button Content="Y=0" Command="{Binding ZeroYCommand}" Padding="10,8" Margin="0,0,6,6"/>
-                  <Button Content="Z=0" Command="{Binding ZeroZCommand}" Padding="10,8" Margin="0,0,6,6"/>
+                  <Button Content="Zero All" Command="{Binding ZeroAllCommand}" Padding="12,4" Margin="0,0,6,6"/>
+                  <Button Content="X=0" Command="{Binding ZeroXCommand}" Padding="12,4" Margin="0,0,6,6"/>
+                  <Button Content="Y=0" Command="{Binding ZeroYCommand}" Padding="12,4" Margin="0,0,6,6"/>
+                  <Button Content="Z=0" Command="{Binding ZeroZCommand}" Padding="12,4" Margin="0,0,6,6"/>
                 </WrapPanel>
               </StackPanel>
             </Grid>
@@ -253,24 +241,24 @@
       </Border>
 
       <!-- RIGHT: Position Display -->
-      <StackPanel Grid.Column="1" Spacing="16">
+      <StackPanel Grid.Column="1" Spacing="8">
         
         <!-- Large DRO -->
         <Border Background="{DynamicResource PanelBackgroundBrush}"
-                CornerRadius="8"
-                Padding="16">
+                CornerRadius="4"
+                Padding="8">
           <StackPanel>
             <TextBlock Text="CURRENT POSITION"
                        FontSize="11"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextTertiaryBrush}"
                        LetterSpacing="1"
-                       Margin="0,0,0,16"/>
+                       Margin="0,0,0,8"/>
             
             <!-- X -->
-            <Border Background="#2A2A2A" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+            <Border Background="#2A2A2A" CornerRadius="4" Padding="12" Margin="0,0,0,8">
               <Grid ColumnDefinitions="40,*">
-                <Border Background="#E06666" CornerRadius="4" Padding="6,4" VerticalAlignment="Center">
+                <Border Background="#E06666" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
                   <TextBlock Text="X" FontWeight="Bold" FontSize="16" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <TextBlock Grid.Column="1" 
@@ -285,9 +273,9 @@
             </Border>
             
             <!-- Y -->
-            <Border Background="#2A2A2A" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+            <Border Background="#2A2A2A" CornerRadius="4" Padding="12" Margin="0,0,0,8">
               <Grid ColumnDefinitions="40,*">
-                <Border Background="#93C47D" CornerRadius="4" Padding="6,4" VerticalAlignment="Center">
+                <Border Background="#93C47D" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
                   <TextBlock Text="Y" FontWeight="Bold" FontSize="16" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <TextBlock Grid.Column="1" 
@@ -302,9 +290,9 @@
             </Border>
             
             <!-- Z -->
-            <Border Background="#2A2A2A" CornerRadius="6" Padding="12">
+            <Border Background="#2A2A2A" CornerRadius="4" Padding="12">
               <Grid ColumnDefinitions="40,*">
-                <Border Background="#6FA8DC" CornerRadius="4" Padding="6,4" VerticalAlignment="Center">
+                <Border Background="#6FA8DC" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
                   <TextBlock Text="Z" FontWeight="Bold" FontSize="16" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <TextBlock Grid.Column="1" 
@@ -322,39 +310,39 @@
 
         <!-- Machine State Info -->
         <Border Background="{DynamicResource PanelBackgroundBrush}"
-                CornerRadius="8"
-                Padding="16">
+                CornerRadius="4"
+                Padding="8">
           <StackPanel>
             <TextBlock Text="MACHINE STATUS"
                        FontSize="11"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextTertiaryBrush}"
                        LetterSpacing="1"
-                       Margin="0,0,0,12"/>
+                       Margin="0,0,0,8"/>
             
             <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
               <StackPanel Margin="0,0,8,8">
                 <TextBlock Text="Motion State" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                 <TextBlock Text="{Binding MainVm.MotionStateLabel}"
-                           FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                           FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
               </StackPanel>
               
               <StackPanel Grid.Column="1" Margin="8,0,0,8">
                 <TextBlock Text="Safety State" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                 <TextBlock Text="{Binding MainVm.SafetyStateLabel}"
-                           FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                           FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
               </StackPanel>
               
               <StackPanel Grid.Row="1" Margin="0,0,8,0">
                 <TextBlock Text="Limits" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                 <TextBlock Text="{Binding MainVm.LimitsStatusText}"
-                           FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                           FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
               </StackPanel>
               
               <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,0,0,0">
                 <TextBlock Text="Spindle" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                 <TextBlock Text="{Binding MainVm.SpindleStatusText}"
-                           FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                           FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
               </StackPanel>
             </Grid>
           </StackPanel>
