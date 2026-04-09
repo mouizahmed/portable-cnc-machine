@@ -2,7 +2,7 @@
 
 #include <array>
 
-#include "app/jog/jog_state_machine.h"
+#include "services/portable_cnc_controller.h"
 #include "ui/components/app_frame.h"
 #include "ui/helpers/ui_helpers.h"
 #include "ui/screens/screen.h"
@@ -15,7 +15,7 @@ public:
         JogAction action;
     };
 
-    JogScreen(Ili9488& display, AppFrame& frame, JogStateMachine& model);
+    JogScreen(Ili9488& display, AppFrame& frame, PortableCncController& controller);
 
     NavTab tab() const override;
     void render(const StatusSnapshot& status) override;
@@ -50,7 +50,7 @@ private:
     Ili9488& display_;
     UiPainter painter_;
     AppFrame& frame_;
-    JogStateMachine& model_;
+    PortableCncController& controller_;
     ButtonGroup pressed_group_ = ButtonGroup::None;
     uint8_t pressed_index_ = 0;
 

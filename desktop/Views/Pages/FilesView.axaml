@@ -97,11 +97,21 @@
               Margin="8,0,0,0">
         <DockPanel>
           <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
-            <TextBlock Text="FILE PREVIEW"
-                       FontSize="11"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextTertiaryBrush}"
-                       LetterSpacing="1"/>
+            <StackPanel>
+              <TextBlock Text="FILE PREVIEW"
+                         FontSize="11"
+                         FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextTertiaryBrush}"
+                         LetterSpacing="1"/>
+              <TextBlock Text="{Binding ToolpathStatusMessage}"
+                         FontSize="11"
+                         Margin="0,6,0,0"
+                         Foreground="{DynamicResource TextSecondaryBrush}"/>
+              <TextBlock Text="{Binding ToolpathWarningSummary}"
+                         FontSize="11"
+                         Margin="0,4,0,0"
+                         Foreground="{DynamicResource TextTertiaryBrush}"/>
+            </StackPanel>
             <TextBlock Grid.Column="1"
                        Text="{Binding PreviewLineCount, StringFormat={}{0} lines}"
                        FontSize="11"

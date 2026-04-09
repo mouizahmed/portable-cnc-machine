@@ -9,11 +9,13 @@
 #include "calibration/calibration_storage.h"
 #include "calibration/touch_calibration_app.h"
 #include "drivers/sd_spi_card.h"
+#include "services/portable_cnc_controller.h"
 #include "ui/components/app_frame.h"
 #include "ui/screens/files_screen.h"
 #include "ui/screens/jog_screen.h"
 #include "ui/screens/main_menu_screen.h"
 #include "ui/screens/screen.h"
+#include "web/web_server.h"
 
 class PortableCncApp {
 public:
@@ -30,12 +32,14 @@ private:
     JogStateMachine jog_state_machine_;
     JobStateMachine job_state_machine_;
     StorageService storage_service_;
+    PortableCncController controller_;
     StatusProvider status_provider_;
     TouchCalibrationApp calibration_app_;
     AppFrame frame_;
     MainMenuScreen main_menu_screen_;
     JogScreen jog_screen_;
     FilesScreen files_screen_;
+    WebServer web_server_;
 
     void run_startup_sequence();
     bool poll_event(UiEvent& event);

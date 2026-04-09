@@ -1,4 +1,6 @@
-# Portable CNC Machine — Pico 2W Wiring Reference
+# Portable CNC Machine - Pico 2W Wiring Reference
+
+This document reflects the current `pico2W` firmware wiring assumptions.
 
 ## Power
 
@@ -8,17 +10,19 @@
 | SD Breakout | VCC | 36 (3V3) |
 | Screen | GND | 38 (GND) |
 | SD Breakout | GND | 38 (GND) |
-| Teensy 4.1 | GND | 38 (GND) — shared ground |
+| Teensy 4.1 | GND | 38 (GND) - shared ground |
 
 ---
 
-## Display + Touch (ILI9488 + XPT2046) — SPI0
+## Display + Touch (ILI9488 + XPT2046) - SPI0
 
-| Signal | Pico GPIO | Pico Pin | LCD Pin |
+These pins match the active Pico firmware in [`pico2W/src/config.h`](./pico2W/src/config.h).
+
+| Signal | Pico GPIO | Pico Pin | Module Pin |
 |---|---|---|---|
 | SCK | GP6 | 9 | SCK / T_CLK |
 | MOSI | GP7 | 10 | MOSI / T_DIN |
-| MISO | GP4 | 6 | T_DO (touch only — do NOT connect display SDO/MISO, it will pull this line to GND) |
+| MISO | GP4 | 6 | T_DO |
 | Display CS | GP5 | 7 | CS |
 | Display DC | GP3 | 5 | DC |
 | Display RST | GP2 | 4 | RST |
@@ -26,72 +30,81 @@
 | Touch CS | GP9 | 12 | T_CS |
 | Touch IRQ | GP10 | 14 | T_IRQ |
 
+Note: do not connect the display SDO/MISO line on boards that pull MISO low. The current firmware expects the shared MISO line to be available for touch and SD.
+
 ---
 
-## SD Card (Adafruit 4682 MicroSD SPI Breakout) — SPI0 shared
+## SD Card (SPI0 Shared)
+
+The SD card shares `SPI0` with the display and touch controller.
 
 | SD Pin | Pico GPIO | Pico Pin | Notes |
 |---|---|---|---|
-| CLK | GP6 | 9 | Shared with display |
-| MOSI | GP7 | 10 | Shared with display |
-| MISO | GP4 | 6 | Shared with display |
-| CS | GP13 | 17 | SD chip select |
-| CD | GP14 | 19 | Card detect (optional) |
+| CLK | GP6 | 9 | Shared with display and touch |
+| MOSI | GP7 | 10 | Shared with display and touch |
+| MISO | GP4 | 6 | Shared with display and touch |
+| CS | GP11 | 15 | SD chip select used by current firmware |
+
+Note: the current Pico firmware does not use a card-detect pin.
 
 ---
 
-## Teensy 4.1 — UART
+## Teensy 4.1 - UART (Planned / Reserved)
+
+These pins are documented as the intended Pico-to-Teensy UART link, but the current Pico firmware does not initialize or use UART yet.
 
 | Signal | Pico GPIO | Pico Pin | Teensy Pin | Notes |
 |---|---|---|---|---|
-| TX → Teensy RX | GP0 | 1 | 1 (RX1) | Pico → Teensy |
-| RX ← Teensy TX | GP1 | 2 | 0 (TX1) | Teensy → Pico |
+| TX -> Teensy RX | GP0 | 1 | 1 (RX1) | Reserved for Pico -> Teensy |
+| RX <- Teensy TX | GP1 | 2 | 0 (TX1) | Reserved for Teensy -> Pico |
 | Shared GND | GND | 38 | GND | Required |
 
-Both Pico and Teensy 4.1 are 3.3V logic — direct connection, no level shifter needed.
+Both Pico and Teensy 4.1 are 3.3 V logic, so no level shifter should be needed for a direct UART connection.
 
 ---
 
-## E-STOP Button — Physical
+## E-STOP Button (Reserved in Config)
+
+`GP15` is defined as `PIN_ESTOP` in the Pico config, but the current firmware does not initialize or read this input yet.
 
 | Signal | Pico GPIO | Pico Pin | Notes |
 |---|---|---|---|
-| Button leg A | GP15 | 20 | Active-low, PULL_UP enabled in firmware |
-| Button leg B | GND | any GND | |
+| Button leg A | GP15 | 20 | Reserved in config, not yet handled by firmware |
+| Button leg B | GND | any GND | Active-low wiring intended |
 
 ---
 
 ## Full Pin Assignment Summary
 
-```
-GP0  → Teensy UART TX
-GP1  → Teensy UART RX
-GP2  → Display RST
-GP3  → Display DC
-GP4  → SPI0 MISO    (display + touch + SD, shared)
-GP5  → Display CS
-GP6  → SPI0 SCK     (display + touch + SD, shared)
-GP7  → SPI0 MOSI    (display + touch + SD, shared)
-GP8  → Backlight
-GP9  → Touch CS
-GP10 → Touch IRQ
-GP13 → SD CS
-GP14 → SD CD        (card detect, optional)
-GP15 → E-STOP button
+```text
+GP0  -> Reserved for Teensy UART TX
+GP1  -> Reserved for Teensy UART RX
+GP2  -> Display RST
+GP3  -> Display DC
+GP4  -> SPI0 MISO    (display + touch + SD, shared)
+GP5  -> Display CS
+GP6  -> SPI0 SCK     (display + touch + SD, shared)
+GP7  -> SPI0 MOSI    (display + touch + SD, shared)
+GP8  -> Backlight
+GP9  -> Touch CS
+GP10 -> Touch IRQ
+GP11 -> SD CS
+GP15 -> Reserved for E-STOP
 
-GP11, GP12, GP16–GP22, GP26–GP28 → free for future use
+GP12-GP14, GP16-GP22, GP26-GP28 -> currently free for future use
 ```
 
 ---
 
 ## SPI Baudrate Notes
 
-The SPI0 bus is shared between three devices. Firmware manages baudrate per transaction:
+The firmware changes SPI speed per device transaction on the shared `SPI0` bus:
 
 | Device | Baudrate |
 |---|---|
-| Display (ILI9488) | 40 MHz |
+| Display (ILI9488) | 20 MHz |
 | Touch (XPT2046) | 2 MHz |
-| SD Card | 25 MHz (max for FatFs) |
+| SD Card init | 400 kHz |
+| SD Card normal | 12 MHz |
 
 Each device has its own CS pin. Only one device is active at a time.

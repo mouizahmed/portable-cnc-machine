@@ -4,6 +4,7 @@ using System.Windows.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using PortableCncApp.Services;
+using PortableCncApp.Services.GCode;
 
 namespace PortableCncApp.ViewModels;
 
@@ -241,6 +242,39 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     private double _progress;
     public double Progress { get => _progress; set => SetProperty(ref _progress, value); }
+
+    private GCodeDocument? _activeGCodeDocument;
+    public GCodeDocument? ActiveGCodeDocument
+    {
+        get => _activeGCodeDocument;
+        set
+        {
+            if (SetProperty(ref _activeGCodeDocument, value))
+            {
+                RaisePropertyChanged(nameof(HasActiveGCodeDocument));
+                RaisePropertyChanged(nameof(ActiveToolpathUnits));
+                RaisePropertyChanged(nameof(ActiveToolpathBounds));
+                RaisePropertyChanged(nameof(ActiveToolpathDepth));
+                RaisePropertyChanged(nameof(ActiveToolpathSegmentCount));
+                RaisePropertyChanged(nameof(ActiveToolpathWarnings));
+            }
+        }
+    }
+
+    public bool HasActiveGCodeDocument => ActiveGCodeDocument?.HasGeometry == true;
+    public string ActiveToolpathUnits => ActiveGCodeDocument?.DisplayUnitsLabel ?? "--";
+    public string ActiveToolpathBounds => ActiveGCodeDocument == null
+        ? "--"
+        : $"{ActiveGCodeDocument.WidthMm:F1} x {ActiveGCodeDocument.HeightMm:F1} mm";
+    public string ActiveToolpathDepth => ActiveGCodeDocument == null
+        ? "--"
+        : $"{ActiveGCodeDocument.MinZ:F2} to {ActiveGCodeDocument.MaxZ:F2} mm";
+    public string ActiveToolpathSegmentCount => ActiveGCodeDocument?.Segments.Length.ToString(CultureInfo.InvariantCulture) ?? "0";
+    public string ActiveToolpathWarnings => ActiveGCodeDocument == null
+        ? "Select a file to build the preview."
+        : ActiveGCodeDocument.WarningCount == 0
+            ? "No parse warnings."
+            : $"{ActiveGCodeDocument.WarningCount} parse warnings.";
 
     // ════════════════════════════════════════════════════════════════
     // STATUS MESSAGES

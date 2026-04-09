@@ -27,11 +27,11 @@ const UiButtonStyle FilesScreen::kRunButtonStyle{
     2,
 };
 
-FilesScreen::FilesScreen(Ili9488& display, AppFrame& frame, JobStateMachine& model)
+FilesScreen::FilesScreen(Ili9488& display, AppFrame& frame, PortableCncController& controller)
     : display_(display),
       painter_(display),
       frame_(frame),
-      model_(model),
+      controller_(controller),
       list_row_(display) {}
 
 NavTab FilesScreen::tab() const {
@@ -46,7 +46,7 @@ void FilesScreen::render(const StatusSnapshot& status) {
 void FilesScreen::render_content() {
     draw_static_layout();
 
-    for (std::size_t i = 0; i < model_.count(); ++i) {
+    for (std::size_t i = 0; i < controller_.jobs().count(); ++i) {
         draw_row(static_cast<int16_t>(i));
     }
 
@@ -57,7 +57,7 @@ void FilesScreen::refresh_storage_view() const {
     draw_file_details();
     draw_file_list_header();
 
-    for (std::size_t i = 0; i < model_.count(); ++i) {
+    for (std::size_t i = 0; i < controller_.jobs().count(); ++i) {
         draw_row(static_cast<int16_t>(i));
     }
 }
@@ -71,8 +71,8 @@ UiEventResult FilesScreen::handle_event(const UiEvent& event) {
     if (!hit_test_row(event.touch, index)) {
         return UiEventResult{};
     }
-    const int16_t previous_index = model_.selected_index();
-    if (!model_.handle_event(JobEvent::SelectFile, index)) {
+    const int16_t previous_index = controller_.jobs().selected_index();
+    if (!controller_.select_file(index)) {
         return UiEventResult{true, false, tab()};
     }
 
@@ -99,12 +99,12 @@ void FilesScreen::draw_file_list_header() const {
 
 void FilesScreen::draw_row(int16_t index) const {
     const UiRect rect = row_rect(index);
-    const FileEntry& file = model_.entry(static_cast<std::size_t>(index));
+    const FileEntry& file = controller_.jobs().entry(static_cast<std::size_t>(index));
     list_row_.render(SelectableListRowSpec{
         rect,
         file.name,
         file.summary,
-        model_.selected_index() == index,
+        controller_.jobs().selected_index() == index,
     });
 }
 
@@ -115,7 +115,7 @@ void FilesScreen::draw_file_details() const {
 
     painter_.fill_rect(body, kColorPanel);
 
-    if (model_.count() == 0) {
+    if (controller_.jobs().count() == 0) {
         display_.draw_text(text_x, text_top, "SOURCE: SD", COLOR_TEXT, kColorPanel, 1);
         display_.draw_text(text_x, static_cast<int16_t>(text_top + 26), "NO G-CODE", COLOR_TEXT, kColorPanel, 1);
         display_.draw_text(text_x, static_cast<int16_t>(text_top + 42), "FILES FOUND", COLOR_TEXT, kColorPanel, 1);
@@ -124,7 +124,7 @@ void FilesScreen::draw_file_details() const {
         return;
     }
 
-    if (!model_.has_selection()) {
+    if (!controller_.jobs().has_selection()) {
         display_.draw_text(text_x, text_top, "SOURCE: SD", COLOR_TEXT, kColorPanel, 1);
         display_.draw_text(text_x, static_cast<int16_t>(text_top + 22), "SIZE: --", COLOR_MUTED, kColorPanel, 1);
         display_.draw_text(text_x, static_cast<int16_t>(text_top + 44), "TOOL: --", COLOR_MUTED, kColorPanel, 1);
@@ -134,7 +134,7 @@ void FilesScreen::draw_file_details() const {
         return;
     }
 
-    const FileEntry& file = *model_.selected_entry();
+    const FileEntry& file = *controller_.jobs().selected_entry();
     char line[32];
 
     display_.draw_text(text_x, text_top, file.name, COLOR_TEXT, kColorPanel, 1);
@@ -146,7 +146,7 @@ void FilesScreen::draw_file_details() const {
     display_.draw_text(text_x, static_cast<int16_t>(text_top + 70), line, COLOR_TEXT, kColorPanel, 1);
     std::snprintf(line, sizeof(line), "ZERO: %s", file.zero_text);
     display_.draw_text(text_x, static_cast<int16_t>(text_top + 92), line, COLOR_TEXT, kColorPanel, 1);
-    if (model_.can_run()) {
+    if (controller_.can_run_selected_file()) {
         painter_.draw_button(kRunButtonRect, "RUN", kRunButtonStyle);
     }
 }
@@ -156,7 +156,7 @@ void FilesScreen::render_region(const UiRect& region) const {
         draw_file_details();
     }
 
-    for (std::size_t i = 0; i < model_.count(); ++i) {
+    for (std::size_t i = 0; i < controller_.jobs().count(); ++i) {
         const UiRect row = row_rect(static_cast<int16_t>(i));
         if (ui_rect_intersects(region, row)) {
             draw_row(static_cast<int16_t>(i));
@@ -171,7 +171,7 @@ void FilesScreen::redraw_dirty(const DirtyRectList& dirty_regions) const {
 }
 
 bool FilesScreen::hit_test_row(const TouchPoint& point, int16_t& index) const {
-    for (std::size_t i = 0; i < model_.count(); ++i) {
+    for (std::size_t i = 0; i < controller_.jobs().count(); ++i) {
         const UiRect rect = row_rect(static_cast<int16_t>(i));
         if (ui_rect_contains(rect, point)) {
             index = static_cast<int16_t>(i);

@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
@@ -18,29 +19,80 @@
               Padding="16"
               Margin="0,0,16,0">
         <DockPanel>
-          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
-            <TextBlock Text="G-CODE VISUALIZATION"
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+            <StackPanel>
+            <TextBlock Text="{Binding ViewerTitle}"
                        FontSize="11"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextTertiaryBrush}"
                        LetterSpacing="1"
                        VerticalAlignment="Center"/>
-            <ToggleButton Margin="16,0,0,0"
-                          IsChecked="{Binding Show3DView}"
-                          Content="Toggle 2D/3D"
-                          Padding="8,4"/>
+            <TextBlock Text="{Binding ViewerHint}"
+                       FontSize="11"
+                       Margin="0,6,0,0"
+                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+              <TextBlock Text="{Binding MainVm.ActiveToolpathWarnings}"
+                         FontSize="11"
+                         HorizontalAlignment="Right"
+                         Foreground="{DynamicResource TextSecondaryBrush}"/>
+              <TextBlock Text="{Binding MainVm.ActiveToolpathUnits, StringFormat=Display units: {0}}"
+                         FontSize="11"
+                         HorizontalAlignment="Right"
+                         Margin="0,6,0,0"
+                         Foreground="{DynamicResource TextTertiaryBrush}"/>
+              <Button Content="{Binding ViewModeButtonLabel}"
+                      Command="{Binding ToggleViewModeCommand}"
+                      Margin="0,8,0,0"
+                      Padding="10,6"/>
+            </StackPanel>
+          </Grid>
+
+          <StackPanel DockPanel.Dock="Top"
+                      Orientation="Horizontal"
+                      Spacing="8"
+                      Margin="0,0,0,12">
+            <Button Content="Top"
+                    Command="{Binding SetCameraPresetCommand}"
+                    CommandParameter="Top"
+                    Padding="10,6"/>
+            <Button Content="Front"
+                    Command="{Binding SetCameraPresetCommand}"
+                    CommandParameter="Front"
+                    Padding="10,6"/>
+            <Button Content="Right"
+                    Command="{Binding SetCameraPresetCommand}"
+                    CommandParameter="Right"
+                    Padding="10,6"/>
+            <Button Content="Iso"
+                    Command="{Binding SetCameraPresetCommand}"
+                    CommandParameter="Iso"
+                    Padding="10,6"/>
+            <Button Content="Reset"
+                    Command="{Binding ResetViewCommand}"
+                    Padding="10,6"/>
           </StackPanel>
           
-          <!-- Placeholder for G-code visualization -->
           <Border Background="#1A1A1A"
                   CornerRadius="4"
                   BorderBrush="{DynamicResource BorderBrush}"
                   BorderThickness="1">
-            <TextBlock Text="G-Code Toolpath Preview"
-                       FontSize="14"
-                       Foreground="{DynamicResource TextTertiaryBrush}"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"/>
+            <controls:ToolpathView Document="{Binding MainVm.ActiveGCodeDocument}"
+                                   CurrentLine="{Binding PreviewLine}"
+                                   PositionX="{Binding MainVm.PositionX}"
+                                   PositionY="{Binding MainVm.PositionY}"
+                                   PositionZ="{Binding MainVm.PositionZ}"
+                                   Is3DView="{Binding Show3DView}"
+                                   CameraPreset="{Binding CameraPreset}"
+                                   ResetViewToken="{Binding ResetViewToken}"
+                                   ShowRapids="{Binding ShowRapids}"
+                                   ShowCuts="{Binding ShowCuts}"
+                                   ShowArcs="{Binding ShowArcs}"
+                                   ShowPlunges="{Binding ShowPlunges}"
+                                   ShowCompletedPath="{Binding ShowCompletedPath}"
+                                   ShowRemainingPath="{Binding ShowRemainingPath}"
+                                   ShowStockBox="{Binding ShowStockBox}"/>
           </Border>
         </DockPanel>
       </Border>
@@ -183,6 +235,30 @@
                        FontSize="13"
                        Foreground="{DynamicResource TextPrimaryBrush}"
                        TextTrimming="CharacterEllipsis"/>
+
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" Margin="0,12,0,4">
+              <StackPanel Margin="0,0,8,8">
+                <TextBlock Text="Bounds" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.ActiveToolpathBounds}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Margin="8,0,0,8">
+                <TextBlock Text="Depth" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.ActiveToolpathDepth}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+              <StackPanel Grid.Row="1" Margin="0,0,8,0">
+                <TextBlock Text="Segments" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Text="{Binding MainVm.ActiveToolpathSegmentCount}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </StackPanel>
+            </Grid>
             
             <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,4">
               <TextBlock Text="Progress" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
@@ -201,6 +277,64 @@
                        FontSize="11"
                        Foreground="{DynamicResource TextTertiaryBrush}"
                        Margin="0,8,0,0"/>
+          </StackPanel>
+        </Border>
+
+        <!-- Viewer Controls -->
+        <Border Background="{DynamicResource PanelBackgroundBrush}"
+                CornerRadius="8"
+                Padding="16">
+          <StackPanel Spacing="12">
+            <TextBlock Text="VIEWER"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"/>
+
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto">
+              <CheckBox Content="Rapids"
+                        IsChecked="{Binding ShowRapids}"
+                        Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <CheckBox Grid.Column="1"
+                        Content="Cuts"
+                        IsChecked="{Binding ShowCuts}"
+                        Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <CheckBox Grid.Row="1"
+                        Content="Arcs"
+                        IsChecked="{Binding ShowArcs}"
+                        Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <CheckBox Grid.Row="1"
+                        Grid.Column="1"
+                        Content="Plunges"
+                        IsChecked="{Binding ShowPlunges}"
+                        Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <CheckBox Grid.Row="2"
+                        Content="Completed"
+                        IsChecked="{Binding ShowCompletedPath}"
+                        Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <CheckBox Grid.Row="2"
+                        Grid.Column="1"
+                        Content="Remaining"
+                        IsChecked="{Binding ShowRemainingPath}"
+                        Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <CheckBox Grid.Row="3"
+                        Content="Stock Box"
+                        IsChecked="{Binding ShowStockBox}"
+                        Foreground="{DynamicResource TextPrimaryBrush}"/>
+            </Grid>
+
+            <Border Height="1" Background="{DynamicResource BorderBrush}"/>
+
+            <TextBlock Text="SCRUBBER"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextTertiaryBrush}"
+                       LetterSpacing="1"/>
+            <TextBlock Text="{Binding ScrubberLabel}"
+                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+            <Slider Minimum="0"
+                    Maximum="{Binding MainVm.ActiveGCodeDocument.TotalLines, TargetNullValue=1}"
+                    Value="{Binding ScrubberValue, Mode=TwoWay}"/>
           </StackPanel>
         </Border>
         

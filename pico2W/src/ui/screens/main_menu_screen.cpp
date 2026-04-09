@@ -20,11 +20,9 @@ MenuCardSpec make_card(std::size_t index,
 
 MainMenuScreen::MainMenuScreen(Ili9488& display,
                                AppFrame& frame,
-                               MachineStateMachine& machine_state_machine,
-                               JobStateMachine& job_state_machine)
+                               PortableCncController& controller)
     : frame_(frame),
-      machine_state_machine_(machine_state_machine),
-      job_state_machine_(job_state_machine),
+      controller_(controller),
       menu_card_(display) {}
 
 NavTab MainMenuScreen::tab() const {
@@ -60,23 +58,11 @@ UiEventResult MainMenuScreen::handle_event(const UiEvent& event) {
 
         switch (card.action) {
             case HomeAction::Primary:
-                if (!job_state_machine_.has_selection()) {
+                if (controller_.primary_action() == PrimaryAction::LoadJob) {
                     return UiEventResult{true, true, NavTab::Files};
                 }
-
-                if (machine_state_machine_.state() == MachineState::Idle) {
-                    const bool started_job = job_state_machine_.handle_event(JobEvent::StartRun);
-                    const bool started_machine = machine_state_machine_.handle_event(MachineEvent::RunRequested);
-                    return UiEventResult{true, false, tab(), started_job || started_machine, started_job || started_machine};
-                }
-
-                if (machine_state_machine_.state() == MachineState::Running) {
-                    const bool changed = machine_state_machine_.handle_event(MachineEvent::HoldRequested);
-                    return UiEventResult{true, false, tab(), changed, changed};
-                }
-
-                if (machine_state_machine_.state() == MachineState::Hold) {
-                    const bool changed = machine_state_machine_.handle_event(MachineEvent::RunRequested);
+                {
+                    const bool changed = controller_.handle_primary_action();
                     return UiEventResult{true, false, tab(), changed, changed};
                 }
                 return UiEventResult{true, false, tab()};
@@ -92,8 +78,8 @@ UiEventResult MainMenuScreen::handle_event(const UiEvent& event) {
 }
 
 std::array<MainMenuScreen::ResolvedCard, 4> MainMenuScreen::build_cards() const {
-    const MachineState machine_state = machine_state_machine_.state();
-    const bool has_job = job_state_machine_.has_selection();
+    const MachineState machine_state = controller_.machine_state();
+    const bool has_job = controller_.jobs().has_selection();
 
     MenuCardSpec primary = make_card(0, "LOAD JOB", "PICK G-CODE", NavTab::Files, true);
     MenuCardSpec jog = make_card(1, "JOG", "MOVE AXES", NavTab::Jog, true);

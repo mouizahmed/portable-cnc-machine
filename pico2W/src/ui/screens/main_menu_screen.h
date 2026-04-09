@@ -3,8 +3,7 @@
 #include <array>
 #include <cstdint>
 
-#include "app/job/job_state_machine.h"
-#include "app/machine/machine_state_machine.h"
+#include "services/portable_cnc_controller.h"
 #include "ui/components/app_frame.h"
 #include "ui/components/menu_card.h"
 #include "ui/screens/screen.h"
@@ -13,8 +12,7 @@ class MainMenuScreen : public Screen {
 public:
     MainMenuScreen(Ili9488& display,
                    AppFrame& frame,
-                   MachineStateMachine& machine_state_machine,
-                   JobStateMachine& job_state_machine);
+                   PortableCncController& controller);
 
     NavTab tab() const override;
     void render(const StatusSnapshot& status) override;
@@ -35,8 +33,7 @@ private:
     };
 
     AppFrame& frame_;
-    MachineStateMachine& machine_state_machine_;
-    JobStateMachine& job_state_machine_;
+    PortableCncController& controller_;
     MenuCard menu_card_;
 
     std::array<ResolvedCard, 4> build_cards() const;

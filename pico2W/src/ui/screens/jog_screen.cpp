@@ -100,11 +100,11 @@ const std::array<JogScreen::ButtonSpec, 2> JogScreen::kActionButtons{{
      JogAction::ZeroAll},
 }};
 
-JogScreen::JogScreen(Ili9488& display, AppFrame& frame, JogStateMachine& model)
+JogScreen::JogScreen(Ili9488& display, AppFrame& frame, PortableCncController& controller)
     : display_(display),
       painter_(display),
       frame_(frame),
-      model_(model) {}
+      controller_(controller) {}
 
 NavTab JogScreen::tab() const {
     return NavTab::Jog;
@@ -142,12 +142,12 @@ UiEventResult JogScreen::handle_event(const UiEvent& event) {
         return UiEventResult{};
     }
 
-    const uint8_t previous_step = model_.step_index();
-    const uint8_t previous_feed = model_.feed_index();
+    const uint8_t previous_step = controller_.jog().step_index();
+    const uint8_t previous_feed = controller_.jog().feed_index();
     pressed_group_ = hit.group;
     pressed_index_ = hit.index;
 
-    if (!model_.handle_action(hit.action)) {
+    if (!controller_.apply_jog_action(hit.action)) {
         return UiEventResult{true, false, tab()};
     }
 
@@ -160,12 +160,12 @@ UiEventResult JogScreen::handle_event(const UiEvent& event) {
             break;
         case ButtonGroup::Step:
             dirty_regions.add(button_rect(ButtonGroup::Step, previous_step));
-            dirty_regions.add(button_rect(ButtonGroup::Step, model_.step_index()));
+            dirty_regions.add(button_rect(ButtonGroup::Step, controller_.jog().step_index()));
             dirty_regions.add(position_settings_rect());
             break;
         case ButtonGroup::Feed:
             dirty_regions.add(button_rect(ButtonGroup::Feed, previous_feed));
-            dirty_regions.add(button_rect(ButtonGroup::Feed, model_.feed_index()));
+            dirty_regions.add(button_rect(ButtonGroup::Feed, controller_.jog().feed_index()));
             dirty_regions.add(position_settings_rect());
             break;
         case ButtonGroup::None:
@@ -207,11 +207,11 @@ void JogScreen::draw_position_axes() const {
     };
 
     char line[24];
-    model_.format_axis_line('X', line, sizeof(line));
+    controller_.jog().format_axis_line('X', line, sizeof(line));
     draw_centered_line(body, text_top, line, COLOR_TEXT, kColorPanelBody, 2);
-    model_.format_axis_line('Y', line, sizeof(line));
+    controller_.jog().format_axis_line('Y', line, sizeof(line));
     draw_centered_line(body, static_cast<int16_t>(text_top + 30), line, COLOR_TEXT, kColorPanelBody, 2);
-    model_.format_axis_line('Z', line, sizeof(line));
+    controller_.jog().format_axis_line('Z', line, sizeof(line));
     draw_centered_line(body, static_cast<int16_t>(text_top + 60), line, COLOR_TEXT, kColorPanelBody, 2);
 }
 
@@ -226,9 +226,9 @@ void JogScreen::draw_position_settings() const {
     };
 
     char line[24];
-    std::snprintf(line, sizeof(line), "STEP  %s", model_.step_label());
+    std::snprintf(line, sizeof(line), "STEP  %s", controller_.jog().step_label());
     draw_centered_line(body, static_cast<int16_t>(text_top + 94), line, COLOR_MUTED, kColorPanelBody, 1);
-    std::snprintf(line, sizeof(line), "FEED  %d", model_.feed_rate_mm_min());
+    std::snprintf(line, sizeof(line), "FEED  %d", controller_.jog().feed_rate_mm_min());
     draw_centered_line(body, static_cast<int16_t>(text_top + 114), line, COLOR_MUTED, kColorPanelBody, 1);
 }
 
@@ -294,7 +294,7 @@ void JogScreen::draw_step_button(uint8_t index) const {
         return;
     }
 
-    const bool selected = index == model_.step_index();
+    const bool selected = index == controller_.jog().step_index();
     uint16_t fill = selected ? kColorSelection : kColorJogButtonAlt;
     if (is_pressed(ButtonGroup::Step, index)) {
         fill = selected ? kColorSelectionPressed : kColorButtonAltPressed;
@@ -307,7 +307,7 @@ void JogScreen::draw_feed_button(uint8_t index) const {
         return;
     }
 
-    const bool selected = index == model_.feed_index();
+    const bool selected = index == controller_.jog().feed_index();
     uint16_t fill = selected ? kColorSelection : kColorJogButtonAlt;
     if (is_pressed(ButtonGroup::Feed, index)) {
         fill = selected ? kColorSelectionPressed : kColorButtonAltPressed;

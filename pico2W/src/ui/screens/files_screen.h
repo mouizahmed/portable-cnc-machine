@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-#include "app/job/job_state_machine.h"
+#include "services/portable_cnc_controller.h"
 #include "ui/components/app_frame.h"
 #include "ui/components/selectable_list_row.h"
 #include "ui/helpers/ui_helpers.h"
@@ -11,7 +11,7 @@
 
 class FilesScreen : public Screen {
 public:
-    FilesScreen(Ili9488& display, AppFrame& frame, JobStateMachine& model);
+    FilesScreen(Ili9488& display, AppFrame& frame, PortableCncController& controller);
 
     NavTab tab() const override;
     void render(const StatusSnapshot& status) override;
@@ -29,7 +29,7 @@ private:
     Ili9488& display_;
     UiPainter painter_;
     AppFrame& frame_;
-    JobStateMachine& model_;
+    PortableCncController& controller_;
     SelectableListRow list_row_;
 
     void draw_static_layout() const;
