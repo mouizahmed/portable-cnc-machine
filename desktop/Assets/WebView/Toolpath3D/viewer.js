@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { ViewHelper } from './vendor/ViewHelper.js';
 
 const overlay = document.getElementById('overlay');
 const host = document.getElementById('app');
@@ -7,6 +8,7 @@ const host = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setPixelRatio(window.devicePixelRatio || 1);
 renderer.setClearColor(0x161616, 1);
+renderer.autoClear = false;
 host.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -44,6 +46,24 @@ const materials = {
   cutCompleted: new THREE.LineBasicMaterial({ transparent: true, opacity: 0.95, vertexColors: true }),
   cutRemaining: new THREE.LineBasicMaterial({ transparent: true, opacity: 0.6, vertexColors: true })
 };
+
+const clock = new THREE.Clock();
+const viewHelper = new ViewHelper(camera, renderer.domElement);
+viewHelper.setLabels('X', 'Y', 'Z');
+
+renderer.domElement.addEventListener('click', e => {
+  viewHelper.handleClick(e);
+});
+
+renderer.domElement.addEventListener('mousemove', e => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const dim = 128;
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const w = renderer.domElement.clientWidth;
+  const h = renderer.domElement.clientHeight;
+  renderer.domElement.style.cursor = (x > w - dim && y < dim) ? 'pointer' : '';
+});
 
 const resizeObserver = new ResizeObserver(() => resize());
 resizeObserver.observe(host);
@@ -307,14 +327,13 @@ function computeFitDistance(size) {
 
 function getPresetDirection(preset) {
   switch ((preset || 'iso').toLowerCase()) {
-    case 'top':
-      return new THREE.Vector3(0, 0, 1).normalize();
-    case 'front':
-      return new THREE.Vector3(0, -1, 0.4).normalize();
-    case 'right':
-      return new THREE.Vector3(1, 0, 0.4).normalize();
-    default:
-      return new THREE.Vector3(-1.2, -1.15, 0.82).normalize();
+    case 'top':    return new THREE.Vector3(0, 0, 1).normalize();
+    case 'bottom': return new THREE.Vector3(0, 0, -1).normalize();
+    case 'front':  return new THREE.Vector3(0, -1, 0.4).normalize();
+    case 'back':   return new THREE.Vector3(0, 1, 0.4).normalize();
+    case 'right':  return new THREE.Vector3(1, 0, 0.4).normalize();
+    case 'left':   return new THREE.Vector3(-1, 0, 0.4).normalize();
+    default:       return new THREE.Vector3(-1.2, -1.15, 0.82).normalize();
   }
 }
 
@@ -368,8 +387,13 @@ function resize() {
 
 function animate() {
   requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  if (viewHelper.animating) viewHelper.update(delta);
+  viewHelper.center.copy(controls.target);
   controls.update();
+  renderer.clear();
   renderer.render(scene, camera);
+  viewHelper.render(renderer);
 }
 
 function createControls(camera) {
