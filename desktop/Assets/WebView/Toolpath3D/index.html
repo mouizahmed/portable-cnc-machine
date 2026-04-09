@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Toolpath 3D</title>
+  <style>
+    html, body, #app {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #161616;
+      color: #b8c0cc;
+      font-family: Inter, Segoe UI, sans-serif;
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      color: #7c8694;
+      background: linear-gradient(180deg, rgba(22,22,22,0.22), rgba(22,22,22,0.1));
+    }
+
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="overlay">Select a G-code file to build the 3D preview.</div>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="./viewer.js"></script>
+</body>
+</html>

@@ -133,7 +133,7 @@
 **Completed:** None
 
 **Work to be Done:**
-- G-code 2D/3D toolpath visualization renderer
+- G-code 3D toolpath visualization renderer
 - Real-time sensor data polling and display
 - Complete Start/Pause/Stop/E-Stop functionality
 - File browser dialog integration

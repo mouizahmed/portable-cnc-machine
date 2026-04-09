@@ -42,10 +42,6 @@
                          HorizontalAlignment="Right"
                          Margin="0,6,0,0"
                          Foreground="{DynamicResource TextTertiaryBrush}"/>
-              <Button Content="{Binding ViewModeButtonLabel}"
-                      Command="{Binding ToggleViewModeCommand}"
-                      Margin="0,8,0,0"
-                      Padding="10,6"/>
             </StackPanel>
           </Grid>
 
@@ -78,21 +74,22 @@
                   CornerRadius="4"
                   BorderBrush="{DynamicResource BorderBrush}"
                   BorderThickness="1">
-            <controls:ToolpathView Document="{Binding MainVm.ActiveGCodeDocument}"
-                                   CurrentLine="{Binding PreviewLine}"
-                                   PositionX="{Binding MainVm.PositionX}"
-                                   PositionY="{Binding MainVm.PositionY}"
-                                   PositionZ="{Binding MainVm.PositionZ}"
-                                   Is3DView="{Binding Show3DView}"
-                                   CameraPreset="{Binding CameraPreset}"
-                                   ResetViewToken="{Binding ResetViewToken}"
-                                   ShowRapids="{Binding ShowRapids}"
-                                   ShowCuts="{Binding ShowCuts}"
-                                   ShowArcs="{Binding ShowArcs}"
-                                   ShowPlunges="{Binding ShowPlunges}"
-                                   ShowCompletedPath="{Binding ShowCompletedPath}"
-                                   ShowRemainingPath="{Binding ShowRemainingPath}"
-                                   ShowStockBox="{Binding ShowStockBox}"/>
+            <Grid>
+              <controls:WebToolpathView Document="{Binding MainVm.ActiveGCodeDocument}"
+                                        CurrentLine="{Binding PreviewLine}"
+                                        PositionX="{Binding MainVm.PositionX}"
+                                        PositionY="{Binding MainVm.PositionY}"
+                                        PositionZ="{Binding MainVm.PositionZ}"
+                                        CameraPreset="{Binding CameraPreset}"
+                                        ResetViewToken="{Binding ResetViewToken}"
+                                        ShowRapids="{Binding ShowRapids}"
+                                        ShowCuts="{Binding ShowCuts}"
+                                        ShowArcs="{Binding ShowArcs}"
+                                        ShowPlunges="{Binding ShowPlunges}"
+                                        ShowCompletedPath="{Binding ShowCompletedPath}"
+                                        ShowRemainingPath="{Binding ShowRemainingPath}"
+                                        ShowStockBox="{Binding ShowStockBox}"/>
+            </Grid>
           </Border>
         </DockPanel>
       </Border>

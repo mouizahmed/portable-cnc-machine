@@ -5,21 +5,6 @@ namespace PortableCncApp.ViewModels;
 
 public sealed class DashboardViewModel : PageViewModelBase
 {
-    private bool _show3DView = true;
-    public bool Show3DView
-    {
-        get => _show3DView;
-        set
-        {
-            if (SetProperty(ref _show3DView, value))
-            {
-                RaisePropertyChanged(nameof(ViewerTitle));
-                RaisePropertyChanged(nameof(ViewerHint));
-                RaisePropertyChanged(nameof(ViewModeButtonLabel));
-            }
-        }
-    }
-
     private string _cameraPreset = "Iso";
     public string CameraPreset
     {
@@ -76,7 +61,7 @@ public sealed class DashboardViewModel : PageViewModelBase
         set => SetProperty(ref _showRemainingPath, value);
     }
 
-    private bool _showStockBox = true;
+    private bool _showStockBox;
     public bool ShowStockBox
     {
         get => _showStockBox;
@@ -109,22 +94,16 @@ public sealed class DashboardViewModel : PageViewModelBase
         }
     }
 
-    public string ViewerTitle => Show3DView ? "3D TOOLPATH" : "2D TOOLPATH";
-    public string ViewModeButtonLabel => Show3DView ? "Switch to 2D" : "Switch to 3D";
-
-    public string ViewerHint => Show3DView
-        ? "Wheel to zoom. Drag to orbit. Right-drag to pan. Live machine position overlays the loaded toolpath."
-        : "Wheel to zoom. Drag to pan. Live machine position overlays the loaded toolpath.";
+    public string ViewerTitle => "3D TOOLPATH";
+    public string ViewerHint => "Wheel to zoom. Drag to orbit. Right-drag to pan. Live machine position overlays the loaded toolpath.";
 
     public string ScrubberLabel => $"Preview line {PreviewLine}";
 
-    public ICommand ToggleViewModeCommand { get; }
     public ICommand ResetViewCommand { get; }
     public ICommand SetCameraPresetCommand { get; }
 
     public DashboardViewModel()
     {
-        ToggleViewModeCommand = new RelayCommand(() => Show3DView = !Show3DView);
         ResetViewCommand = new RelayCommand(() => ResetViewToken++);
         SetCameraPresetCommand = new RelayCommand<string>(preset =>
         {

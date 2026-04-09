@@ -14,6 +14,8 @@ public static class GCodeParser
     private const double InchToMillimeter = 25.4;
     private const double PositionEpsilon = 0.0001;
     private const double ArcPointStepDegrees = 5.0;
+    private const double MinimumSpikeThresholdMillimeters = 150.0;
+    private const double MinimumEnvelopeMarginMillimeters = 25.0;
 
     public static async Task<GCodeDocument> ParseFileAsync(string filePath, CancellationToken cancellationToken)
     {
@@ -70,9 +72,20 @@ public static class GCodeParser
                 ref maxZ);
         }
 
+        var filteredSegments = FilterSegments(
+            segments,
+            warnings,
+            ref hasBounds,
+            ref minX,
+            ref maxX,
+            ref minY,
+            ref maxY,
+            ref minZ,
+            ref maxZ);
+
         return new GCodeDocument(
             filePath,
-            segments.ToImmutableArray(),
+            filteredSegments.ToImmutableArray(),
             warnings.ToImmutableArray(),
             lines.Count,
             minX,
@@ -99,6 +112,7 @@ public static class GCodeParser
     {
         MotionType lineMotion = modal.Motion;
         bool motionChanged = false;
+        bool suppressPreviewGeometry = false;
 
         double? x = null;
         double? y = null;
@@ -113,7 +127,7 @@ public static class GCodeParser
             switch (word.Letter)
             {
                 case 'G':
-                    ApplyGWord(word.Value, lineNumber, ref modal, ref lineMotion, ref motionChanged, warnings);
+                    ApplyGWord(word.Value, lineNumber, ref modal, ref lineMotion, ref motionChanged, ref suppressPreviewGeometry, warnings);
                     break;
                 case 'M':
                     ApplyMWord(word.Value, ref modal);
@@ -165,6 +179,11 @@ public static class GCodeParser
             return;
         }
 
+        if (suppressPreviewGeometry)
+        {
+            return;
+        }
+
         switch (modal.Motion)
         {
             case MotionType.Rapid:
@@ -189,6 +208,7 @@ public static class GCodeParser
         ref ModalState modal,
         ref MotionType lineMotion,
         ref bool motionChanged,
+        ref bool suppressPreviewGeometry,
         List<GCodeParseWarning> warnings)
     {
         int code = (int)Math.Round(value);
@@ -225,15 +245,21 @@ public static class GCodeParser
             case 21:
                 modal.Units = GCodeUnits.Millimeters;
                 break;
+            case 43:
+            case 49:
             case 54:
             case 55:
             case 56:
             case 57:
             case 58:
             case 59:
+            case 69:
             case 93:
             case 94:
             case 95:
+                break;
+            case 53:
+                suppressPreviewGeometry = true;
                 break;
             case 90:
                 modal.IsAbsolute = true;
@@ -344,7 +370,15 @@ public static class GCodeParser
 
         double startAngle = Math.Atan2(startV - centerV, startU - centerU);
         double endAngle = Math.Atan2(endV - centerV, endU - centerU);
-        double sweep = ComputeSweep(startAngle, endAngle, motion == MotionType.ArcClockwise);
+        bool clockwise = motion == MotionType.ArcClockwise;
+        if (plane == GCodePlane.XZ)
+        {
+            // The XZ plane is defined as viewed from +Y, while the local X->Z axis order
+            // produces a -Y normal. Flip the sweep so G2/G3 match controller semantics.
+            clockwise = !clockwise;
+        }
+
+        double sweep = ComputeSweep(startAngle, endAngle, clockwise);
         int steps = Math.Max(12, (int)Math.Ceiling(Math.Abs(sweep) / DegreesToRadians(ArcPointStepDegrees)));
 
         Point3D previous = start;
@@ -384,6 +418,169 @@ public static class GCodeParser
         segments.Add(new ToolpathSegment(start, end, motion, lineNumber));
         IncludePoint(start, ref hasBounds, ref minX, ref maxX, ref minY, ref maxY, ref minZ, ref maxZ);
         IncludePoint(end, ref hasBounds, ref minX, ref maxX, ref minY, ref maxY, ref minZ, ref maxZ);
+    }
+
+    private static List<ToolpathSegment> FilterSegments(
+        List<ToolpathSegment> segments,
+        List<GCodeParseWarning> warnings,
+        ref bool hasBounds,
+        ref double minX,
+        ref double maxX,
+        ref double minY,
+        ref double maxY,
+        ref double minZ,
+        ref double maxZ)
+    {
+        if (segments.Count == 0 || !hasBounds)
+        {
+            return segments;
+        }
+
+        double spanX = maxX - minX;
+        double spanY = maxY - minY;
+        double spanZ = maxZ - minZ;
+        double maxSpan = Math.Max(Math.Max(spanX, spanY), Math.Max(spanZ, 1));
+        double spikeThreshold = Math.Max(maxSpan * 4.0, MinimumSpikeThresholdMillimeters);
+
+        var lengthFiltered = new List<ToolpathSegment>(segments.Count);
+        int suppressedByLength = 0;
+
+        foreach (var segment in segments)
+        {
+            if (GetSegmentLength(segment) > spikeThreshold)
+            {
+                suppressedByLength++;
+                continue;
+            }
+
+            lengthFiltered.Add(segment);
+        }
+
+        if (lengthFiltered.Count == 0)
+        {
+            if (suppressedByLength > 0)
+            {
+                warnings.Add(new GCodeParseWarning(0, $"Suppressed {suppressedByLength} non-local preview segment(s) that exceeded the spike threshold."));
+            }
+
+            hasBounds = false;
+            minX = maxX = minY = maxY = minZ = maxZ = 0;
+            return lengthFiltered;
+        }
+
+        var xValues = new List<double>(lengthFiltered.Count * 2);
+        var yValues = new List<double>(lengthFiltered.Count * 2);
+        var zValues = new List<double>(lengthFiltered.Count * 2);
+        foreach (var segment in lengthFiltered)
+        {
+            xValues.Add(segment.Start.X);
+            xValues.Add(segment.End.X);
+            yValues.Add(segment.Start.Y);
+            yValues.Add(segment.End.Y);
+            zValues.Add(segment.Start.Z);
+            zValues.Add(segment.End.Z);
+        }
+
+        double innerMinX = GetPercentile(xValues, 0.02);
+        double innerMaxX = GetPercentile(xValues, 0.98);
+        double innerMinY = GetPercentile(yValues, 0.02);
+        double innerMaxY = GetPercentile(yValues, 0.98);
+        double innerMinZ = GetPercentile(zValues, 0.02);
+        double innerMaxZ = GetPercentile(zValues, 0.98);
+
+        double envelopeMarginX = Math.Max((innerMaxX - innerMinX) * 0.75, MinimumEnvelopeMarginMillimeters);
+        double envelopeMarginY = Math.Max((innerMaxY - innerMinY) * 0.75, MinimumEnvelopeMarginMillimeters);
+        double envelopeMarginZ = Math.Max((innerMaxZ - innerMinZ) * 0.75, MinimumEnvelopeMarginMillimeters);
+
+        var filtered = new List<ToolpathSegment>(lengthFiltered.Count);
+        bool filteredHasBounds = false;
+        double filteredMinX = 0;
+        double filteredMaxX = 0;
+        double filteredMinY = 0;
+        double filteredMaxY = 0;
+        double filteredMinZ = 0;
+        double filteredMaxZ = 0;
+        int suppressedByEnvelope = 0;
+
+        foreach (var segment in lengthFiltered)
+        {
+            if (IsOutsideEnvelope(segment.Start, innerMinX, innerMaxX, envelopeMarginX, innerMinY, innerMaxY, envelopeMarginY, innerMinZ, innerMaxZ, envelopeMarginZ) ||
+                IsOutsideEnvelope(segment.End, innerMinX, innerMaxX, envelopeMarginX, innerMinY, innerMaxY, envelopeMarginY, innerMinZ, innerMaxZ, envelopeMarginZ))
+            {
+                suppressedByEnvelope++;
+                continue;
+            }
+
+            filtered.Add(segment);
+            IncludePoint(segment.Start, ref filteredHasBounds, ref filteredMinX, ref filteredMaxX, ref filteredMinY, ref filteredMaxY, ref filteredMinZ, ref filteredMaxZ);
+            IncludePoint(segment.End, ref filteredHasBounds, ref filteredMinX, ref filteredMaxX, ref filteredMinY, ref filteredMaxY, ref filteredMinZ, ref filteredMaxZ);
+        }
+
+        if (suppressedByLength > 0)
+        {
+            warnings.Add(new GCodeParseWarning(0, $"Suppressed {suppressedByLength} non-local preview segment(s) that exceeded the spike threshold."));
+        }
+
+        if (suppressedByEnvelope > 0)
+        {
+            warnings.Add(new GCodeParseWarning(0, $"Suppressed {suppressedByEnvelope} preview segment(s) whose endpoints fell outside the job envelope."));
+        }
+
+        hasBounds = filteredHasBounds;
+        minX = filteredMinX;
+        maxX = filteredMaxX;
+        minY = filteredMinY;
+        maxY = filteredMaxY;
+        minZ = filteredMinZ;
+        maxZ = filteredMaxZ;
+
+        return filtered;
+    }
+
+    private static bool IsOutsideEnvelope(
+        Point3D point,
+        double minX,
+        double maxX,
+        double marginX,
+        double minY,
+        double maxY,
+        double marginY,
+        double minZ,
+        double maxZ,
+        double marginZ)
+        => point.X < minX - marginX ||
+           point.X > maxX + marginX ||
+           point.Y < minY - marginY ||
+           point.Y > maxY + marginY ||
+           point.Z < minZ - marginZ ||
+           point.Z > maxZ + marginZ;
+
+    private static double GetPercentile(List<double> values, double percentile)
+    {
+        values.Sort();
+        if (values.Count == 0)
+        {
+            return 0;
+        }
+
+        double scaledIndex = percentile * (values.Count - 1);
+        int lowerIndex = (int)Math.Floor(scaledIndex);
+        int upperIndex = (int)Math.Ceiling(scaledIndex);
+        if (lowerIndex == upperIndex)
+        {
+            return values[lowerIndex];
+        }
+
+        double fraction = scaledIndex - lowerIndex;
+        return values[lowerIndex] + ((values[upperIndex] - values[lowerIndex]) * fraction);
+    }
+
+    private static double GetSegmentLength(ToolpathSegment segment)
+    {
+        double dx = segment.End.X - segment.Start.X;
+        double dy = segment.End.Y - segment.Start.Y;
+        double dz = segment.End.Z - segment.Start.Z;
+        return Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
     }
 
     private static void IncludePoint(
