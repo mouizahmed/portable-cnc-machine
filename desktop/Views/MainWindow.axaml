@@ -3,8 +3,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:materialIcons="using:Material.Icons.Avalonia"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-
         xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+        xmlns:converters="clr-namespace:PortableCncApp.ViewModels"
         x:Class="PortableCncApp.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         mc:Ignorable="d"
@@ -16,243 +16,128 @@
         Background="{DynamicResource AppBackgroundBrush}">
 
   <Grid RowDefinitions="Auto,*,Auto">
-    
+
     <!-- ══════════════════════════════════════════════════════════════════ -->
-    <!-- HEADER BAR -->
+    <!-- TAB NAVIGATION BAR -->
     <!-- ══════════════════════════════════════════════════════════════════ -->
     <Border Grid.Row="0"
-            Background="{DynamicResource HeaderBackgroundBrush}"
-            Padding="16,10"
+            Background="{DynamicResource SidebarBackgroundBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
-        
-        <!-- App Title & Connection Status -->
-        <StackPanel Spacing="2">
-          <TextBlock Text="PORTABLE CNC"
-                     FontSize="18"
-                     FontWeight="Bold"
-                     Foreground="{DynamicResource TextPrimaryBrush}"
-                     LetterSpacing="1"/>
-          <StackPanel Orientation="Horizontal" Spacing="6">
+      <Grid ColumnDefinitions="*,Auto">
+
+        <!-- Tab Buttons -->
+        <StackPanel Orientation="Horizontal" Spacing="2" Margin="4,0">
+
+          <Button Classes="NavButton"
+                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Dashboard}"
+                  Command="{Binding GoDashboardCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <materialIcons:MaterialIcon Kind="Play" />
+              <TextBlock Text="Dashboard" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Button Classes="NavButton"
+                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Jog}"
+                  Command="{Binding GoJogCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <materialIcons:MaterialIcon Kind="CameraControl" />
+              <TextBlock Text="Jog Control" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Button Classes="NavButton"
+                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Files}"
+                  Command="{Binding GoFilesCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <materialIcons:MaterialIcon Kind="Folder" />
+              <TextBlock Text="Files" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Button Classes="NavButton"
+                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Connect}"
+                  Command="{Binding GoConnectCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <materialIcons:MaterialIcon Kind="PowerPlug" />
+              <TextBlock Text="Connect" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Button Classes="NavButton"
+                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Settings}"
+                  Command="{Binding GoSettingsCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <materialIcons:MaterialIcon Kind="Settings" />
+              <TextBlock Text="Settings" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Button Classes="NavButton"
+                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Diagnostics}"
+                  Command="{Binding GoDiagnosticsCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <materialIcons:MaterialIcon Kind="Wrench" />
+              <TextBlock Text="Diagnostics" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+        </StackPanel>
+
+        <!-- Right: Connection Status + E-STOP -->
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0" VerticalAlignment="Center">
+
+          <!-- Connection Status -->
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
             <Ellipse Width="8" Height="8" Fill="{Binding ConnectionStatusBrush}"/>
             <TextBlock Text="{Binding ConnectionStatusText}"
                        FontSize="11"
-                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       VerticalAlignment="Center"/>
           </StackPanel>
+
+          <!-- Motion State Pill -->
+          <Border IsVisible="{Binding IsConnected}"
+                  Padding="10,4"
+                  CornerRadius="4"
+                  Background="{Binding MotionStateBrush}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="MOTION:"
+                         FontSize="10"
+                         Foreground="#CCFFFFFF"
+                         VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding MotionStateLabel}"
+                         FontSize="11"
+                         FontWeight="SemiBold"
+                         Foreground="White"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+
+          <!-- E-STOP -->
+          <Button IsVisible="{Binding IsConnected}"
+                  Padding="16,6"
+                  Background="{DynamicResource DangerBrush}"
+                  Foreground="White"
+                  FontWeight="Bold"
+                  FontSize="13"
+                  CornerRadius="4"
+                  Command="{Binding EStopCommand}">
+            E-STOP
+          </Button>
+
         </StackPanel>
 
-        <!-- Motion State Pill -->
-        <Border Grid.Column="2"
-                IsVisible="{Binding IsConnected}"
-                Margin="16,0"
-                Padding="14,6"
-                CornerRadius="4"
-                Background="{Binding MotionStateBrush}">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="MOTION:"
-                       FontSize="11"
-                       Foreground="#CCFFFFFF"
-                       VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding MotionStateLabel}"
-                       FontSize="13"
-                       FontWeight="SemiBold"
-                       Foreground="White"
-                       VerticalAlignment="Center"/>
-          </StackPanel>
-        </Border>
-
-        <!-- Safety State Pill -->
-        <Border Grid.Column="3"
-                IsVisible="{Binding IsConnected}"
-                Margin="0,0,16,0"
-                Padding="14,6"
-                CornerRadius="4"
-                Background="{Binding SafetyStateBrush}">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="SAFETY:"
-                       FontSize="11"
-                       Foreground="#CCFFFFFF"
-                       VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding SafetyStateLabel}"
-                       FontSize="13"
-                       FontWeight="SemiBold"
-                       Foreground="White"
-                       VerticalAlignment="Center"/>
-          </StackPanel>
-        </Border>
-
-        <!-- Limits & Spindle Indicators -->
-        <StackPanel Grid.Column="4"
-                    IsVisible="{Binding IsConnected}" 
-                    Orientation="Horizontal" 
-                    Spacing="16"
-                    Margin="0,0,16,0"
-                    VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <TextBlock Text="Limits:"
-                       FontSize="11"
-                       Foreground="{DynamicResource TextSecondaryBrush}"/>
-            <TextBlock Text="{Binding LimitsStatusText}"
-                       FontSize="11"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <TextBlock Text="Spindle:"
-                       FontSize="11"
-                       Foreground="{DynamicResource TextSecondaryBrush}"/>
-            <TextBlock Text="{Binding SpindleStatusText}"
-                       FontSize="11"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-          </StackPanel>
-        </StackPanel>
-
-        <!-- E-STOP Button -->
-        <Button Grid.Column="5"
-                IsVisible="{Binding IsConnected}"
-                Margin="0,0,12,0"
-                Padding="20,8"
-                Background="{DynamicResource DangerBrush}"
-                Foreground="White"
-                FontWeight="Bold"
-                FontSize="14"
-                CornerRadius="4"
-                Command="{Binding EStopCommand}">
-          E-STOP
-        </Button>
-
-        <!-- Settings Quick Access -->
-        <Button Grid.Column="6"
-                Padding="12,8"
-                Command="{Binding GoSettingsCommand}"
-                Background="Transparent"
-                Foreground="{DynamicResource TextSecondaryBrush}">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <materialIcons:MaterialIcon Kind="Settings" />
-            <TextBlock Text="Settings" VerticalAlignment="Center"/>
-          </StackPanel>
-        </Button>
-        
       </Grid>
     </Border>
 
     <!-- ══════════════════════════════════════════════════════════════════ -->
-    <!-- MAIN CONTENT AREA -->
+    <!-- PAGE CONTENT -->
     <!-- ══════════════════════════════════════════════════════════════════ -->
-    <Grid Grid.Row="1" ColumnDefinitions="220,*">
-      
-      <!-- SIDEBAR NAVIGATION -->
-      <Border Grid.Column="0"
-              Background="{DynamicResource SidebarBackgroundBrush}"
-              Padding="12"
-              BorderBrush="{DynamicResource BorderBrush}"
-              BorderThickness="0,0,1,0">
-        <DockPanel>
-          
-          <!-- Navigation Links -->
-          <StackPanel DockPanel.Dock="Top" Spacing="4">
-
-            <Button Classes="NavButton"
-                    Command="{Binding GoDashboardCommand}"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Left">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                  <materialIcons:MaterialIcon Kind="Play" />
-                <TextBlock Text="Dashboard"/>
-              </StackPanel>
-            </Button>
-
-            <Button Classes="NavButton"
-                    Command="{Binding GoJogCommand}"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Left">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <materialIcons:MaterialIcon Kind="CameraControl" />
-                <TextBlock Text="Jog Control"/>
-              </StackPanel>
-            </Button>
-
-            <Button Classes="NavButton"
-                    Command="{Binding GoFilesCommand}"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Left">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <materialIcons:MaterialIcon Kind="Folder" />
-                <TextBlock Text="Files"/>
-              </StackPanel>
-            </Button>
-
-            <Button Classes="NavButton"
-                    Command="{Binding GoConnectCommand}"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Left">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <materialIcons:MaterialIcon Kind="PowerPlug" />
-                <TextBlock Text="Connect"/>
-              </StackPanel>
-            </Button>
-
-            <Button Classes="NavButton"
-                    Command="{Binding GoSettingsCommand}"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Left">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <materialIcons:MaterialIcon Kind="Settings" />
-                <TextBlock Text="Settings"/>
-              </StackPanel>
-            </Button>
-
-            <Button Classes="NavButton"
-                    Command="{Binding GoDiagnosticsCommand}"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Left">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <materialIcons:MaterialIcon Kind="Wrench" />
-                <TextBlock Text="Diagnostics"/>
-              </StackPanel>
-            </Button>
-          </StackPanel>
-
-          <!-- Bottom: Quick DRO Display -->
-          <Border DockPanel.Dock="Bottom"
-                  Background="{DynamicResource PanelBackgroundBrush}"
-                  CornerRadius="6"
-                  Padding="12"
-                  Margin="0,12,0,0">
-            <StackPanel Spacing="8">
-              <TextBlock Text="POSITION (mm)"
-                         FontSize="10"
-                         FontWeight="SemiBold"
-                         Foreground="{DynamicResource TextTertiaryBrush}"
-                         LetterSpacing="1"/>
-              
-              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
-                <TextBlock Grid.Row="0" Text="X:" FontWeight="SemiBold" Foreground="#E06666" Margin="0,0,8,4"/>
-                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding PositionX, StringFormat={}{0:F3}}" 
-                           Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas"/>
-                
-                <TextBlock Grid.Row="1" Text="Y:" FontWeight="SemiBold" Foreground="#93C47D" Margin="0,0,8,4"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding PositionY, StringFormat={}{0:F3}}"
-                           Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas"/>
-                
-                <TextBlock Grid.Row="2" Text="Z:" FontWeight="SemiBold" Foreground="#6FA8DC" Margin="0,0,8,0"/>
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PositionZ, StringFormat={}{0:F3}}"
-                           Foreground="{DynamicResource TextPrimaryBrush}" FontFamily="Consolas"/>
-              </Grid>
-            </StackPanel>
-          </Border>
-          
-        </DockPanel>
-      </Border>
-
-      <!-- PAGE CONTENT -->
-      <Border Grid.Column="1" Padding="20">
-        <ContentControl Content="{Binding CurrentPage}"/>
-      </Border>
-      
-    </Grid>
+    <Border Grid.Row="1" Padding="20">
+      <ContentControl Content="{Binding CurrentPage}"/>
+    </Border>
 
     <!-- ══════════════════════════════════════════════════════════════════ -->
     <!-- STATUS BAR -->
@@ -263,7 +148,7 @@
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="*,Auto,Auto,Auto">
-        
+
         <!-- Status Message -->
         <StackPanel Orientation="Horizontal" Spacing="8">
           <TextBlock Text="Status:"
@@ -305,9 +190,9 @@
                    Text="{Binding CurrentPageName}"
                    FontSize="11"
                    Foreground="{DynamicResource TextTertiaryBrush}"/>
-        
+
       </Grid>
     </Border>
-    
+
   </Grid>
 </Window>

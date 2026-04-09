@@ -139,10 +139,12 @@
                           Background="#3A3A3A"
                           HorizontalContentAlignment="Center"
                           VerticalContentAlignment="Center">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                      <TextBlock Text="H" FontSize="18" HorizontalAlignment="Center"/>
-                      <TextBlock Text="HOME" FontSize="9" HorizontalAlignment="Center"/>
-                    </StackPanel>
+                    <TextBlock Text="HOME ALL"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               TextAlignment="Center"/>
                   </Button>
                   
                   <!-- X+ -->

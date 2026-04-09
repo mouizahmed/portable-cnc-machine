@@ -65,7 +65,7 @@ public class BoolToLimitBrushConverter : IValueConverter
     {
         if (value is bool triggered)
         {
-            return triggered 
+            return triggered
                 ? new SolidColorBrush(Color.Parse("#D83B3B"))  // Red when triggered
                 : new SolidColorBrush(Color.Parse("#444444")); // Dark gray when not triggered
         }
@@ -76,4 +76,15 @@ public class BoolToLimitBrushConverter : IValueConverter
     {
         throw new NotImplementedException();
     }
+}
+
+public class StringEqualsConverter : IValueConverter
+{
+    public static readonly StringEqualsConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value?.ToString() == parameter?.ToString();
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotImplementedException();
 }

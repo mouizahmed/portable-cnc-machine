@@ -22,6 +22,14 @@
         <Style Selector="Button.NavButton:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="#333333"/>
         </Style>
+        <Style Selector="Button.NavButton.active">
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+        </Style>
+        <Style Selector="Button.NavButton.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="#252525"/>
+        </Style>
         
         <!-- Control Button Styles -->
         <Style Selector="Button.ControlButton">

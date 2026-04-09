@@ -353,30 +353,21 @@
                   Command="{Binding MainVm.StartCommand}"
                   IsEnabled="{Binding MainVm.CanStart}"
                   Padding="24,12">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="▶" FontSize="14"/>
-              <TextBlock Text="START" FontWeight="SemiBold"/>
-            </StackPanel>
+            <TextBlock Text="START" FontWeight="SemiBold"/>
           </Button>
           
           <Button Classes="ControlButton Warning"
                   Command="{Binding MainVm.PauseCommand}"
                   IsEnabled="{Binding MainVm.CanPause}"
                   Padding="24,12">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="⏸" FontSize="14"/>
-              <TextBlock Text="PAUSE" FontWeight="SemiBold"/>
-            </StackPanel>
+            <TextBlock Text="PAUSE" FontWeight="SemiBold"/>
           </Button>
           
           <Button Classes="ControlButton Danger"
                   Command="{Binding MainVm.StopCommand}"
                   IsEnabled="{Binding MainVm.CanStop}"
                   Padding="24,12">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="⏹" FontSize="14"/>
-              <TextBlock Text="STOP" FontWeight="SemiBold"/>
-            </StackPanel>
+            <TextBlock Text="STOP" FontWeight="SemiBold"/>
           </Button>
 
           <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="8,0"/>
@@ -385,10 +376,7 @@
                   Command="{Binding MainVm.HomeCommand}"
                   IsEnabled="{Binding MainVm.CanHome}"
                   Padding="24,12">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="H" FontSize="14"/>
-              <TextBlock Text="HOME ALL" FontWeight="SemiBold"/>
-            </StackPanel>
+            <TextBlock Text="HOME ALL" FontWeight="SemiBold"/>
           </Button>
         </StackPanel>
 
