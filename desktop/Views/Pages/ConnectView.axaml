@@ -3,118 +3,99 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
              x:Class="PortableCncApp.Views.Pages.ConnectView"
              x:DataType="vm:ConnectViewModel"
              mc:Ignorable="d">
 
   <Grid RowDefinitions="Auto,*">
-
     <Grid Grid.Row="1" ColumnDefinitions="*,*">
 
-      <Border Classes="PanelCard" Margin="0,0,16,0">
-        <StackPanel Spacing="8">
-          <TextBlock Text="USB SERIAL CONNECTION" Classes="PanelTitle"/>
-
-          <StackPanel Spacing="12">
-            <StackPanel>
-              <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
-                <TextBlock Text="Serial Port" Classes="SectionHeading"/>
-                <Button Grid.Column="1"
-                        Content="Refresh"
-                        Command="{Binding RefreshPortsCommand}"
-                        Classes="AppButton"/>
-              </Grid>
-              <ComboBox ItemsSource="{Binding AvailablePorts}"
-                        SelectedItem="{Binding SelectedPort}"
-                        HorizontalAlignment="Stretch"
-                        PlaceholderText="Select COM port..."/>
+      <controls:SectionCard Title="USB SERIAL CONNECTION" Margin="0,0,16,0">
+        <controls:SectionCard.Body>
+          <StackPanel Spacing="8">
+            <StackPanel Spacing="12">
+              <StackPanel>
+                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                  <TextBlock Text="Serial Port" Classes="SectionHeading"/>
+                  <Button Grid.Column="1"
+                          Content="Refresh"
+                          Command="{Binding RefreshPortsCommand}"
+                          Classes="AppButton"/>
+                </Grid>
+                <ComboBox ItemsSource="{Binding AvailablePorts}"
+                          SelectedItem="{Binding SelectedPort}"
+                          HorizontalAlignment="Stretch"
+                          PlaceholderText="Select COM port..."/>
+              </StackPanel>
             </StackPanel>
-          </StackPanel>
 
-          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-            <Button Content="Connect"
-                    Command="{Binding ConnectCommand}"
-                    Classes="AppButton Primary"
-                    IsEnabled="{Binding !IsConnecting}"/>
-            <Button Content="Disconnect"
-                    Command="{Binding DisconnectCommand}"
-                    Classes="AppButton"/>
-            <Button Content="Test"
-                    Command="{Binding TestConnectionCommand}"
-                    Classes="AppButton"
-                    ToolTip.Tip="Send status query to verify connection"/>
-          </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+              <Button Content="Connect"
+                      Command="{Binding ConnectCommand}"
+                      Classes="AppButton Primary"
+                      IsEnabled="{Binding !IsConnecting}"/>
+              <Button Content="Disconnect"
+                      Command="{Binding DisconnectCommand}"
+                      Classes="AppButton"/>
+              <Button Content="Test"
+                      Command="{Binding TestConnectionCommand}"
+                      Classes="AppButton"
+                      ToolTip.Tip="Send status query to verify connection"/>
+            </StackPanel>
 
-          <StackPanel Orientation="Horizontal"
-                      Spacing="8"
-                      IsVisible="{Binding IsConnecting}">
             <TextBlock Text="Connecting..."
                        Classes="SectionHeading"
-                       Foreground="{DynamicResource WarningBrush}"/>
+                       Foreground="{DynamicResource WarningBrush}"
+                       IsVisible="{Binding IsConnecting}"/>
           </StackPanel>
-        </StackPanel>
-      </Border>
+        </controls:SectionCard.Body>
+      </controls:SectionCard>
 
-      <Border Grid.Column="1" Classes="PanelCard">
-        <StackPanel Spacing="8">
-          <TextBlock Text="DEVICE STATUS" Classes="PanelTitle"/>
+      <controls:SectionCard Grid.Column="1" Title="DEVICE STATUS">
+        <controls:SectionCard.Body>
+          <StackPanel Spacing="8">
+            <controls:SectionCard Title="Connection Status">
+              <controls:SectionCard.Body>
+                <controls:TwoColumnInfoGrid>
+                  <StackPanel>
+                    <TextBlock Text="Pico 2W" Classes="FieldValue"/>
+                    <TextBlock Text="Safety Supervisor" Classes="FieldLabel Muted"/>
+                  </StackPanel>
+                  <controls:StatusPill Grid.Column="1"
+                                       Text="{Binding MainVm.PiConnectionStatus}"
+                                       PillBackground="{Binding MainVm.PiConnectionStatus, Converter={x:Static vm:ConnectionStatusToBrushConverter.Instance}}"/>
 
-          <Border Classes="InsetSurface">
-            <StackPanel Spacing="12">
-              <TextBlock Text="Connection Status" Classes="SectionHeading"/>
+                  <StackPanel Grid.Row="1" Margin="0,12,0,0">
+                    <TextBlock Text="Teensy 4.1" Classes="FieldValue"/>
+                    <TextBlock Text="Motion Controller" Classes="FieldLabel Muted"/>
+                  </StackPanel>
+                  <controls:StatusPill Grid.Row="1"
+                                       Grid.Column="1"
+                                       Margin="0,12,0,0"
+                                       Text="{Binding MainVm.TeensyConnectionStatus}"
+                                       PillBackground="{Binding MainVm.TeensyConnectionStatus, Converter={x:Static vm:ConnectionStatusToBrushConverter.Instance}}"/>
+                </controls:TwoColumnInfoGrid>
+              </controls:SectionCard.Body>
+            </controls:SectionCard>
 
-              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                <StackPanel>
-                  <TextBlock Text="Pico 2W" Classes="FieldValue"/>
-                  <TextBlock Text="Safety Supervisor" Classes="FieldLabel" Foreground="{DynamicResource TextTertiaryBrush}"/>
-                </StackPanel>
-                <Border Grid.Column="1"
-                        Classes="StatusPill"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Background="{Binding MainVm.PiConnectionStatus, Converter={x:Static vm:ConnectionStatusToBrushConverter.Instance}}">
-                  <TextBlock Text="{Binding MainVm.PiConnectionStatus}"
-                             Classes="FieldValue"
-                             Foreground="White"/>
-                </Border>
+            <controls:SectionCard Title="Firmware Versions">
+              <controls:SectionCard.Body>
+                <controls:TwoColumnInfoGrid>
+                  <TextBlock Text="Pico 2W Firmware" Classes="FieldValue" FontWeight="Normal"/>
+                  <TextBlock Grid.Column="1" Text="{Binding PicoFirmware}" Classes="CodeText"/>
 
-                <StackPanel Grid.Row="1" Margin="0,12,0,0">
-                  <TextBlock Text="Teensy 4.1" Classes="FieldValue"/>
-                  <TextBlock Text="Motion Controller" Classes="FieldLabel" Foreground="{DynamicResource TextTertiaryBrush}"/>
-                </StackPanel>
-                <Border Grid.Row="1"
-                        Grid.Column="1"
-                        Classes="StatusPill"
-                        Margin="0,12,0,0"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Background="{Binding MainVm.TeensyConnectionStatus, Converter={x:Static vm:ConnectionStatusToBrushConverter.Instance}}">
-                  <TextBlock Text="{Binding MainVm.TeensyConnectionStatus}"
-                             Classes="FieldValue"
-                             Foreground="White"/>
-                </Border>
-              </Grid>
-            </StackPanel>
-          </Border>
+                  <TextBlock Grid.Row="1" Text="Teensy Firmware" Classes="FieldValue" FontWeight="Normal"/>
+                  <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TeensyFirmware}" Classes="CodeText"/>
 
-          <Border Classes="InsetSurface">
-            <StackPanel Spacing="8">
-              <TextBlock Text="Firmware Versions" Classes="SectionHeading"/>
-
-              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                <TextBlock Text="Pico 2W Firmware" Classes="FieldValue" FontWeight="Normal"/>
-                <TextBlock Grid.Column="1" Text="{Binding PicoFirmware}" Classes="CodeText"/>
-
-                <TextBlock Grid.Row="1" Text="Teensy Firmware" Classes="FieldValue" FontWeight="Normal" Margin="0,6,0,0"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TeensyFirmware}" Classes="CodeText" Margin="0,6,0,0"/>
-
-                <TextBlock Grid.Row="2" Text="Pico Serial #" Classes="FieldValue" FontWeight="Normal" Margin="0,6,0,0"/>
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PicoSerialNumber}" Classes="CodeText" Margin="0,6,0,0"/>
-              </Grid>
-            </StackPanel>
-          </Border>
-        </StackPanel>
-      </Border>
+                  <TextBlock Grid.Row="2" Text="Pico Serial #" Classes="FieldValue" FontWeight="Normal"/>
+                  <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PicoSerialNumber}" Classes="CodeText"/>
+                </controls:TwoColumnInfoGrid>
+              </controls:SectionCard.Body>
+            </controls:SectionCard>
+          </StackPanel>
+        </controls:SectionCard.Body>
+      </controls:SectionCard>
 
     </Grid>
   </Grid>

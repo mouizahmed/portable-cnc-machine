@@ -3,176 +3,244 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="PortableCncApp.Views.Pages.FilesView"
              x:DataType="vm:FilesViewModel"
              mc:Ignorable="d">
 
-  <Grid RowDefinitions="Auto,*">
+  <Grid RowDefinitions="Auto,*" RowSpacing="8">
 
-    <Border Grid.Row="0" Classes="PanelCard Loose" Margin="0,0,0,8">
-      <Grid ColumnDefinitions="*,Auto">
-        <StackPanel VerticalAlignment="Center">
-          <TextBlock Text="FILE LIBRARY" Classes="PanelTitle"/>
+    <controls:SectionCard Grid.Row="0"
+                          Title="FILE LIBRARY"
+                          Subtitle="Review local G-code and inspect source before loading a job."
+                          IsLoose="True">
+      <controls:SectionCard.Actions>
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Content="Browse..." Command="{Binding BrowseCommand}" Classes="AppButton Primary"/>
+          <Button Content="Refresh" Command="{Binding RefreshCommand}" Classes="AppButton"/>
         </StackPanel>
+      </controls:SectionCard.Actions>
 
-        <StackPanel Grid.Column="1"
-                    Orientation="Horizontal"
-                    Spacing="8"
-                    VerticalAlignment="Center">
-          <Button Content="Browse..."
-                  Command="{Binding BrowseCommand}"
-                  Classes="AppButton Primary"/>
-          <Button Content="Refresh"
-                  Command="{Binding RefreshCommand}"
-                  Classes="AppButton"/>
-        </StackPanel>
-      </Grid>
-    </Border>
-
-    <Grid Grid.Row="1" ColumnDefinitions="280,*">
-
-      <Border Classes="PanelCard" Margin="0,0,12,0">
-        <DockPanel LastChildFill="True">
-          <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
-            <StackPanel>
-              <TextBlock Text="AVAILABLE FILES" Classes="PanelTitle"/>
-              <TextBlock Text="{Binding Files.Count, StringFormat={}{0} file(s)}"
-                         Classes="FieldLabel"
-                         Margin="0,6,0,0"/>
-            </StackPanel>
-          </Grid>
-
-          <Grid DockPanel.Dock="Bottom"
-                ColumnDefinitions="Auto,*,Auto"
-                ColumnSpacing="8"
-                Margin="0,12,0,0">
-            <Button Grid.Column="0"
-                    Content="Load Selected"
-                    Command="{Binding LoadSelectedCommand}"
-                    IsEnabled="{Binding HasSelectedFile}"
-                    Classes="AppButton Primary"/>
-            <Button Grid.Column="2"
-                    Content="Remove"
-                    Command="{Binding RemoveCommand}"
-                    IsEnabled="{Binding HasSelectedFile}"
-                    Classes="AppButton"/>
-          </Grid>
-
-          <Border Classes="InsetSurface Subtle"
-                  BorderBrush="{DynamicResource BorderBrush}"
-                  BorderThickness="1">
-            <ListBox ItemsSource="{Binding Files}"
-                     SelectedItem="{Binding SelectedFile}"
-                     Background="Transparent"
-                     BorderThickness="0">
-              <ListBox.Styles>
-                <Style Selector="ListBoxItem">
-                  <Setter Property="Padding" Value="0"/>
-                  <Setter Property="Margin" Value="0"/>
-                  <Setter Property="Background" Value="Transparent"/>
-                  <Setter Property="BorderThickness" Value="1"/>
-                  <Setter Property="BorderBrush" Value="Transparent"/>
-                  <Setter Property="CornerRadius" Value="6"/>
-                  <Setter Property="Cursor" Value="Hand"/>
-                </Style>
-                <Style Selector="ListBoxItem:selected">
-                  <Setter Property="Background" Value="Transparent"/>
-                  <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-                </Style>
-              </ListBox.Styles>
-              <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:GCodeFileInfo">
-                  <Border Padding="10,8"
-                          Margin="4,3"
-                          Background="#272727"
-                          CornerRadius="4">
-                    <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
-                      <TextBlock Text="{Binding Name}"
-                                 Classes="SectionHeading"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"
-                                 TextTrimming="CharacterEllipsis"/>
-                      <Border Grid.Column="1"
-                              Background="#313131"
-                              CornerRadius="4"
-                              Padding="8,2"
-                              Margin="10,0,0,0"
-                              VerticalAlignment="Top">
-                        <TextBlock Text="{Binding Size}" Classes="Caption" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      </Border>
-
-                      <TextBlock Grid.Row="1"
-                                 Text="{Binding Modified, StringFormat=Modified {0}}"
-                                 Classes="Caption"
-                                 Margin="0,6,0,0"/>
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-          </Border>
-        </DockPanel>
-      </Border>
-
-      <Border Grid.Column="1" Classes="PanelCard">
-        <Grid RowDefinitions="Auto,Auto,*">
-          <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,10">
-            <StackPanel>
-              <TextBlock Text="PREVIEW WORKSPACE" Classes="PanelTitle"/>
-              <TextBlock Text="{Binding SelectedFile.Name, TargetNullValue='No file selected'}"
-                         Classes="CodeValue"
-                         FontSize="15"
-                         Margin="0,6,0,0"
-                         TextTrimming="CharacterEllipsis"/>
-            </StackPanel>
-
-            <Border Grid.Column="1"
-                    Classes="InsetSurface"
-                    VerticalAlignment="Top"
-                    Padding="10,4">
-              <TextBlock Text="{Binding PreviewLineCount, StringFormat={}{0} lines}"
-                         Classes="FieldLabel"/>
-            </Border>
-          </Grid>
-
-          <Grid Grid.Row="1"
-                ColumnDefinitions="*,*"
-                ColumnSpacing="8"
-                Margin="0,0,0,10">
-            <Border Background="#20262D"
-                    CornerRadius="4"
-                    Padding="10,8">
-              <StackPanel>
-                <TextBlock Text="Toolpath" Classes="Caption" FontWeight="SemiBold"/>
-                <TextBlock Text="{Binding ToolpathStatusMessage}"
-                           Classes="FieldValue"
-                           Margin="0,6,0,0"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </Border>
-
-            <Border Grid.Column="1"
-                    Background="#2A2420"
-                    CornerRadius="4"
-                    Padding="10,8">
-              <StackPanel>
-                <TextBlock Text="Warnings" Classes="Caption" FontWeight="SemiBold"/>
-                <TextBlock Text="{Binding ToolpathWarningSummary, TargetNullValue='No parse warnings.'}"
-                           Classes="FieldLabel"
-                           Margin="0,6,0,0"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </Border>
-          </Grid>
-
-          <Border Grid.Row="2" Classes="InsetSurface Code">
-            <ScrollViewer>
-              <TextBlock Text="{Binding FilePreview}"
-                         Classes="CodeText"
-                         TextWrapping="NoWrap"/>
-            </ScrollViewer>
-          </Border>
+      <controls:SectionCard.Body>
+        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
+          <controls:StatusPill Text="{Binding Files.Count, StringFormat={}{0} local file(s)}"
+                               PillBackground="{DynamicResource BorderBrush}"/>
+          <controls:StatusPill Grid.Column="1"
+                               Text="{Binding ToolpathStateLabel}"
+                               PillBackground="{Binding ToolpathStateBrush}"/>
+          <TextBlock Grid.Column="2"
+                     Text="{Binding SelectedFilePathSummary}"
+                     Classes="FieldLabel"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"/>
         </Grid>
-      </Border>
+      </controls:SectionCard.Body>
+    </controls:SectionCard>
+
+    <Grid Grid.Row="1" ColumnDefinitions="344,*" ColumnSpacing="8">
+
+      <controls:SectionCard Title="LIBRARY"
+                            Subtitle="{Binding Files.Count, StringFormat={}{0} file(s) ready}">
+        <controls:SectionCard.Body>
+          <Grid RowDefinitions="Auto,*" RowSpacing="8">
+            <TextBlock Text="Select a local file to inspect its source. Load and remove actions live in the right rail."
+                       Classes="FieldLabel"
+                       TextWrapping="Wrap"/>
+
+            <Border Grid.Row="1"
+                    Classes="InsetSurface Subtle"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    Height="NaN"
+                    MinHeight="0">
+              <ListBox ItemsSource="{Binding Files}"
+                       SelectedItem="{Binding SelectedFile}"
+                       Background="Transparent"
+                       BorderThickness="0">
+                <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Margin" Value="0"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Setter Property="CornerRadius" Value="6"/>
+                    <Setter Property="Cursor" Value="Hand"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected">
+                    <Setter Property="Background" Value="#202020"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:pointerover">
+                    <Setter Property="Background" Value="#1D1D1D"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+                  </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:GCodeFileInfo">
+                    <Border Padding="12,10"
+                            Margin="4,3"
+                            Background="#272727"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="4">
+                          <TextBlock Text="{Binding Name}"
+                                     Classes="FieldValue"
+                                     FontSize="12"
+                                     TextTrimming="CharacterEllipsis"/>
+                          <TextBlock Text="{Binding FullPath}"
+                                     Classes="Caption"
+                                     TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+
+                        <Border Grid.Column="1"
+                                Background="#313131"
+                                CornerRadius="4"
+                                Padding="8,2"
+                                Margin="10,0,0,0"
+                                VerticalAlignment="Top">
+                          <TextBlock Text="{Binding Size}"
+                                     Classes="Caption"
+                                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        </Border>
+
+                        <TextBlock Grid.Row="1"
+                                   Text="{Binding Modified, StringFormat=Updated {0}}"
+                                   Classes="FieldLabel Muted"
+                                   Margin="0,8,0,0"/>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Border>
+          </Grid>
+        </controls:SectionCard.Body>
+      </controls:SectionCard>
+
+      <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="8">
+
+        <controls:SectionCard Title="INSPECTION"
+                              Subtitle="{Binding PreviewViewportSummary}">
+          <controls:SectionCard.Body>
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Border Classes="InsetSurface Subtle"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        Height="NaN"
+                        MinHeight="0"
+                        Padding="10">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Toolpath Parser" Classes="SectionHeading"/>
+                    <TextBlock Text="{Binding ToolpathStatusMessage}"
+                               Classes="FieldValue"
+                               TextWrapping="Wrap"/>
+                  </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1"
+                        Classes="InsetSurface Subtle"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        Height="NaN"
+                        MinHeight="0"
+                        Padding="10">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Warnings" Classes="SectionHeading"/>
+                    <TextBlock Text="{Binding WarningDetail}"
+                               Classes="FieldLabel"
+                               TextWrapping="Wrap"/>
+
+                    <TextBlock Text="{Binding GlobalWarningSummary}"
+                               Classes="FieldLabel"
+                               Foreground="{DynamicResource WarningBrush}"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding HasGlobalWarnings}"/>
+                  </StackPanel>
+                </Border>
+              </Grid>
+            </Grid>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+
+        <controls:SectionCard Grid.Row="1"
+                              Title="SOURCE PREVIEW"
+                              Subtitle="{Binding FilePreviewTitle}">
+          <controls:SectionCard.Body>
+            <Border Classes="InsetSurface Code"
+                    Height="NaN"
+                    MinHeight="0">
+              <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                            VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding PreviewLines}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GCodePreviewLine">
+                      <Border Background="{Binding HasWarning, Converter={x:Static vm:BoolToWarningHighlightBrushConverter.Instance}}"
+                              CornerRadius="3"
+                              Padding="4,1">
+                        <Grid ColumnDefinitions="24,Auto,*" ColumnSpacing="6">
+                          <TextBlock Text="{Binding LineNumberText}"
+                                     Classes="CodeText"
+                                     Foreground="{DynamicResource TextTertiaryBrush}"
+                                     HorizontalAlignment="Right"
+                                     VerticalAlignment="Center"/>
+
+                          <Button Grid.Column="1"
+                                  IsVisible="{Binding HasWarning}"
+                                  Width="16"
+                                  Height="16"
+                                  Padding="0"
+                                  MinWidth="16"
+                                  MinHeight="16"
+                                  CornerRadius="8"
+                                  Background="Transparent"
+                                  BorderBrush="Transparent"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  VerticalContentAlignment="Center"
+                                  HorizontalContentAlignment="Center">
+                            <Button.Flyout>
+                              <Flyout Placement="RightEdgeAlignedTop">
+                                <Border Background="#1F1F1F"
+                                        BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="10"
+                                        MaxWidth="360">
+                                  <TextBlock Text="{Binding WarningTooltip}"
+                                             Classes="FieldLabel"
+                                             TextWrapping="Wrap"/>
+                                </Border>
+                              </Flyout>
+                            </Button.Flyout>
+                            <materialIcons:MaterialIcon Kind="AlertCircleOutline"
+                                                        Width="12"
+                                                        Height="12"
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{DynamicResource WarningBrush}"/>
+                          </Button>
+
+                          <TextBlock Grid.Column="2"
+                                     Text="{Binding Text}"
+                                     Classes="CodeText"
+                                     Foreground="{Binding HasWarning, Converter={x:Static vm:BoolToWarningForegroundConverter.Instance}}"
+                                     VerticalAlignment="Center"
+                                     TextWrapping="NoWrap"/>
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+
+      </Grid>
 
     </Grid>
   </Grid>

@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
              x:Class="PortableCncApp.Views.Pages.DiagnosticsView"
              x:DataType="vm:DiagnosticsViewModel"
              mc:Ignorable="d">
@@ -11,122 +12,107 @@
 
     <Grid Grid.Row="1" ColumnDefinitions="*,320">
 
-      <Border Classes="PanelCard" Margin="0,0,16,0">
-        <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-            <TextBlock Text="COMMAND CONSOLE" Classes="PanelTitle"/>
-            <Button Grid.Column="1"
-                    Content="Clear"
-                    Command="{Binding ClearLogCommand}"
-                    Classes="AppButton"/>
-          </Grid>
+      <controls:SectionCard Title="COMMAND CONSOLE" Margin="0,0,16,0">
+        <controls:SectionCard.Actions>
+          <Button Content="Clear"
+                  Command="{Binding ClearLogCommand}"
+                  Classes="AppButton"/>
+        </controls:SectionCard.Actions>
 
-          <Border DockPanel.Dock="Top"
-                  Background="#0D0D0D"
-                  CornerRadius="4"
-                  Padding="8"
-                  Height="300"
-                  BorderBrush="{DynamicResource BorderBrush}"
-                  BorderThickness="1">
-            <ScrollViewer>
-              <ItemsControl ItemsSource="{Binding LogEntries}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:LogEntry">
-                    <StackPanel Orientation="Horizontal" Margin="0,2">
-                      <TextBlock Text="{Binding FormattedTime}"
-                                 Classes="CodeText"
-                                 Foreground="#666666"
-                                 Width="90"/>
-                      <TextBlock Text="{Binding Type}"
-                                 Classes="CodeText"
-                                 FontWeight="SemiBold"
-                                 Width="40"
-                                 Foreground="{DynamicResource AccentBrush}"/>
-                      <TextBlock Text="{Binding Message}"
-                                 Classes="CodeText"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
-                    </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
-          </Border>
+        <controls:SectionCard.Body>
+          <DockPanel>
+            <Border DockPanel.Dock="Top"
+                    Background="#0D0D0D"
+                    CornerRadius="4"
+                    Padding="8"
+                    Height="300"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1">
+              <ScrollViewer>
+                <ItemsControl ItemsSource="{Binding LogEntries}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LogEntry">
+                      <StackPanel Orientation="Horizontal" Margin="0,2">
+                        <TextBlock Text="{Binding FormattedTime}"
+                                   Classes="CodeText"
+                                   Foreground="#666666"
+                                   Width="90"/>
+                        <TextBlock Text="{Binding Type}"
+                                   Classes="CodeText"
+                                   FontWeight="SemiBold"
+                                   Width="40"
+                                   Foreground="{DynamicResource AccentBrush}"/>
+                        <TextBlock Text="{Binding Message}"
+                                   Classes="CodeText"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Border>
 
-          <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
-            <TextBox Text="{Binding CommandInput}"
-                     Watermark="Enter GRBL command (e.g., $$ for settings, ? for status)..."
-                     FontFamily="Consolas"/>
-            <Button Grid.Column="1"
-                    Content="Send"
-                    Command="{Binding SendCommandCommand}"
-                    Margin="8,0,0,0"
-                    Classes="AppButton Primary"/>
-          </Grid>
+            <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+              <TextBox Text="{Binding CommandInput}"
+                       Watermark="Enter GRBL command (e.g., $$ for settings, ? for status)..."
+                       FontFamily="Consolas"/>
+              <Button Grid.Column="1"
+                      Content="Send"
+                      Command="{Binding SendCommandCommand}"
+                      Margin="8,0,0,0"
+                      Classes="AppButton Primary"/>
+            </Grid>
 
-          <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-            <TextBlock Text="QUICK COMMANDS" Classes="Caption" Margin="0,0,0,8"/>
-            <WrapPanel>
-              <Button Content="? Status" Margin="0,0,4,4" Classes="AppButton"/>
-              <Button Content="$$ Settings" Margin="0,0,4,4" Classes="AppButton"/>
-              <Button Content="$# Parameters" Margin="0,0,4,4" Classes="AppButton"/>
-              <Button Content="$G Parser State" Margin="0,0,4,4" Classes="AppButton"/>
-              <Button Content="$I Build Info" Margin="0,0,4,4" Classes="AppButton"/>
-              <Button Content="$N Startup Blocks" Margin="0,0,4,4" Classes="AppButton"/>
-            </WrapPanel>
-          </StackPanel>
-        </DockPanel>
-      </Border>
+            <controls:SectionCard DockPanel.Dock="Bottom" Title="QUICK COMMANDS" Margin="0,12,0,0">
+              <controls:SectionCard.Body>
+                <WrapPanel>
+                  <Button Content="? Status" Margin="0,0,4,4" Classes="AppButton"/>
+                  <Button Content="$$ Settings" Margin="0,0,4,4" Classes="AppButton"/>
+                  <Button Content="$# Parameters" Margin="0,0,4,4" Classes="AppButton"/>
+                  <Button Content="$G Parser State" Margin="0,0,4,4" Classes="AppButton"/>
+                  <Button Content="$I Build Info" Margin="0,0,4,4" Classes="AppButton"/>
+                  <Button Content="$N Startup Blocks" Margin="0,0,4,4" Classes="AppButton"/>
+                </WrapPanel>
+              </controls:SectionCard.Body>
+            </controls:SectionCard>
+          </DockPanel>
+        </controls:SectionCard.Body>
+      </controls:SectionCard>
 
       <StackPanel Grid.Column="1" Spacing="8">
-
-        <Border Classes="PanelCard">
-          <StackPanel>
-            <TextBlock Text="RECOVERY ACTIONS" Classes="PanelTitle" Margin="0,0,0,8"/>
-
+        <controls:SectionCard Title="RECOVERY ACTIONS">
+          <controls:SectionCard.Body>
             <StackPanel Spacing="8">
-              <Button Content="Reset Fault"
-                      Command="{Binding ResetFaultCommand}"
-                      HorizontalAlignment="Stretch"
-                      Classes="AppButton"/>
-              <Button Content="Unlock (Clear E-Stop)"
-                      Command="{Binding UnlockCommand}"
-                      HorizontalAlignment="Stretch"
-                      Classes="AppButton Danger"/>
-              <Button Content="Refresh Sensors"
-                      Command="{Binding RefreshSensorsCommand}"
-                      HorizontalAlignment="Stretch"
-                      Classes="AppButton"/>
+              <Button Content="Reset Fault" Command="{Binding ResetFaultCommand}" HorizontalAlignment="Stretch" Classes="AppButton"/>
+              <Button Content="Unlock (Clear E-Stop)" Command="{Binding UnlockCommand}" HorizontalAlignment="Stretch" Classes="AppButton Danger"/>
+              <Button Content="Refresh Sensors" Command="{Binding RefreshSensorsCommand}" HorizontalAlignment="Stretch" Classes="AppButton"/>
             </StackPanel>
-          </StackPanel>
-        </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
 
-        <Border Classes="PanelCard">
-          <StackPanel>
-            <TextBlock Text="SENSOR READINGS" Classes="PanelTitle" Margin="0,0,0,8"/>
-
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+        <controls:SectionCard Title="SENSOR READINGS">
+          <controls:SectionCard.Body>
+            <controls:TwoColumnInfoGrid>
               <TextBlock Text="CPU Temperature" Classes="FieldLabel"/>
               <TextBlock Grid.Column="1" Text="{Binding CpuTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
 
-              <TextBlock Grid.Row="1" Text="Ambient Temp" Classes="FieldLabel" Margin="0,4,0,0"/>
-              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AmbientTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4,0,0"/>
+              <TextBlock Grid.Row="1" Text="Ambient Temp" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AmbientTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
 
-              <TextBlock Grid.Row="2" Text="Spindle Temp" Classes="FieldLabel" Margin="0,4,0,0"/>
-              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SpindleTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4,0,0"/>
+              <TextBlock Grid.Row="2" Text="Spindle Temp" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SpindleTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
 
-              <TextBlock Grid.Row="3" Text="Humidity" Classes="FieldLabel" Margin="0,4,0,0"/>
-              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Humidity, StringFormat={}{0:F0}%}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4,0,0"/>
+              <TextBlock Grid.Row="3" Text="Humidity" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Humidity, StringFormat={}{0:F0}%}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
 
-              <TextBlock Grid.Row="4" Text="Vibration" Classes="FieldLabel" Margin="0,4,0,0"/>
-              <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding VibrationLevel, StringFormat={}{0:F3} g}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,4,0,0"/>
-            </Grid>
-          </StackPanel>
-        </Border>
+              <TextBlock Grid.Row="4" Text="Vibration" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding VibrationLevel, StringFormat={}{0:F3} g}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
+            </controls:TwoColumnInfoGrid>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
 
-        <Border Classes="PanelCard">
-          <StackPanel>
-            <TextBlock Text="DRIVER STATUS" Classes="PanelTitle" Margin="0,0,0,8"/>
-
+        <controls:SectionCard Title="DRIVER STATUS">
+          <controls:SectionCard.Body>
             <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
               <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                 <Ellipse Width="10" Height="10" Fill="{Binding XDriverOk, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"/>
@@ -145,47 +131,26 @@
                 <TextBlock Text="Spindle" Classes="FieldLabel"/>
               </StackPanel>
             </Grid>
-          </StackPanel>
-        </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
 
-        <Border Classes="PanelCard">
-          <StackPanel>
-            <TextBlock Text="LIMIT SWITCHES" Classes="PanelTitle" Margin="0,0,0,8"/>
-
+        <controls:SectionCard Title="LIMIT SWITCHES">
+          <controls:SectionCard.Body>
             <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto">
-              <TextBlock Text="" Classes="FieldLabel" Foreground="{DynamicResource TextTertiaryBrush}"/>
-              <TextBlock Grid.Column="1" Text="MIN" Classes="FieldLabel" Foreground="{DynamicResource TextTertiaryBrush}" HorizontalAlignment="Center"/>
-              <TextBlock Grid.Column="2" Text="MAX" Classes="FieldLabel" Foreground="{DynamicResource TextTertiaryBrush}" HorizontalAlignment="Center"/>
+              <TextBlock Text="" Classes="FieldLabel Muted"/>
+              <TextBlock Grid.Column="1" Text="MIN" Classes="FieldLabel Muted" HorizontalAlignment="Center"/>
+              <TextBlock Grid.Column="2" Text="MAX" Classes="FieldLabel Muted" HorizontalAlignment="Center"/>
 
               <TextBlock Grid.Row="1" Text="X" Classes="FieldValue" Foreground="#E06666"/>
-              <Ellipse Grid.Row="1" Grid.Column="1"
-                       Width="12"
-                       Height="12"
-                       Fill="{Binding XMinLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}"
-                       HorizontalAlignment="Center"/>
-              <Ellipse Grid.Row="1" Grid.Column="2"
-                       Width="12"
-                       Height="12"
-                       Fill="{Binding XMaxLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}"
-                       HorizontalAlignment="Center"/>
+              <Ellipse Grid.Row="1" Grid.Column="1" Width="12" Height="12" Fill="{Binding XMinLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}" HorizontalAlignment="Center"/>
+              <Ellipse Grid.Row="1" Grid.Column="2" Width="12" Height="12" Fill="{Binding XMaxLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}" HorizontalAlignment="Center"/>
 
               <TextBlock Grid.Row="2" Text="Y" Classes="FieldValue" Foreground="#93C47D" Margin="0,8,0,0"/>
-              <Ellipse Grid.Row="2" Grid.Column="1"
-                       Width="12"
-                       Height="12"
-                       Fill="{Binding YMinLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}"
-                       HorizontalAlignment="Center"
-                       Margin="0,8,0,0"/>
-              <Ellipse Grid.Row="2" Grid.Column="2"
-                       Width="12"
-                       Height="12"
-                       Fill="{Binding YMaxLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}"
-                       HorizontalAlignment="Center"
-                       Margin="0,8,0,0"/>
+              <Ellipse Grid.Row="2" Grid.Column="1" Width="12" Height="12" Fill="{Binding YMinLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+              <Ellipse Grid.Row="2" Grid.Column="2" Width="12" Height="12" Fill="{Binding YMaxLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
             </Grid>
-          </StackPanel>
-        </Border>
-
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
       </StackPanel>
     </Grid>
   </Grid>

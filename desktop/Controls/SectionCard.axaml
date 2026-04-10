@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
+             x:Class="PortableCncApp.Controls.SectionCard">
+  <Border x:Name="CardBorder" Classes="PanelCard">
+    <Grid RowDefinitions="Auto,*" RowSpacing="8">
+      <controls:SectionHeaderBlock x:Name="HeaderBlock"/>
+      <ContentControl x:Name="BodyHost"
+                      Grid.Row="1"
+                      HorizontalContentAlignment="Stretch"
+                      VerticalContentAlignment="Stretch"/>
+    </Grid>
+  </Border>
+</UserControl>

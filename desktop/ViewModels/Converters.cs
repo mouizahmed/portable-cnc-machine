@@ -88,3 +88,29 @@ public class StringEqualsConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotImplementedException();
 }
+
+public class BoolToWarningHighlightBrushConverter : IValueConverter
+{
+    public static readonly BoolToWarningHighlightBrushConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is bool hasWarning && hasWarning
+            ? new SolidColorBrush(Color.Parse("#3A2A14"))
+            : Brushes.Transparent;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+public class BoolToWarningForegroundConverter : IValueConverter
+{
+    public static readonly BoolToWarningForegroundConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is bool hasWarning && hasWarning
+            ? new SolidColorBrush(Color.Parse("#FFD27A"))
+            : new SolidColorBrush(Color.Parse("#A0A0A0"));
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}

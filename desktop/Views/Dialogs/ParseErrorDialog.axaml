@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PortableCncApp.Views.Dialogs.ParseErrorDialog"
+        Width="560"
+        Height="360"
+        MinWidth="560"
+        MinHeight="360"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppBackgroundBrush}">
+
+  <Border Background="{DynamicResource PanelBackgroundBrush}" Padding="16">
+    <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+      <TextBlock x:Name="SummaryText"
+                 Classes="FieldValue"
+                 FontSize="14"
+                 TextWrapping="Wrap"/>
+
+      <TextBlock Grid.Row="1"
+                 Text="The file could not be previewed. Review the details below."
+                 Classes="FieldLabel"
+                 TextWrapping="Wrap"/>
+
+      <Expander Grid.Row="2"
+                Header="Details"
+                IsExpanded="True">
+        <Border Background="#171717"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="10"
+                Margin="0,8,0,0">
+          <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Auto">
+            <TextBlock x:Name="DetailsText"
+                       Classes="CodeText"
+                       TextWrapping="Wrap"/>
+          </ScrollViewer>
+        </Border>
+      </Expander>
+
+      <StackPanel Grid.Row="3"
+                  Orientation="Horizontal"
+                  HorizontalAlignment="Right">
+        <Button Content="Close"
+                Click="OnCloseClick"
+                Classes="AppButton Primary"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

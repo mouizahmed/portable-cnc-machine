@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
              x:Class="PortableCncApp.Views.Pages.SettingsView"
              x:DataType="vm:SettingsViewModel"
              mc:Ignorable="d">
@@ -12,118 +13,99 @@
     <ScrollViewer Grid.Row="1">
       <StackPanel Spacing="8">
 
-        <Border Classes="PanelCard">
-          <StackPanel>
-            <TextBlock Text="STEPS PER MILLIMETER" Classes="PanelTitle" Margin="0,0,0,8"/>
-
+        <controls:SectionCard Title="STEPS PER MILLIMETER">
+          <controls:SectionCard.Body>
             <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto">
               <TextBlock Text="X Axis" Classes="FieldLabel" Margin="0,0,8,6"/>
               <TextBlock Grid.Column="1" Text="Y Axis" Classes="FieldLabel" Margin="8,0,8,6"/>
               <TextBlock Grid.Column="2" Text="Z Axis" Classes="FieldLabel" Margin="8,0,0,6"/>
-
               <NumericUpDown Grid.Row="1" Value="{Binding StepsPerMmX}" Minimum="1" Maximum="10000" Increment="10" Margin="0,0,8,0"/>
               <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding StepsPerMmY}" Minimum="1" Maximum="10000" Increment="10" Margin="8,0,8,0"/>
               <NumericUpDown Grid.Row="1" Grid.Column="2" Value="{Binding StepsPerMmZ}" Minimum="1" Maximum="10000" Increment="10" Margin="8,0,0,0"/>
             </Grid>
-          </StackPanel>
-        </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
 
-        <Border Classes="PanelCard">
-          <StackPanel>
-            <TextBlock Text="MAXIMUM FEED RATES (mm/min)" Classes="PanelTitle" Margin="0,0,0,8"/>
-
+        <controls:SectionCard Title="MAXIMUM FEED RATES (mm/min)">
+          <controls:SectionCard.Body>
             <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto">
               <TextBlock Text="X Axis" Classes="FieldLabel" Margin="0,0,8,6"/>
               <TextBlock Grid.Column="1" Text="Y Axis" Classes="FieldLabel" Margin="8,0,8,6"/>
               <TextBlock Grid.Column="2" Text="Z Axis" Classes="FieldLabel" Margin="8,0,0,6"/>
-
               <NumericUpDown Grid.Row="1" Value="{Binding MaxFeedRateX}" Minimum="1" Maximum="20000" Increment="100" Margin="0,0,8,0"/>
               <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding MaxFeedRateY}" Minimum="1" Maximum="20000" Increment="100" Margin="8,0,8,0"/>
               <NumericUpDown Grid.Row="1" Grid.Column="2" Value="{Binding MaxFeedRateZ}" Minimum="1" Maximum="5000" Increment="50" Margin="8,0,0,0"/>
             </Grid>
-          </StackPanel>
-        </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
 
-        <Border Classes="PanelCard">
-          <StackPanel>
-            <TextBlock Text="ACCELERATION (mm/s^2)" Classes="PanelTitle" Margin="0,0,0,8"/>
-
+        <controls:SectionCard Title="ACCELERATION (mm/s^2)">
+          <controls:SectionCard.Body>
             <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto">
               <TextBlock Text="X Axis" Classes="FieldLabel" Margin="0,0,8,6"/>
               <TextBlock Grid.Column="1" Text="Y Axis" Classes="FieldLabel" Margin="8,0,8,6"/>
               <TextBlock Grid.Column="2" Text="Z Axis" Classes="FieldLabel" Margin="8,0,0,6"/>
-
               <NumericUpDown Grid.Row="1" Value="{Binding AccelerationX}" Minimum="1" Maximum="1000" Increment="10" Margin="0,0,8,0"/>
               <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding AccelerationY}" Minimum="1" Maximum="1000" Increment="10" Margin="8,0,8,0"/>
               <NumericUpDown Grid.Row="1" Grid.Column="2" Value="{Binding AccelerationZ}" Minimum="1" Maximum="500" Increment="5" Margin="8,0,0,0"/>
             </Grid>
-          </StackPanel>
-        </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
 
-        <Border Classes="PanelCard">
-          <StackPanel>
-            <TextBlock Text="MAXIMUM TRAVEL (mm)" Classes="PanelTitle" Margin="0,0,0,8"/>
-
+        <controls:SectionCard Title="MAXIMUM TRAVEL (mm)">
+          <controls:SectionCard.Body>
             <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto">
               <TextBlock Text="X Axis" Classes="FieldLabel" Margin="0,0,8,6"/>
               <TextBlock Grid.Column="1" Text="Y Axis" Classes="FieldLabel" Margin="8,0,8,6"/>
               <TextBlock Grid.Column="2" Text="Z Axis" Classes="FieldLabel" Margin="8,0,0,6"/>
-
               <NumericUpDown Grid.Row="1" Value="{Binding MaxTravelX}" Minimum="1" Maximum="1000" Increment="10" Margin="0,0,8,0"/>
               <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding MaxTravelY}" Minimum="1" Maximum="1000" Increment="10" Margin="8,0,8,0"/>
               <NumericUpDown Grid.Row="1" Grid.Column="2" Value="{Binding MaxTravelZ}" Minimum="1" Maximum="500" Increment="5" Margin="8,0,0,0"/>
-
               <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="24" Margin="0,12,0,0">
                 <CheckBox Content="Enable Soft Limits" IsChecked="{Binding SoftLimitsEnabled}"/>
                 <CheckBox Content="Enable Hard Limits" IsChecked="{Binding HardLimitsEnabled}"/>
               </StackPanel>
             </Grid>
-          </StackPanel>
-        </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
 
-        <Border Classes="PanelCard">
-          <StackPanel>
-            <TextBlock Text="SPINDLE SETTINGS" Classes="PanelTitle" Margin="0,0,0,8"/>
-
+        <controls:SectionCard Title="SPINDLE SETTINGS">
+          <controls:SectionCard.Body>
             <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
               <TextBlock Text="Maximum RPM" Classes="FieldLabel" Margin="0,0,8,6"/>
               <TextBlock Grid.Column="1" Text="Minimum RPM" Classes="FieldLabel" Margin="8,0,0,6"/>
-
               <NumericUpDown Grid.Row="1" Value="{Binding SpindleMaxRpm}" Minimum="1000" Maximum="50000" Increment="1000" Margin="0,0,8,0"/>
               <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding SpindleMinRpm}" Minimum="0" Maximum="10000" Increment="100" Margin="8,0,0,0"/>
             </Grid>
-          </StackPanel>
-        </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
 
-        <Border Classes="PanelCard">
-          <StackPanel>
-            <TextBlock Text="SAFETY THRESHOLDS" Classes="PanelTitle" Margin="0,0,0,8"/>
-
+        <controls:SectionCard Title="SAFETY THRESHOLDS">
+          <controls:SectionCard.Body>
             <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
               <TextBlock Text="Max Temperature (deg C)" Classes="FieldLabel" Margin="0,0,8,6"/>
               <TextBlock Grid.Column="1" Text="Warning Temperature (deg C)" Classes="FieldLabel" Margin="8,0,0,6"/>
-
               <NumericUpDown Grid.Row="1" Value="{Binding MaxTemperature}" Minimum="30" Maximum="100" Increment="5" Margin="0,0,8,0"/>
               <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding WarningTemperature}" Minimum="25" Maximum="80" Increment="5" Margin="8,0,0,0"/>
             </Grid>
-          </StackPanel>
-        </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
 
       </StackPanel>
     </ScrollViewer>
 
-    <Border Grid.Row="2" Classes="PanelCard" Margin="0,8,0,0">
-      <StackPanel Orientation="Horizontal" Spacing="12">
-        <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Classes="AppButton Primary"/>
-        <Button Content="Apply to Machine" Command="{Binding ApplyToMachineCommand}" Classes="AppButton"/>
-        <Button Content="Load Defaults" Command="{Binding LoadDefaultsCommand}" Classes="AppButton"/>
-
-        <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="8,0"/>
-
-        <Button Content="Import..." Command="{Binding ImportSettingsCommand}" Classes="AppButton"/>
-        <Button Content="Export..." Command="{Binding ExportSettingsCommand}" Classes="AppButton"/>
-      </StackPanel>
-    </Border>
+    <controls:SectionCard Grid.Row="2" Margin="0,8,0,0">
+      <controls:SectionCard.Body>
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Classes="AppButton Primary"/>
+          <Button Content="Apply to Machine" Command="{Binding ApplyToMachineCommand}" Classes="AppButton"/>
+          <Button Content="Load Defaults" Command="{Binding LoadDefaultsCommand}" Classes="AppButton"/>
+          <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="8,0"/>
+          <Button Content="Import..." Command="{Binding ImportSettingsCommand}" Classes="AppButton"/>
+          <Button Content="Export..." Command="{Binding ExportSettingsCommand}" Classes="AppButton"/>
+        </StackPanel>
+      </controls:SectionCard.Body>
+    </controls:SectionCard>
 
   </Grid>
 </UserControl>

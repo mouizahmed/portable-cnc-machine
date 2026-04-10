@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+        xmlns:controls="clr-namespace:PortableCncApp.Controls"
         xmlns:converters="clr-namespace:PortableCncApp.ViewModels"
         x:Class="PortableCncApp.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -28,31 +29,26 @@
                 Command="{Binding GoDashboardCommand}">
           <TextBlock Text="Dashboard" VerticalAlignment="Center"/>
         </Button>
-
         <Button Classes="NavButton"
                 Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=ManualControl}"
                 Command="{Binding GoManualControlCommand}">
           <TextBlock Text="Manual Control" VerticalAlignment="Center"/>
         </Button>
-
         <Button Classes="NavButton"
                 Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Files}"
                 Command="{Binding GoFilesCommand}">
           <TextBlock Text="Files" VerticalAlignment="Center"/>
         </Button>
-
         <Button Classes="NavButton"
                 Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Connect}"
                 Command="{Binding GoConnectCommand}">
           <TextBlock Text="Connect" VerticalAlignment="Center"/>
         </Button>
-
         <Button Classes="NavButton"
                 Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Settings}"
                 Command="{Binding GoSettingsCommand}">
           <TextBlock Text="Settings" VerticalAlignment="Center"/>
         </Button>
-
         <Button Classes="NavButton"
                 Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Diagnostics}"
                 Command="{Binding GoDiagnosticsCommand}">
@@ -72,55 +68,34 @@
       <Grid RowDefinitions="Auto,1,*">
 
         <StackPanel Grid.Row="0" Spacing="8" Margin="8">
-          <Border Classes="PanelCard">
-            <StackPanel>
-              <TextBlock Text="COORDINATES" Classes="PanelTitle" Margin="0,0,0,8"/>
+          <controls:SectionCard Title="COORDINATES">
+            <controls:SectionCard.Body>
+              <StackPanel Spacing="8">
+                <controls:ReadoutRow Label="Work" Value="{Binding WorkCoordinatesText}"/>
+                <controls:ReadoutRow Label="Machine" Value="{Binding MachineCoordinatesText}" IsMuted="True"/>
+              </StackPanel>
+            </controls:SectionCard.Body>
+          </controls:SectionCard>
 
-              <Grid ColumnDefinitions="64,*" RowDefinitions="Auto,Auto" RowSpacing="8">
-                <TextBlock Text="Work" Classes="SectionHeading" VerticalAlignment="Center"/>
-                <Border Grid.Column="1" Classes="InsetSurface">
-                  <TextBlock Text="{Binding WorkCoordinatesText}"
-                             Classes="CodeValue"
-                             HorizontalAlignment="Right"/>
-                </Border>
+          <controls:SectionCard Title="MACHINE">
+            <controls:SectionCard.Body>
+              <StackPanel Spacing="8">
+                <controls:StatusPill Text="{Binding MotionStateLabel}"
+                                     PillBackground="{Binding MotionStateBrush}"/>
 
-                <TextBlock Grid.Row="1" Text="Machine" Classes="SectionHeading" VerticalAlignment="Center"/>
-                <Border Grid.Row="1" Grid.Column="1" Classes="InsetSurface">
-                  <TextBlock Text="{Binding MachineCoordinatesText}"
-                             Classes="CodeValue"
-                             Foreground="{DynamicResource TextSecondaryBrush}"
-                             HorizontalAlignment="Right"/>
-                </Border>
-              </Grid>
-            </StackPanel>
-          </Border>
+                <controls:TwoColumnInfoGrid>
+                  <TextBlock Text="Connection" Classes="FieldLabel"/>
+                  <TextBlock Grid.Column="1" Text="{Binding ConnectionStatusText}" Classes="FieldValue"/>
 
-          <Border Classes="PanelCard">
-            <StackPanel>
-              <TextBlock Text="MACHINE" Classes="PanelTitle" Margin="0,0,0,8"/>
+                  <TextBlock Grid.Row="1" Text="Safety" Classes="FieldLabel"/>
+                  <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SafetyStateLabel}" Classes="FieldValue"/>
 
-              <Border Classes="StatusPill"
-                      Background="{Binding MotionStateBrush}"
-                      Padding="8,6"
-                      Margin="0,0,0,8">
-                <TextBlock Text="{Binding MotionStateLabel}"
-                           Classes="FieldValue"
-                           Foreground="White"
-                           HorizontalAlignment="Center"/>
-              </Border>
-
-              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
-                <TextBlock Text="Connection" Classes="FieldLabel"/>
-                <TextBlock Grid.Column="1" Text="{Binding ConnectionStatusText}" Classes="FieldValue"/>
-
-                <TextBlock Grid.Row="1" Text="Safety" Classes="FieldLabel"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SafetyStateLabel}" Classes="FieldValue"/>
-
-                <TextBlock Grid.Row="2" Text="Feed / Spindle" Classes="FieldLabel"/>
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding FeedSpindleSummary}" Classes="FieldValue"/>
-              </Grid>
-            </StackPanel>
-          </Border>
+                  <TextBlock Grid.Row="2" Text="Feed / Spindle" Classes="FieldLabel"/>
+                  <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding FeedSpindleSummary}" Classes="FieldValue"/>
+                </controls:TwoColumnInfoGrid>
+              </StackPanel>
+            </controls:SectionCard.Body>
+          </controls:SectionCard>
         </StackPanel>
 
         <Border Grid.Row="1" Background="{DynamicResource BorderBrush}"/>
@@ -129,92 +104,189 @@
           <ContentControl Content="{Binding CurrentPage}">
             <ContentControl.DataTemplates>
               <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
-                <Border Classes="PanelCard">
-                  <StackPanel>
-                    <TextBlock Text="DASHBOARD" Classes="PanelTitle" Margin="0,0,0,8"/>
-                    <TextBlock Text="{Binding MainVm.CurrentFileName, TargetNullValue='No file loaded'}"
-                               Classes="CodeValue"
-                               TextTrimming="CharacterEllipsis"/>
+                <controls:SectionCard Title="DASHBOARD">
+                  <controls:SectionCard.Body>
+                    <StackPanel>
+                      <TextBlock Text="{Binding MainVm.CurrentFileName, TargetNullValue='No file loaded'}"
+                                 Classes="CodeValue"
+                                 TextTrimming="CharacterEllipsis"/>
 
-                    <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,4">
-                      <TextBlock Text="Progress" Classes="FieldLabel"/>
-                      <TextBlock Grid.Column="1"
-                                 Text="{Binding MainVm.Progress, StringFormat={}{0:F1}%}"
-                                 Classes="FieldLabel"/>
-                    </Grid>
+                      <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,4">
+                        <TextBlock Text="Progress" Classes="FieldLabel"/>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding MainVm.Progress, StringFormat={}{0:F1}%}"
+                                   Classes="FieldLabel"/>
+                      </Grid>
 
-                    <ProgressBar Value="{Binding MainVm.Progress}" Maximum="100" Height="8" CornerRadius="4"/>
+                      <ProgressBar Value="{Binding MainVm.Progress}" Maximum="100" Height="8" CornerRadius="4"/>
 
-                    <TextBlock Text="{Binding MainVm.CurrentLine, StringFormat=Line {0}}"
-                               Classes="FieldLabel"
-                               Foreground="{DynamicResource TextTertiaryBrush}"
-                               Margin="0,8,0,0"/>
-                    <TextBlock Text="{Binding MainVm.ActiveToolpathBounds}" Classes="FieldLabel" Margin="0,6,0,0"/>
-                    <TextBlock Text="{Binding MainVm.ActiveToolpathDepth}" Classes="FieldLabel" Margin="0,4,0,0"/>
-                  </StackPanel>
-                </Border>
+                      <TextBlock Text="{Binding MainVm.CurrentLine, StringFormat=Line {0}}"
+                                 Classes="FieldLabel Muted"
+                                 Margin="0,8,0,0"/>
+                      <TextBlock Text="{Binding MainVm.ActiveToolpathBounds}" Classes="FieldLabel" Margin="0,6,0,0"/>
+                      <TextBlock Text="{Binding MainVm.ActiveToolpathDepth}" Classes="FieldLabel" Margin="0,4,0,0"/>
+                    </StackPanel>
+                  </controls:SectionCard.Body>
+                </controls:SectionCard>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:FilesViewModel}">
                 <StackPanel Spacing="8">
-                  <Border Classes="PanelCard">
-                    <StackPanel>
-                      <TextBlock Text="FILES" Classes="PanelTitle" Margin="0,0,0,8"/>
-                      <TextBlock Text="{Binding SelectedFile.Name, TargetNullValue='No file selected'}"
-                                 Classes="CodeValue"
-                                 TextTrimming="CharacterEllipsis"/>
-                      <TextBlock Text="{Binding SelectedFile.Size, TargetNullValue='--'}" Classes="FieldLabel" Margin="0,6,0,0"/>
-                      <TextBlock Text="{Binding SelectedFile.Modified, StringFormat=Modified {0}, TargetNullValue='Modified --'}"
-                                 Classes="FieldLabel"
-                                 Foreground="{DynamicResource TextTertiaryBrush}"
-                                 Margin="0,4,0,0"/>
-                    </StackPanel>
-                  </Border>
+                  <controls:SectionCard Title="SELECTION">
+                    <controls:SectionCard.Body>
+                      <StackPanel Spacing="8">
+                        <controls:StatusPill Text="{Binding ToolpathStateLabel}"
+                                             PillBackground="{Binding ToolpathStateBrush}"/>
+                        <TextBlock Text="{Binding FilePreviewTitle}"
+                                   Classes="CodeValue"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding SelectedFilePathSummary}"
+                                   Classes="FieldLabel"
+                                   TextWrapping="Wrap"/>
 
-                  <Border Classes="PanelCard">
-                    <StackPanel>
-                      <TextBlock Text="TOOLPATH" Classes="PanelTitle" Margin="0,0,0,8"/>
-                      <TextBlock Text="{Binding ToolpathStatusMessage}" Classes="FieldValue" TextWrapping="Wrap"/>
-                      <TextBlock Text="{Binding ToolpathWarningSummary}" Classes="FieldLabel" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                    </StackPanel>
-                  </Border>
+                        <controls:TwoColumnInfoGrid>
+                          <TextBlock Text="Size" Classes="FieldLabel"/>
+                          <TextBlock Grid.Column="1"
+                                     Text="{Binding SelectedFile.Size, TargetNullValue='--'}"
+                                     Classes="FieldValue"/>
+
+                          <TextBlock Grid.Row="1" Text="Modified" Classes="FieldLabel"/>
+                          <TextBlock Grid.Row="1"
+                                     Grid.Column="1"
+                                     Text="{Binding SelectedFile.Modified, TargetNullValue='--'}"
+                                     Classes="FieldValue"/>
+
+                          <TextBlock Grid.Row="2" Text="Lines" Classes="FieldLabel"/>
+                          <TextBlock Grid.Row="2"
+                                     Grid.Column="1"
+                                     Text="{Binding SelectedFileLineSummary}"
+                                     Classes="FieldValue"/>
+                        </controls:TwoColumnInfoGrid>
+                      </StackPanel>
+                    </controls:SectionCard.Body>
+                  </controls:SectionCard>
+
+                  <controls:SectionCard Title="ACTIONS">
+                    <controls:SectionCard.Body>
+                      <StackPanel Spacing="8">
+                        <Button Content="Load Into Dashboard"
+                                Command="{Binding LoadSelectedCommand}"
+                                IsEnabled="{Binding HasSelectedFile}"
+                                HorizontalAlignment="Stretch"
+                                Classes="AppButton Primary"/>
+                        <Button Content="Remove From Library"
+                                Command="{Binding RemoveCommand}"
+                                IsEnabled="{Binding HasSelectedFile}"
+                                HorizontalAlignment="Stretch"
+                                Classes="AppButton"/>
+                        <TextBlock Text="{Binding SelectedFileModifiedSummary}"
+                                   Classes="FieldLabel Muted"
+                                   TextWrapping="Wrap"/>
+                      </StackPanel>
+                    </controls:SectionCard.Body>
+                  </controls:SectionCard>
+
+                  <controls:SectionCard Title="TOOLPATH">
+                    <controls:SectionCard.Body>
+                      <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding ToolpathStatusMessage}"
+                                   Classes="FieldValue"
+                                   TextWrapping="Wrap"/>
+
+                        <controls:TwoColumnInfoGrid>
+                          <TextBlock Text="Bounds" Classes="FieldLabel"/>
+                          <TextBlock Grid.Column="1"
+                                     Text="{Binding MainVm.ActiveToolpathBounds}"
+                                     Classes="FieldValue"/>
+
+                          <TextBlock Grid.Row="1" Text="Depth" Classes="FieldLabel"/>
+                          <TextBlock Grid.Row="1"
+                                     Grid.Column="1"
+                                     Text="{Binding MainVm.ActiveToolpathDepth}"
+                                     Classes="FieldValue"/>
+
+                          <TextBlock Grid.Row="2" Text="Segments" Classes="FieldLabel"/>
+                          <TextBlock Grid.Row="2"
+                                     Grid.Column="1"
+                                     Text="{Binding MainVm.ActiveToolpathSegmentCount}"
+                                     Classes="FieldValue"/>
+                        </controls:TwoColumnInfoGrid>
+
+                        <TextBlock Text="{Binding WarningDetail}"
+                                   Classes="FieldLabel"
+                                   TextWrapping="Wrap"/>
+                      </StackPanel>
+                    </controls:SectionCard.Body>
+                  </controls:SectionCard>
                 </StackPanel>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:ManualControlViewModel}">
-                <Border Classes="PanelCard">
-                  <StackPanel Spacing="8">
-                    <TextBlock Text="MANUAL CONTROL" Classes="PanelTitle"/>
+                <controls:SectionCard Title="MANUAL CONTROL">
+                  <controls:SectionCard.Body>
+                    <StackPanel Spacing="8">
+                      <controls:TwoColumnInfoGrid>
+                        <TextBlock Text="Step" Classes="FieldLabel"/>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding JogStep, StringFormat={}{0} mm}"
+                                   Classes="FieldValue"/>
 
-                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6">
-                      <TextBlock Text="Step" Classes="FieldLabel"/>
-                      <TextBlock Grid.Column="1"
-                                 Text="{Binding JogStep, StringFormat={}{0} mm}"
-                                 Classes="FieldValue"
-                                 HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Row="1" Text="Feed" Classes="FieldLabel"/>
+                        <TextBlock Grid.Row="1"
+                                   Grid.Column="1"
+                                   Text="{Binding JogFeedRate, StringFormat={}{0:F0} mm/min}"
+                                   Classes="FieldValue"/>
 
-                      <TextBlock Grid.Row="1" Text="Feed" Classes="FieldLabel"/>
-                      <TextBlock Grid.Row="1"
-                                 Grid.Column="1"
-                                 Text="{Binding JogFeedRate, StringFormat={}{0:F0} mm/min}"
-                                 Classes="FieldValue"
-                                 HorizontalAlignment="Right"/>
-                    </Grid>
+                        <TextBlock Grid.Row="2" Text="Mode" Classes="FieldLabel"/>
+                        <TextBlock Grid.Row="2"
+                                   Grid.Column="1"
+                                   Text="{Binding JogModeText}"
+                                   Classes="FieldValue"/>
 
-                    <TextBlock Text="{Binding CommandPreview}"
-                               Classes="CodeText"
-                               FontSize="10"
-                               TextWrapping="Wrap"/>
-                  </StackPanel>
-                </Border>
+                        <TextBlock Grid.Row="3" Text="Home" Classes="FieldLabel"/>
+                        <TextBlock Grid.Row="3"
+                                   Grid.Column="1"
+                                   Text="{Binding HomingStatusText}"
+                                   Classes="FieldValue"/>
+
+                        <TextBlock Grid.Row="4" Text="Overrides" Classes="FieldLabel"/>
+                        <TextBlock Grid.Row="4"
+                                   Grid.Column="1"
+                                   Text="{Binding FeedOverride, StringFormat=F {0}%}"
+                                   Classes="FieldValue"/>
+                        <TextBlock Grid.Row="5"
+                                   Grid.Column="1"
+                                   Text="{Binding SpindleOverride, StringFormat=S {0}%}"
+                                   Classes="FieldValue"/>
+                        <TextBlock Grid.Row="6"
+                                   Grid.Column="1"
+                                   Text="{Binding RapidOverride, StringFormat=R {0}%}"
+                                   Classes="FieldValue"/>
+
+                        <TextBlock Grid.Row="7" Text="Aux" Classes="FieldLabel"/>
+                        <TextBlock Grid.Row="7"
+                                   Grid.Column="1"
+                                   Text="{Binding SpindleStatusText}"
+                                   Classes="FieldValue"/>
+                        <TextBlock Grid.Row="8"
+                                   Grid.Column="1"
+                                   Text="{Binding CoolantStatusText, StringFormat=Coolant {0}}"
+                                   Classes="FieldValue"/>
+                      </controls:TwoColumnInfoGrid>
+
+                      <TextBlock Text="{Binding CommandPreview}"
+                                 Classes="CodeText"
+                                 FontSize="10"
+                                 TextWrapping="Wrap"/>
+                    </StackPanel>
+                  </controls:SectionCard.Body>
+                </controls:SectionCard>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:ConnectViewModel}">
-                <Border Classes="PanelCard">
-                  <StackPanel>
-                    <TextBlock Text="DEVICE" Classes="PanelTitle" Margin="0,0,0,8"/>
-
-                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+                <controls:SectionCard Title="DEVICE">
+                  <controls:SectionCard.Body>
+                    <controls:TwoColumnInfoGrid>
                       <TextBlock Text="Port" Classes="FieldLabel"/>
                       <TextBlock Grid.Column="1" Text="{Binding SelectedPort, TargetNullValue='--'}" Classes="FieldValue"/>
 
@@ -226,17 +298,15 @@
 
                       <TextBlock Grid.Row="3" Text="Serial" Classes="FieldLabel"/>
                       <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PicoSerialNumber}" Classes="FieldValue"/>
-                    </Grid>
-                  </StackPanel>
-                </Border>
+                    </controls:TwoColumnInfoGrid>
+                  </controls:SectionCard.Body>
+                </controls:SectionCard>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
-                <Border Classes="PanelCard">
-                  <StackPanel>
-                    <TextBlock Text="SETTINGS" Classes="PanelTitle" Margin="0,0,0,8"/>
-
-                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+                <controls:SectionCard Title="SETTINGS">
+                  <controls:SectionCard.Body>
+                    <controls:TwoColumnInfoGrid>
                       <TextBlock Text="Units" Classes="FieldLabel"/>
                       <TextBlock Grid.Column="1" Text="{Binding Units}" Classes="FieldValue"/>
 
@@ -248,28 +318,30 @@
 
                       <TextBlock Grid.Row="3" Text="Spindle max" Classes="FieldLabel"/>
                       <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SpindleMaxRpm, StringFormat={}{0:F0} RPM}" Classes="FieldValue"/>
-                    </Grid>
-                  </StackPanel>
-                </Border>
+                    </controls:TwoColumnInfoGrid>
+                  </controls:SectionCard.Body>
+                </controls:SectionCard>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:DiagnosticsViewModel}">
                 <StackPanel Spacing="8">
-                  <Border Classes="PanelCard">
-                    <StackPanel>
-                      <TextBlock Text="DIAGNOSTICS" Classes="PanelTitle" Margin="0,0,0,8"/>
-                      <TextBlock Text="{Binding MainVm.StatusMessage}" Classes="FieldValue" TextWrapping="Wrap"/>
-                      <TextBlock Text="{Binding MainVm.IsStatusError, StringFormat=Active fault: {0}}" Classes="FieldLabel" Margin="0,6,0,0"/>
-                    </StackPanel>
-                  </Border>
+                  <controls:SectionCard Title="DIAGNOSTICS">
+                    <controls:SectionCard.Body>
+                      <StackPanel>
+                        <TextBlock Text="{Binding MainVm.StatusMessage}" Classes="FieldValue" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding MainVm.IsStatusError, StringFormat=Active fault: {0}}" Classes="FieldLabel" Margin="0,6,0,0"/>
+                      </StackPanel>
+                    </controls:SectionCard.Body>
+                  </controls:SectionCard>
 
-                  <Border Classes="PanelCard">
-                    <StackPanel>
-                      <TextBlock Text="CONSOLE" Classes="PanelTitle" Margin="0,0,0,8"/>
-                      <TextBlock Text="{Binding LogEntryCount, StringFormat={}{0} entries}" Classes="FieldLabel"/>
-                      <TextBlock Text="{Binding LatestLogSummary}" Classes="FieldValue" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                    </StackPanel>
-                  </Border>
+                  <controls:SectionCard Title="CONSOLE">
+                    <controls:SectionCard.Body>
+                      <StackPanel>
+                        <TextBlock Text="{Binding LogEntryCount, StringFormat={}{0} entries}" Classes="FieldLabel"/>
+                        <TextBlock Text="{Binding LatestLogSummary}" Classes="FieldValue" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                      </StackPanel>
+                    </controls:SectionCard.Body>
+                  </controls:SectionCard>
                 </StackPanel>
               </DataTemplate>
             </ContentControl.DataTemplates>
@@ -291,12 +363,10 @@
                   Command="{Binding StartCommand}"
                   IsEnabled="{Binding CanStart}"
                   Content="START"/>
-
           <Button Classes="AppButton Warning"
                   Command="{Binding PauseCommand}"
                   IsEnabled="{Binding CanPause}"
                   Content="PAUSE"/>
-
           <Button Classes="AppButton Danger"
                   Command="{Binding StopCommand}"
                   IsEnabled="{Binding CanStop}"
@@ -332,17 +402,13 @@
           <TextBlock Text="{Binding Temperature, StringFormat={}{0:F1} deg C}" Classes="FieldValue" FontWeight="Normal" VerticalAlignment="Center"/>
         </StackPanel>
 
-        <Border Grid.Column="4"
-                Classes="StatusPill"
-                IsVisible="{Binding IsConnected}"
-                Margin="8,0,0,0"
-                Background="{Binding MotionStateBrush}"
-                VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <TextBlock Text="MOTION:" Classes="FieldLabel" Foreground="#CCFFFFFF" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding MotionStateLabel}" Classes="FieldValue" Foreground="White" VerticalAlignment="Center"/>
-          </StackPanel>
-        </Border>
+        <controls:StatusPill Grid.Column="4"
+                             IsVisible="{Binding IsConnected}"
+                             Margin="8,0,0,0"
+                             Prefix="MOTION:"
+                             Text="{Binding MotionStateLabel}"
+                             PillBackground="{Binding MotionStateBrush}"
+                             LabelForeground="#CCFFFFFF"/>
 
         <Button Grid.Column="5"
                 Classes="AppButton Danger"
