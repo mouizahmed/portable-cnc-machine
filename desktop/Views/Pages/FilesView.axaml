@@ -9,18 +9,10 @@
 
   <Grid RowDefinitions="Auto,*">
 
-    <Border Grid.Row="0"
-            Background="{DynamicResource PanelBackgroundBrush}"
-            CornerRadius="4"
-            Padding="10"
-            Margin="0,0,0,8">
+    <Border Grid.Row="0" Classes="PanelCard Loose" Margin="0,0,0,8">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel VerticalAlignment="Center">
-          <TextBlock Text="FILE LIBRARY"
-                     FontSize="11"
-                     FontWeight="SemiBold"
-                     Foreground="{DynamicResource TextTertiaryBrush}"
-                     LetterSpacing="1"/>
+          <TextBlock Text="FILE LIBRARY" Classes="PanelTitle"/>
         </StackPanel>
 
         <StackPanel Grid.Column="1"
@@ -29,36 +21,24 @@
                     VerticalAlignment="Center">
           <Button Content="Browse..."
                   Command="{Binding BrowseCommand}"
-                  Padding="12,4"
-                  FontSize="11"
-                  Background="{DynamicResource AccentBrush}"/>
+                  Classes="AppButton Primary"/>
           <Button Content="Refresh"
                   Command="{Binding RefreshCommand}"
-                  Padding="12,4"
-                  FontSize="11"/>
+                  Classes="AppButton"/>
         </StackPanel>
       </Grid>
     </Border>
 
     <Grid Grid.Row="1" ColumnDefinitions="280,*">
 
-      <Border Background="{DynamicResource PanelBackgroundBrush}"
-              CornerRadius="4"
-              Padding="8"
-              Margin="0,0,12,0">
+      <Border Classes="PanelCard" Margin="0,0,12,0">
         <DockPanel LastChildFill="True">
-          <Grid DockPanel.Dock="Top"
-                Margin="0,0,0,10">
+          <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
             <StackPanel>
-              <TextBlock Text="AVAILABLE FILES"
-                         FontSize="11"
-                         FontWeight="SemiBold"
-                         Foreground="{DynamicResource TextTertiaryBrush}"
-                         LetterSpacing="1"/>
+              <TextBlock Text="AVAILABLE FILES" Classes="PanelTitle"/>
               <TextBlock Text="{Binding Files.Count, StringFormat={}{0} file(s)}"
-                         FontSize="11"
-                         Margin="0,6,0,0"
-                         Foreground="{DynamicResource TextSecondaryBrush}"/>
+                         Classes="FieldLabel"
+                         Margin="0,6,0,0"/>
             </StackPanel>
           </Grid>
 
@@ -70,20 +50,15 @@
                     Content="Load Selected"
                     Command="{Binding LoadSelectedCommand}"
                     IsEnabled="{Binding HasSelectedFile}"
-                    Padding="12,4"
-                    FontSize="11"
-                    Background="{DynamicResource AccentBrush}"/>
+                    Classes="AppButton Primary"/>
             <Button Grid.Column="2"
                     Content="Remove"
                     Command="{Binding RemoveCommand}"
                     IsEnabled="{Binding HasSelectedFile}"
-                    Padding="12,4"
-                    FontSize="11"
-                    Background="#3A3A3A"/>
+                    Classes="AppButton"/>
           </Grid>
 
-          <Border Background="#1F1F1F"
-                  CornerRadius="4"
+          <Border Classes="InsetSurface Subtle"
                   BorderBrush="{DynamicResource BorderBrush}"
                   BorderThickness="1">
             <ListBox ItemsSource="{Binding Files}"
@@ -111,11 +86,9 @@
                           Margin="4,3"
                           Background="#272727"
                           CornerRadius="4">
-                    <Grid RowDefinitions="Auto,Auto"
-                          ColumnDefinitions="*,Auto">
+                    <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
                       <TextBlock Text="{Binding Name}"
-                                 FontSize="12"
-                                 FontWeight="SemiBold"
+                                 Classes="SectionHeading"
                                  Foreground="{DynamicResource TextPrimaryBrush}"
                                  TextTrimming="CharacterEllipsis"/>
                       <Border Grid.Column="1"
@@ -124,16 +97,13 @@
                               Padding="8,2"
                               Margin="10,0,0,0"
                               VerticalAlignment="Top">
-                        <TextBlock Text="{Binding Size}"
-                                   FontSize="10"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding Size}" Classes="Caption" Foreground="{DynamicResource TextSecondaryBrush}"/>
                       </Border>
 
                       <TextBlock Grid.Row="1"
                                  Text="{Binding Modified, StringFormat=Modified {0}}"
-                                 FontSize="10"
-                                 Margin="0,6,0,0"
-                                 Foreground="{DynamicResource TextTertiaryBrush}"/>
+                                 Classes="Caption"
+                                 Margin="0,6,0,0"/>
                     </Grid>
                   </Border>
                 </DataTemplate>
@@ -143,35 +113,24 @@
         </DockPanel>
       </Border>
 
-      <Border Grid.Column="1"
-              Background="{DynamicResource PanelBackgroundBrush}"
-              CornerRadius="4"
-              Padding="8">
+      <Border Grid.Column="1" Classes="PanelCard">
         <Grid RowDefinitions="Auto,Auto,*">
-          <Grid ColumnDefinitions="*,Auto"
-                Margin="0,0,0,10">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,10">
             <StackPanel>
-              <TextBlock Text="PREVIEW WORKSPACE"
-                         FontSize="11"
-                         FontWeight="SemiBold"
-                         Foreground="{DynamicResource TextTertiaryBrush}"
-                         LetterSpacing="1"/>
+              <TextBlock Text="PREVIEW WORKSPACE" Classes="PanelTitle"/>
               <TextBlock Text="{Binding SelectedFile.Name, TargetNullValue='No file selected'}"
+                         Classes="CodeValue"
                          FontSize="15"
-                         FontWeight="SemiBold"
                          Margin="0,6,0,0"
-                         Foreground="{DynamicResource TextPrimaryBrush}"
                          TextTrimming="CharacterEllipsis"/>
             </StackPanel>
 
             <Border Grid.Column="1"
-                    Background="#2A2A2A"
-                    CornerRadius="4"
-                    Padding="10,4"
-                    VerticalAlignment="Top">
+                    Classes="InsetSurface"
+                    VerticalAlignment="Top"
+                    Padding="10,4">
               <TextBlock Text="{Binding PreviewLineCount, StringFormat={}{0} lines}"
-                         FontSize="11"
-                         Foreground="{DynamicResource TextSecondaryBrush}"/>
+                         Classes="FieldLabel"/>
             </Border>
           </Grid>
 
@@ -183,15 +142,10 @@
                     CornerRadius="4"
                     Padding="10,8">
               <StackPanel>
-                <TextBlock Text="Toolpath"
-                           FontSize="10"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextTertiaryBrush}"
-                           LetterSpacing="1"/>
+                <TextBlock Text="Toolpath" Classes="Caption" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding ToolpathStatusMessage}"
-                           FontSize="11"
+                           Classes="FieldValue"
                            Margin="0,6,0,0"
-                           Foreground="{DynamicResource TextPrimaryBrush}"
                            TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
@@ -201,31 +155,19 @@
                     CornerRadius="4"
                     Padding="10,8">
               <StackPanel>
-                <TextBlock Text="Warnings"
-                           FontSize="10"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextTertiaryBrush}"
-                           LetterSpacing="1"/>
+                <TextBlock Text="Warnings" Classes="Caption" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding ToolpathWarningSummary, TargetNullValue='No parse warnings.'}"
-                           FontSize="11"
+                           Classes="FieldLabel"
                            Margin="0,6,0,0"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
                            TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
           </Grid>
 
-          <Border Grid.Row="2"
-                  Background="#171717"
-                  CornerRadius="4"
-                  Padding="10"
-                  BorderBrush="{DynamicResource BorderBrush}"
-                  BorderThickness="1">
+          <Border Grid.Row="2" Classes="InsetSurface Code">
             <ScrollViewer>
               <TextBlock Text="{Binding FilePreview}"
-                         FontFamily="Consolas"
-                         FontSize="11"
-                         Foreground="{DynamicResource TextSecondaryBrush}"
+                         Classes="CodeText"
                          TextWrapping="NoWrap"/>
             </ScrollViewer>
           </Border>

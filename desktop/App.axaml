@@ -9,45 +9,226 @@
     <Application.Styles>
         <FluentTheme />
         <materialIcons:MaterialIconStyles />
-        <!-- Global cursors -->
+
+        <!-- Global control baselines -->
         <Style Selector="Button">
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style Selector="ToggleButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="11"/>
         </Style>
         <Style Selector="CheckBox">
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="11"/>
         </Style>
         <Style Selector="ComboBox">
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="MinHeight" Value="28"/>
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
         <Style Selector="Slider">
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
-        <!-- Custom Styles -->
+
+        <!-- Layout primitives -->
+        <Style Selector="Border.PanelCard">
+            <Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="8"/>
+        </Style>
+        <Style Selector="Border.PanelCard.Loose">
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+        <Style Selector="Border.InsetSurface">
+            <Setter Property="Background" Value="#2A2A2A"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="8,6"/>
+        </Style>
+        <Style Selector="Border.InsetSurface.Subtle">
+            <Setter Property="Background" Value="#1F1F1F"/>
+            <Setter Property="Padding" Value="8"/>
+        </Style>
+        <Style Selector="Border.InsetSurface.Code">
+            <Setter Property="Background" Value="#171717"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+        <Style Selector="Border.StatusPill">
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="8,4"/>
+        </Style>
+
+        <!-- Typography primitives -->
+        <Style Selector="TextBlock.PanelTitle">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}"/>
+            <Setter Property="LetterSpacing" Value="1"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeading">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.FieldValue">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.Caption">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.CodeValue">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.CodeText">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
+
+        <!-- App button system -->
+        <Style Selector="Button.AppButton">
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="MinWidth" Value="52"/>
+            <Setter Property="MinHeight" Value="28"/>
+        </Style>
+        <Style Selector="Button.AppButton.Primary">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.AppButton.Success">
+            <Setter Property="Background" Value="#3BB273"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.AppButton.Warning">
+            <Setter Property="Background" Value="#E0A100"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.AppButton.Danger">
+            <Setter Property="Background" Value="#D83B3B"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="ToggleButton.AppButton">
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="MinHeight" Value="28"/>
+        </Style>
+
+        <!-- Legacy shell button styles kept for compatibility -->
         <Style Selector="Button.NavButton">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
             <Setter Property="Padding" Value="12,4"/>
             <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="MinWidth" Value="52"/>
+            <Setter Property="MinHeight" Value="28"/>
+        </Style>
+        <Style Selector="Button.NavButton TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
         </Style>
         <Style Selector="Button.NavButton:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#2A2A2A"/>
         </Style>
+        <Style Selector="Button.NavButton:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="Button.NavButton:pointerover TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
         <Style Selector="Button.NavButton:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="#333333"/>
         </Style>
+        <Style Selector="Button.NavButton:pressed">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="Button.NavButton:pressed TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
         <Style Selector="Button.NavButton.active">
-            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="BorderThickness" Value="0,0,0,2"/>
             <Setter Property="CornerRadius" Value="0"/>
         </Style>
         <Style Selector="Button.NavButton.active /template/ ContentPresenter">
-            <Setter Property="Background" Value="#252525"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+            <Setter Property="CornerRadius" Value="0"/>
+        </Style>
+        <Style Selector="Button.NavButton.active TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="Button.NavButton.active:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+        </Style>
+        <Style Selector="Button.NavButton.active:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+            <Setter Property="CornerRadius" Value="0"/>
+        </Style>
+        <Style Selector="Button.NavButton.active:pointerover TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="Button.NavButton.active:pressed">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+        </Style>
+        <Style Selector="Button.NavButton.active:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+            <Setter Property="CornerRadius" Value="0"/>
+        </Style>
+        <Style Selector="Button.NavButton.active:pressed TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
         </Style>
         
         <!-- Control Button Styles -->
         <Style Selector="Button.ControlButton">
+            <Setter Property="Padding" Value="12,4"/>
             <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="MinWidth" Value="52"/>
+            <Setter Property="MinHeight" Value="28"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
         <Style Selector="Button.ControlButton.Success">
@@ -82,6 +263,8 @@
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Padding" Value="12,4"/>
             <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="MinHeight" Value="28"/>
         </Style>
         <Style Selector="Button.StepButton:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#4A4A4A"/>

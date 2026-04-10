@@ -17,116 +17,77 @@
 
   <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,248">
 
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <!-- TAB NAVIGATION BAR -->
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <Border Grid.Row="0" Grid.ColumnSpan="2"
+    <Border Grid.Row="0"
+            Grid.ColumnSpan="2"
             Background="{DynamicResource SidebarBackgroundBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,0,0,1">
+      <StackPanel Orientation="Horizontal" Spacing="2" Margin="8,0">
+        <Button Classes="NavButton"
+                Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Dashboard}"
+                Command="{Binding GoDashboardCommand}">
+          <TextBlock Text="Dashboard" VerticalAlignment="Center"/>
+        </Button>
 
-        <!-- Tab Buttons -->
-        <StackPanel Orientation="Horizontal" Spacing="2" Margin="8,0">
+        <Button Classes="NavButton"
+                Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=ManualControl}"
+                Command="{Binding GoManualControlCommand}">
+          <TextBlock Text="Manual Control" VerticalAlignment="Center"/>
+        </Button>
 
-          <Button Classes="NavButton"
-                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Dashboard}"
-                  Command="{Binding GoDashboardCommand}">
-            <TextBlock Text="Dashboard" VerticalAlignment="Center"/>
-          </Button>
+        <Button Classes="NavButton"
+                Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Files}"
+                Command="{Binding GoFilesCommand}">
+          <TextBlock Text="Files" VerticalAlignment="Center"/>
+        </Button>
 
-          <Button Classes="NavButton"
-                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=ManualControl}"
-                  Command="{Binding GoManualControlCommand}">
-            <TextBlock Text="Manual Control" VerticalAlignment="Center"/>
-          </Button>
+        <Button Classes="NavButton"
+                Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Connect}"
+                Command="{Binding GoConnectCommand}">
+          <TextBlock Text="Connect" VerticalAlignment="Center"/>
+        </Button>
 
-          <Button Classes="NavButton"
-                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Files}"
-                  Command="{Binding GoFilesCommand}">
-            <TextBlock Text="Files" VerticalAlignment="Center"/>
-          </Button>
+        <Button Classes="NavButton"
+                Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Settings}"
+                Command="{Binding GoSettingsCommand}">
+          <TextBlock Text="Settings" VerticalAlignment="Center"/>
+        </Button>
 
-          <Button Classes="NavButton"
-                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Connect}"
-                  Command="{Binding GoConnectCommand}">
-            <TextBlock Text="Connect" VerticalAlignment="Center"/>
-          </Button>
-
-          <Button Classes="NavButton"
-                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Settings}"
-                  Command="{Binding GoSettingsCommand}">
-            <TextBlock Text="Settings" VerticalAlignment="Center"/>
-          </Button>
-
-          <Button Classes="NavButton"
-                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Diagnostics}"
-                  Command="{Binding GoDiagnosticsCommand}">
-            <TextBlock Text="Diagnostics" VerticalAlignment="Center"/>
-          </Button>
-
-        </StackPanel>
-
+        <Button Classes="NavButton"
+                Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Diagnostics}"
+                Command="{Binding GoDiagnosticsCommand}">
+          <TextBlock Text="Diagnostics" VerticalAlignment="Center"/>
+        </Button>
+      </StackPanel>
     </Border>
 
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <!-- PAGE CONTENT -->
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-      <Border Grid.Row="1" Grid.Column="0" Margin="8">
-        <ContentControl Content="{Binding CurrentPage}"/>
-      </Border>
+    <Border Grid.Row="1" Grid.Column="0" Margin="8">
+      <ContentControl Content="{Binding CurrentPage}"/>
+    </Border>
 
-      <Border Grid.Row="1" Grid.Column="1"
-              BorderBrush="{DynamicResource BorderBrush}"
-              BorderThickness="1,0,0,0">
-        <Grid RowDefinitions="Auto,1,*">
+    <Border Grid.Row="1"
+            Grid.Column="1"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1,0,0,0">
+      <Grid RowDefinitions="Auto,1,*">
 
-          <StackPanel Grid.Row="0" Spacing="8" Margin="8">
-          <Border Background="{DynamicResource PanelBackgroundBrush}"
-                  CornerRadius="4"
-                  Padding="8">
+        <StackPanel Grid.Row="0" Spacing="8" Margin="8">
+          <Border Classes="PanelCard">
             <StackPanel>
-              <TextBlock Text="COORDINATES"
-                         FontSize="11"
-                         FontWeight="SemiBold"
-                         Foreground="{DynamicResource TextTertiaryBrush}"
-                         LetterSpacing="1"
-                         Margin="0,0,0,8"/>
+              <TextBlock Text="COORDINATES" Classes="PanelTitle" Margin="0,0,0,8"/>
 
-              <Grid ColumnDefinitions="64,*"
-                    RowDefinitions="Auto,Auto"
-                    RowSpacing="8">
-                <TextBlock Text="Work"
-                           FontSize="12"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           VerticalAlignment="Center"/>
-                <Border Grid.Column="1"
-                        Background="#2A2A2A"
-                        CornerRadius="4"
-                        Padding="8,6">
+              <Grid ColumnDefinitions="64,*" RowDefinitions="Auto,Auto" RowSpacing="8">
+                <TextBlock Text="Work" Classes="SectionHeading" VerticalAlignment="Center"/>
+                <Border Grid.Column="1" Classes="InsetSurface">
                   <TextBlock Text="{Binding WorkCoordinatesText}"
-                             FontSize="13"
-                             FontWeight="SemiBold"
-                             FontFamily="Consolas"
-                             Foreground="{DynamicResource TextPrimaryBrush}"
+                             Classes="CodeValue"
                              HorizontalAlignment="Right"/>
                 </Border>
 
-                <TextBlock Grid.Row="1"
-                           Text="Machine"
-                           FontSize="12"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           VerticalAlignment="Center"/>
-                <Border Grid.Row="1"
-                        Grid.Column="1"
-                        Background="#2A2A2A"
-                        CornerRadius="4"
-                        Padding="8,6">
+                <TextBlock Grid.Row="1" Text="Machine" Classes="SectionHeading" VerticalAlignment="Center"/>
+                <Border Grid.Row="1" Grid.Column="1" Classes="InsetSurface">
                   <TextBlock Text="{Binding MachineCoordinatesText}"
-                             FontSize="13"
-                             FontWeight="SemiBold"
-                             FontFamily="Consolas"
+                             Classes="CodeValue"
                              Foreground="{DynamicResource TextSecondaryBrush}"
                              HorizontalAlignment="Right"/>
                 </Border>
@@ -134,333 +95,159 @@
             </StackPanel>
           </Border>
 
-          <Border Background="{DynamicResource PanelBackgroundBrush}"
-                  CornerRadius="4"
-                  Padding="8">
+          <Border Classes="PanelCard">
             <StackPanel>
-              <TextBlock Text="MACHINE"
-                         FontSize="11"
-                         FontWeight="SemiBold"
-                         Foreground="{DynamicResource TextTertiaryBrush}"
-                         LetterSpacing="1"
-                         Margin="0,0,0,8"/>
+              <TextBlock Text="MACHINE" Classes="PanelTitle" Margin="0,0,0,8"/>
 
-              <Border Background="{Binding MotionStateBrush}"
-                      CornerRadius="4"
+              <Border Classes="StatusPill"
+                      Background="{Binding MotionStateBrush}"
                       Padding="8,6"
                       Margin="0,0,0,8">
                 <TextBlock Text="{Binding MotionStateLabel}"
-                           FontSize="11"
-                           FontWeight="SemiBold"
+                           Classes="FieldValue"
                            Foreground="White"
                            HorizontalAlignment="Center"/>
               </Border>
 
               <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
-                <TextBlock Text="Connection"
-                           FontSize="11"
-                           Foreground="{DynamicResource TextSecondaryBrush}"/>
-                <TextBlock Grid.Column="1"
-                           Text="{Binding ConnectionStatusText}"
-                           FontSize="11"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <TextBlock Text="Connection" Classes="FieldLabel"/>
+                <TextBlock Grid.Column="1" Text="{Binding ConnectionStatusText}" Classes="FieldValue"/>
 
-                <TextBlock Grid.Row="1"
-                           Text="Safety"
-                           FontSize="11"
-                           Foreground="{DynamicResource TextSecondaryBrush}"/>
-                <TextBlock Grid.Row="1"
-                           Grid.Column="1"
-                           Text="{Binding SafetyStateLabel}"
-                           FontSize="11"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <TextBlock Grid.Row="1" Text="Safety" Classes="FieldLabel"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SafetyStateLabel}" Classes="FieldValue"/>
 
-                <TextBlock Grid.Row="2"
-                           Text="Feed / Spindle"
-                           FontSize="11"
-                           Foreground="{DynamicResource TextSecondaryBrush}"/>
-                <TextBlock Grid.Row="2"
-                           Grid.Column="1"
-                           Text="{Binding FeedSpindleSummary}"
-                           FontSize="11"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <TextBlock Grid.Row="2" Text="Feed / Spindle" Classes="FieldLabel"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding FeedSpindleSummary}" Classes="FieldValue"/>
               </Grid>
             </StackPanel>
           </Border>
+        </StackPanel>
 
-          </StackPanel>
+        <Border Grid.Row="1" Background="{DynamicResource BorderBrush}"/>
 
-          <Border Grid.Row="1" Background="{DynamicResource BorderBrush}"/>
-
-          <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="8">
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="8">
           <ContentControl Content="{Binding CurrentPage}">
             <ContentControl.DataTemplates>
               <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
-                <Border Background="{DynamicResource PanelBackgroundBrush}"
-                        CornerRadius="4"
-                        Padding="8">
+                <Border Classes="PanelCard">
                   <StackPanel>
-                    <TextBlock Text="DASHBOARD"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextTertiaryBrush}"
-                               LetterSpacing="1"
-                               Margin="0,0,0,8"/>
-
+                    <TextBlock Text="DASHBOARD" Classes="PanelTitle" Margin="0,0,0,8"/>
                     <TextBlock Text="{Binding MainVm.CurrentFileName, TargetNullValue='No file loaded'}"
-                               FontSize="13"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Classes="CodeValue"
                                TextTrimming="CharacterEllipsis"/>
 
-                    <Grid ColumnDefinitions="*,Auto"
-                          Margin="0,10,0,4">
-                      <TextBlock Text="Progress"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,4">
+                      <TextBlock Text="Progress" Classes="FieldLabel"/>
                       <TextBlock Grid.Column="1"
                                  Text="{Binding MainVm.Progress, StringFormat={}{0:F1}%}"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                 Classes="FieldLabel"/>
                     </Grid>
 
-                    <ProgressBar Value="{Binding MainVm.Progress}"
-                                 Maximum="100"
-                                 Height="8"
-                                 CornerRadius="4"/>
+                    <ProgressBar Value="{Binding MainVm.Progress}" Maximum="100" Height="8" CornerRadius="4"/>
 
                     <TextBlock Text="{Binding MainVm.CurrentLine, StringFormat=Line {0}}"
-                               FontSize="11"
+                               Classes="FieldLabel"
                                Foreground="{DynamicResource TextTertiaryBrush}"
                                Margin="0,8,0,0"/>
-                    <TextBlock Text="{Binding MainVm.ActiveToolpathBounds}"
-                               FontSize="11"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               Margin="0,6,0,0"/>
-                    <TextBlock Text="{Binding MainVm.ActiveToolpathDepth}"
-                               FontSize="11"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               Margin="0,4,0,0"/>
+                    <TextBlock Text="{Binding MainVm.ActiveToolpathBounds}" Classes="FieldLabel" Margin="0,6,0,0"/>
+                    <TextBlock Text="{Binding MainVm.ActiveToolpathDepth}" Classes="FieldLabel" Margin="0,4,0,0"/>
                   </StackPanel>
                 </Border>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:FilesViewModel}">
                 <StackPanel Spacing="8">
-                  <Border Background="{DynamicResource PanelBackgroundBrush}"
-                          CornerRadius="4"
-                          Padding="8">
+                  <Border Classes="PanelCard">
                     <StackPanel>
-                      <TextBlock Text="FILES"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextTertiaryBrush}"
-                                 LetterSpacing="1"
-                                 Margin="0,0,0,8"/>
-
+                      <TextBlock Text="FILES" Classes="PanelTitle" Margin="0,0,0,8"/>
                       <TextBlock Text="{Binding SelectedFile.Name, TargetNullValue='No file selected'}"
-                                 FontSize="13"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 Classes="CodeValue"
                                  TextTrimming="CharacterEllipsis"/>
-                      <TextBlock Text="{Binding SelectedFile.Size, TargetNullValue='--'}"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"
-                                 Margin="0,6,0,0"/>
+                      <TextBlock Text="{Binding SelectedFile.Size, TargetNullValue='--'}" Classes="FieldLabel" Margin="0,6,0,0"/>
                       <TextBlock Text="{Binding SelectedFile.Modified, StringFormat=Modified {0}, TargetNullValue='Modified --'}"
-                                 FontSize="11"
+                                 Classes="FieldLabel"
                                  Foreground="{DynamicResource TextTertiaryBrush}"
                                  Margin="0,4,0,0"/>
                     </StackPanel>
                   </Border>
 
-                  <Border Background="{DynamicResource PanelBackgroundBrush}"
-                          CornerRadius="4"
-                          Padding="8">
+                  <Border Classes="PanelCard">
                     <StackPanel>
-                      <TextBlock Text="TOOLPATH"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextTertiaryBrush}"
-                                 LetterSpacing="1"
-                                 Margin="0,0,0,8"/>
-                      <TextBlock Text="{Binding ToolpathStatusMessage}"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"
-                                 TextWrapping="Wrap"/>
-                      <TextBlock Text="{Binding ToolpathWarningSummary}"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"
-                                 TextWrapping="Wrap"
-                                 Margin="0,6,0,0"/>
+                      <TextBlock Text="TOOLPATH" Classes="PanelTitle" Margin="0,0,0,8"/>
+                      <TextBlock Text="{Binding ToolpathStatusMessage}" Classes="FieldValue" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding ToolpathWarningSummary}" Classes="FieldLabel" TextWrapping="Wrap" Margin="0,6,0,0"/>
                     </StackPanel>
                   </Border>
                 </StackPanel>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:ManualControlViewModel}">
-                <Border Background="{DynamicResource PanelBackgroundBrush}"
-                        CornerRadius="4"
-                        Padding="8">
+                <Border Classes="PanelCard">
                   <StackPanel Spacing="8">
-                    <TextBlock Text="MANUAL CONTROL"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextTertiaryBrush}"
-                               LetterSpacing="1"/>
+                    <TextBlock Text="MANUAL CONTROL" Classes="PanelTitle"/>
 
                     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6">
-                      <TextBlock Text="Step"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Text="Step" Classes="FieldLabel"/>
                       <TextBlock Grid.Column="1"
                                  Text="{Binding JogStep, StringFormat={}{0} mm}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 Classes="FieldValue"
                                  HorizontalAlignment="Right"/>
 
+                      <TextBlock Grid.Row="1" Text="Feed" Classes="FieldLabel"/>
                       <TextBlock Grid.Row="1"
-                                 Text="Feed"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      <TextBlock Grid.Row="1" Grid.Column="1"
+                                 Grid.Column="1"
                                  Text="{Binding JogFeedRate, StringFormat={}{0:F0} mm/min}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 Classes="FieldValue"
                                  HorizontalAlignment="Right"/>
                     </Grid>
 
                     <TextBlock Text="{Binding CommandPreview}"
-                               FontFamily="Consolas"
+                               Classes="CodeText"
                                FontSize="10"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap"/>
                   </StackPanel>
                 </Border>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:ConnectViewModel}">
-                <Border Background="{DynamicResource PanelBackgroundBrush}"
-                        CornerRadius="4"
-                        Padding="8">
+                <Border Classes="PanelCard">
                   <StackPanel>
-                    <TextBlock Text="DEVICE"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextTertiaryBrush}"
-                               LetterSpacing="1"
-                               Margin="0,0,0,8"/>
+                    <TextBlock Text="DEVICE" Classes="PanelTitle" Margin="0,0,0,8"/>
 
-                    <Grid ColumnDefinitions="*,Auto"
-                          RowDefinitions="Auto,Auto,Auto,Auto"
-                          RowSpacing="8">
-                      <TextBlock Text="Port"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      <TextBlock Grid.Column="1"
-                                 Text="{Binding SelectedPort, TargetNullValue='--'}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+                      <TextBlock Text="Port" Classes="FieldLabel"/>
+                      <TextBlock Grid.Column="1" Text="{Binding SelectedPort, TargetNullValue='--'}" Classes="FieldValue"/>
 
-                      <TextBlock Grid.Row="1"
-                                 Text="Pico FW"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      <TextBlock Grid.Row="1"
-                                 Grid.Column="1"
-                                 Text="{Binding PicoFirmware}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Grid.Row="1" Text="Pico FW" Classes="FieldLabel"/>
+                      <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding PicoFirmware}" Classes="FieldValue"/>
 
-                      <TextBlock Grid.Row="2"
-                                 Text="Teensy FW"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      <TextBlock Grid.Row="2"
-                                 Grid.Column="1"
-                                 Text="{Binding TeensyFirmware}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Grid.Row="2" Text="Teensy FW" Classes="FieldLabel"/>
+                      <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding TeensyFirmware}" Classes="FieldValue"/>
 
-                      <TextBlock Grid.Row="3"
-                                 Text="Serial"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      <TextBlock Grid.Row="3"
-                                 Grid.Column="1"
-                                 Text="{Binding PicoSerialNumber}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Grid.Row="3" Text="Serial" Classes="FieldLabel"/>
+                      <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PicoSerialNumber}" Classes="FieldValue"/>
                     </Grid>
                   </StackPanel>
                 </Border>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
-                <Border Background="{DynamicResource PanelBackgroundBrush}"
-                        CornerRadius="4"
-                        Padding="8">
+                <Border Classes="PanelCard">
                   <StackPanel>
-                    <TextBlock Text="SETTINGS"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextTertiaryBrush}"
-                               LetterSpacing="1"
-                               Margin="0,0,0,8"/>
+                    <TextBlock Text="SETTINGS" Classes="PanelTitle" Margin="0,0,0,8"/>
 
-                    <Grid ColumnDefinitions="*,Auto"
-                          RowDefinitions="Auto,Auto,Auto,Auto"
-                          RowSpacing="8">
-                      <TextBlock Text="Units"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      <TextBlock Grid.Column="1"
-                                 Text="{Binding Units}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+                      <TextBlock Text="Units" Classes="FieldLabel"/>
+                      <TextBlock Grid.Column="1" Text="{Binding Units}" Classes="FieldValue"/>
 
-                      <TextBlock Grid.Row="1"
-                                 Text="Soft limits"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      <TextBlock Grid.Row="1"
-                                 Grid.Column="1"
-                                 Text="{Binding SoftLimitsEnabled}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Grid.Row="1" Text="Soft limits" Classes="FieldLabel"/>
+                      <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SoftLimitsEnabled}" Classes="FieldValue"/>
 
-                      <TextBlock Grid.Row="2"
-                                 Text="Hard limits"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      <TextBlock Grid.Row="2"
-                                 Grid.Column="1"
-                                 Text="{Binding HardLimitsEnabled}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Grid.Row="2" Text="Hard limits" Classes="FieldLabel"/>
+                      <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding HardLimitsEnabled}" Classes="FieldValue"/>
 
-                      <TextBlock Grid.Row="3"
-                                 Text="Spindle max"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      <TextBlock Grid.Row="3"
-                                 Grid.Column="1"
-                                 Text="{Binding SpindleMaxRpm, StringFormat={}{0:F0} RPM}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <TextBlock Grid.Row="3" Text="Spindle max" Classes="FieldLabel"/>
+                      <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SpindleMaxRpm, StringFormat={}{0:F0} RPM}" Classes="FieldValue"/>
                     </Grid>
                   </StackPanel>
                 </Border>
@@ -468,185 +255,101 @@
 
               <DataTemplate DataType="{x:Type vm:DiagnosticsViewModel}">
                 <StackPanel Spacing="8">
-                  <Border Background="{DynamicResource PanelBackgroundBrush}"
-                          CornerRadius="4"
-                          Padding="8">
+                  <Border Classes="PanelCard">
                     <StackPanel>
-                      <TextBlock Text="DIAGNOSTICS"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextTertiaryBrush}"
-                                 LetterSpacing="1"
-                                 Margin="0,0,0,8"/>
-
-                      <TextBlock Text="{Binding MainVm.StatusMessage}"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"
-                                 TextWrapping="Wrap"/>
-                      <TextBlock Text="{Binding MainVm.IsStatusError, StringFormat=Active fault: {0}}"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"
-                                 Margin="0,6,0,0"/>
+                      <TextBlock Text="DIAGNOSTICS" Classes="PanelTitle" Margin="0,0,0,8"/>
+                      <TextBlock Text="{Binding MainVm.StatusMessage}" Classes="FieldValue" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding MainVm.IsStatusError, StringFormat=Active fault: {0}}" Classes="FieldLabel" Margin="0,6,0,0"/>
                     </StackPanel>
                   </Border>
 
-                  <Border Background="{DynamicResource PanelBackgroundBrush}"
-                          CornerRadius="4"
-                          Padding="8">
+                  <Border Classes="PanelCard">
                     <StackPanel>
-                      <TextBlock Text="CONSOLE"
-                                 FontSize="11"
-                                 FontWeight="SemiBold"
-                                 Foreground="{DynamicResource TextTertiaryBrush}"
-                                 LetterSpacing="1"
-                                 Margin="0,0,0,8"/>
-                      <TextBlock Text="{Binding LogEntryCount, StringFormat={}{0} entries}"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
-                      <TextBlock Text="{Binding LatestLogSummary}"
-                                 FontSize="11"
-                                 Foreground="{DynamicResource TextPrimaryBrush}"
-                                 TextWrapping="Wrap"
-                                 Margin="0,6,0,0"/>
+                      <TextBlock Text="CONSOLE" Classes="PanelTitle" Margin="0,0,0,8"/>
+                      <TextBlock Text="{Binding LogEntryCount, StringFormat={}{0} entries}" Classes="FieldLabel"/>
+                      <TextBlock Text="{Binding LatestLogSummary}" Classes="FieldValue" TextWrapping="Wrap" Margin="0,6,0,0"/>
                     </StackPanel>
                   </Border>
                 </StackPanel>
               </DataTemplate>
             </ContentControl.DataTemplates>
           </ContentControl>
-          </ScrollViewer>
+        </ScrollViewer>
+      </Grid>
+    </Border>
 
-        </Grid>
-      </Border>
-
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <!-- STATUS BAR -->
-    <!-- ══════════════════════════════════════════════════════════════════ -->
-    <Border Grid.Row="2" Grid.ColumnSpan="2"
+    <Border Grid.Row="2"
+            Grid.ColumnSpan="2"
             Background="{DynamicResource HeaderBackgroundBrush}"
             Padding="8"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
 
-        <!-- Machine Control Buttons -->
         <StackPanel Orientation="Horizontal" Spacing="4">
-          <Button Classes="ControlButton Success"
+          <Button Classes="AppButton Success"
                   Command="{Binding StartCommand}"
                   IsEnabled="{Binding CanStart}"
-                  Padding="12,4">
-            <TextBlock Text="START" FontWeight="SemiBold" FontSize="11"/>
-          </Button>
+                  Content="START"/>
 
-          <Button Classes="ControlButton Warning"
+          <Button Classes="AppButton Warning"
                   Command="{Binding PauseCommand}"
                   IsEnabled="{Binding CanPause}"
-                  Padding="12,4">
-            <TextBlock Text="PAUSE" FontWeight="SemiBold" FontSize="11"/>
-          </Button>
+                  Content="PAUSE"/>
 
-          <Button Classes="ControlButton Danger"
+          <Button Classes="AppButton Danger"
                   Command="{Binding StopCommand}"
                   IsEnabled="{Binding CanStop}"
-                  Padding="12,4">
-            <TextBlock Text="STOP" FontWeight="SemiBold" FontSize="11"/>
-          </Button>
+                  Content="STOP"/>
 
           <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="4,0"/>
 
-          <Button Classes="ControlButton"
+          <Button Classes="AppButton"
                   Command="{Binding HomeCommand}"
                   IsEnabled="{Binding CanHome}"
-                  Padding="12,4">
-            <TextBlock Text="HOME ALL" FontWeight="SemiBold" FontSize="11"/>
-          </Button>
+                  Content="HOME ALL"/>
 
           <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="4,0"/>
 
-          <Button Command="{Binding GoFilesCommand}"
-                  Padding="12,4">
-            <TextBlock Text="Load File" FontSize="11"/>
-          </Button>
+          <Button Classes="AppButton"
+                  Command="{Binding GoFilesCommand}"
+                  Content="Load File"/>
         </StackPanel>
 
-        <!-- Status Message -->
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0">
-          <TextBlock Text="Status:"
-                     FontSize="11"
-                     Foreground="{DynamicResource TextSecondaryBrush}"
-                     VerticalAlignment="Center"/>
-          <TextBlock Text="{Binding StatusMessage}"
-                     FontSize="11"
-                     FontWeight="SemiBold"
-                     Foreground="{DynamicResource TextPrimaryBrush}"
-                     VerticalAlignment="Center"/>
+          <TextBlock Text="Status:" Classes="FieldLabel" VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding StatusMessage}" Classes="FieldValue" VerticalAlignment="Center"/>
         </StackPanel>
 
-        <!-- Feed Rate -->
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="8,0"
-                    IsVisible="{Binding IsConnected}">
-          <TextBlock Text="Feed:"
-                     FontSize="11"
-                     Foreground="{DynamicResource TextSecondaryBrush}"
-                     VerticalAlignment="Center"/>
-          <TextBlock Text="{Binding FeedRate, StringFormat={}{0:F0}}"
-                     FontSize="11"
-                     Foreground="{DynamicResource TextPrimaryBrush}"
-                     VerticalAlignment="Center"/>
-          <TextBlock Text="mm/min"
-                     FontSize="11"
-                     Foreground="{DynamicResource TextSecondaryBrush}"
-                     VerticalAlignment="Center"/>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="8,0" IsVisible="{Binding IsConnected}">
+          <TextBlock Text="Feed:" Classes="FieldLabel" VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding FeedRate, StringFormat={}{0:F0}}" Classes="FieldValue" FontWeight="Normal" VerticalAlignment="Center"/>
+          <TextBlock Text="mm/min" Classes="FieldLabel" VerticalAlignment="Center"/>
         </StackPanel>
 
-        <!-- Temperature -->
-        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" Margin="8,0"
-                    IsVisible="{Binding IsConnected}">
-          <TextBlock Text="Temp:"
-                     FontSize="11"
-                     Foreground="{DynamicResource TextSecondaryBrush}"
-                     VerticalAlignment="Center"/>
-          <TextBlock Text="{Binding Temperature, StringFormat={}{0:F1}°C}"
-                     FontSize="11"
-                     Foreground="{DynamicResource TextPrimaryBrush}"
-                     VerticalAlignment="Center"/>
+        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" Margin="8,0" IsVisible="{Binding IsConnected}">
+          <TextBlock Text="Temp:" Classes="FieldLabel" VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding Temperature, StringFormat={}{0:F1} deg C}" Classes="FieldValue" FontWeight="Normal" VerticalAlignment="Center"/>
         </StackPanel>
 
-        <!-- Motion State Pill -->
         <Border Grid.Column="4"
+                Classes="StatusPill"
                 IsVisible="{Binding IsConnected}"
-                Padding="8,4"
                 Margin="8,0,0,0"
-                CornerRadius="4"
                 Background="{Binding MotionStateBrush}"
                 VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal" Spacing="6">
-            <TextBlock Text="MOTION:"
-                       FontSize="11"
-                       Foreground="#CCFFFFFF"
-                       VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding MotionStateLabel}"
-                       FontSize="11"
-                       FontWeight="SemiBold"
-                       Foreground="White"
-                       VerticalAlignment="Center"/>
+            <TextBlock Text="MOTION:" Classes="FieldLabel" Foreground="#CCFFFFFF" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding MotionStateLabel}" Classes="FieldValue" Foreground="White" VerticalAlignment="Center"/>
           </StackPanel>
         </Border>
 
-        <!-- E-STOP -->
         <Button Grid.Column="5"
+                Classes="AppButton Danger"
                 IsEnabled="{Binding IsConnected}"
-                Padding="12,4"
-                Background="{DynamicResource DangerBrush}"
-                Foreground="White"
                 FontWeight="Bold"
-                FontSize="11"
-                CornerRadius="4"
-                Command="{Binding EStopCommand}">
-          E-STOP
-        </Button>
-
+                Command="{Binding EStopCommand}"
+                Content="E-STOP"/>
       </Grid>
     </Border>
 
