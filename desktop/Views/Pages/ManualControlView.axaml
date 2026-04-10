@@ -134,7 +134,7 @@
       </controls:SectionCard.Body>
     </controls:SectionCard>
 
-    <controls:SectionCard Grid.Row="0" Grid.Column="2" Title="SPINDLE AND COOLANT">
+    <controls:SectionCard Grid.Row="0" Grid.Column="2" Title="SPINDLE">
       <controls:SectionCard.Body>
         <StackPanel Spacing="8">
           <StackPanel Spacing="4">
@@ -150,7 +150,6 @@
           <WrapPanel ItemSpacing="4" LineSpacing="4">
             <Button Content="Spindle Start" Command="{Binding StartSpindleCommand}" Classes="AppButton Primary" IsEnabled="{Binding CanUseAuxControls}"/>
             <Button Content="Spindle Stop" Command="{Binding StopSpindleCommand}" Classes="AppButton" IsEnabled="{Binding CanUseAuxControls}"/>
-            <Button Content="{Binding CoolantToggleText}" Command="{Binding ToggleCoolantCommand}" Classes="AppButton" IsEnabled="{Binding CanUseAuxControls}"/>
           </WrapPanel>
         </StackPanel>
       </controls:SectionCard.Body>

@@ -85,70 +85,41 @@
             <StackPanel Spacing="8">
               <Button Content="Reset Fault" Command="{Binding ResetFaultCommand}" HorizontalAlignment="Stretch" Classes="AppButton"/>
               <Button Content="Unlock (Clear E-Stop)" Command="{Binding UnlockCommand}" HorizontalAlignment="Stretch" Classes="AppButton Danger"/>
-              <Button Content="Refresh Sensors" Command="{Binding RefreshSensorsCommand}" HorizontalAlignment="Stretch" Classes="AppButton"/>
+              <Button Content="Refresh Thermal Readings" Command="{Binding RefreshSensorsCommand}" HorizontalAlignment="Stretch" Classes="AppButton"/>
             </StackPanel>
           </controls:SectionCard.Body>
         </controls:SectionCard>
 
-        <controls:SectionCard Title="SENSOR READINGS">
+        <controls:SectionCard Title="THERMAL READINGS">
           <controls:SectionCard.Body>
             <controls:TwoColumnInfoGrid>
-              <TextBlock Text="CPU Temperature" Classes="FieldLabel"/>
-              <TextBlock Grid.Column="1" Text="{Binding CpuTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock Text="Controller Temp" Classes="FieldLabel"/>
+              <TextBlock Grid.Column="1" Text="{Binding ControllerTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
 
-              <TextBlock Grid.Row="1" Text="Ambient Temp" Classes="FieldLabel"/>
-              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AmbientTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock Grid.Row="1" Text="Electronics Temp" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ElectronicsTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
 
               <TextBlock Grid.Row="2" Text="Spindle Temp" Classes="FieldLabel"/>
               <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SpindleTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
-
-              <TextBlock Grid.Row="3" Text="Humidity" Classes="FieldLabel"/>
-              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Humidity, StringFormat={}{0:F0}%}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
-
-              <TextBlock Grid.Row="4" Text="Vibration" Classes="FieldLabel"/>
-              <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding VibrationLevel, StringFormat={}{0:F3} g}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
             </controls:TwoColumnInfoGrid>
-          </controls:SectionCard.Body>
-        </controls:SectionCard>
-
-        <controls:SectionCard Title="DRIVER STATUS">
-          <controls:SectionCard.Body>
-            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
-              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-                <Ellipse Width="10" Height="10" Fill="{Binding XDriverOk, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"/>
-                <TextBlock Text="X Driver" Classes="FieldLabel"/>
-              </StackPanel>
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-                <Ellipse Width="10" Height="10" Fill="{Binding YDriverOk, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"/>
-                <TextBlock Text="Y Driver" Classes="FieldLabel"/>
-              </StackPanel>
-              <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
-                <Ellipse Width="10" Height="10" Fill="{Binding ZDriverOk, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"/>
-                <TextBlock Text="Z Driver" Classes="FieldLabel"/>
-              </StackPanel>
-              <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                <Ellipse Width="10" Height="10" Fill="{Binding SpindleDriverOk, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"/>
-                <TextBlock Text="Spindle" Classes="FieldLabel"/>
-              </StackPanel>
-            </Grid>
           </controls:SectionCard.Body>
         </controls:SectionCard>
 
         <controls:SectionCard Title="LIMIT SWITCHES">
           <controls:SectionCard.Body>
-            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto">
-              <TextBlock Text="" Classes="FieldLabel Muted"/>
-              <TextBlock Grid.Column="1" Text="MIN" Classes="FieldLabel Muted" HorizontalAlignment="Center"/>
-              <TextBlock Grid.Column="2" Text="MAX" Classes="FieldLabel Muted" HorizontalAlignment="Center"/>
+            <controls:TwoColumnInfoGrid>
+              <TextBlock Text="X Axis" Classes="FieldLabel"/>
+              <TextBlock Grid.Column="1" Text="{Binding XLimitText}" Classes="FieldValue"/>
 
-              <TextBlock Grid.Row="1" Text="X" Classes="FieldValue" Foreground="#E06666"/>
-              <Ellipse Grid.Row="1" Grid.Column="1" Width="12" Height="12" Fill="{Binding XMinLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}" HorizontalAlignment="Center"/>
-              <Ellipse Grid.Row="1" Grid.Column="2" Width="12" Height="12" Fill="{Binding XMaxLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}" HorizontalAlignment="Center"/>
+              <TextBlock Grid.Row="1" Text="Y Axis" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding YLimitText}" Classes="FieldValue"/>
 
-              <TextBlock Grid.Row="2" Text="Y" Classes="FieldValue" Foreground="#93C47D" Margin="0,8,0,0"/>
-              <Ellipse Grid.Row="2" Grid.Column="1" Width="12" Height="12" Fill="{Binding YMinLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
-              <Ellipse Grid.Row="2" Grid.Column="2" Width="12" Height="12" Fill="{Binding YMaxLimit, Converter={x:Static vm:BoolToLimitBrushConverter.Instance}}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
-            </Grid>
+              <TextBlock Grid.Row="2" Text="Z Axis" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ZLimitText}" Classes="FieldValue"/>
+
+              <TextBlock Grid.Row="3" Text="Summary" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LimitSummaryText}" Classes="FieldValue"/>
+            </controls:TwoColumnInfoGrid>
           </controls:SectionCard.Body>
         </controls:SectionCard>
       </StackPanel>

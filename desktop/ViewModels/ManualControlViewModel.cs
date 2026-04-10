@@ -119,7 +119,6 @@ public sealed class ManualControlViewModel : PageViewModelBase
     public ICommand SetStepCommand { get; }
     public ICommand StartSpindleCommand { get; }
     public ICommand StopSpindleCommand { get; }
-    public ICommand ToggleCoolantCommand { get; }
     public ICommand AlarmUnlockCommand { get; }
     public ICommand SoftResetCommand { get; }
     public ICommand ProbeZCommand { get; }
@@ -192,9 +191,6 @@ public sealed class ManualControlViewModel : PageViewModelBase
 
     public bool SpindleOn => MainVm?.SpindleOn == true;
     public string SpindleStatusText => MainVm?.SpindleStatusText ?? "OFF";
-    public bool CoolantOn => MainVm?.CoolantOn == true;
-    public string CoolantStatusText => MainVm?.CoolantStatusText ?? "OFF";
-    public string CoolantToggleText => CoolantOn ? "Coolant Off" : "Coolant On";
     public double SpindleMinRpm => MainVm?.Settings.Current.SpindleMinRpm ?? 1000;
     public double SpindleMaxRpm => MainVm?.Settings.Current.SpindleMaxRpm ?? 24000;
 
@@ -249,7 +245,6 @@ public sealed class ManualControlViewModel : PageViewModelBase
 
         StartSpindleCommand = new RelayCommand(StartSpindle);
         StopSpindleCommand = new RelayCommand(StopSpindle);
-        ToggleCoolantCommand = new RelayCommand(ToggleCoolant);
         AlarmUnlockCommand = new RelayCommand(AlarmUnlock);
         SoftResetCommand = new RelayCommand(SoftReset);
         ProbeZCommand = new RelayCommand(ProbeZ);
@@ -303,7 +298,6 @@ public sealed class ManualControlViewModel : PageViewModelBase
             case nameof(MainWindowViewModel.LimitSummaryText):
             case nameof(MainWindowViewModel.SpindleOn):
             case nameof(MainWindowViewModel.SpindleSpeed):
-            case nameof(MainWindowViewModel.CoolantOn):
                 RaiseMainStateProperties();
                 break;
         }
@@ -337,9 +331,6 @@ public sealed class ManualControlViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(LimitSummaryText));
         RaisePropertyChanged(nameof(SpindleOn));
         RaisePropertyChanged(nameof(SpindleStatusText));
-        RaisePropertyChanged(nameof(CoolantOn));
-        RaisePropertyChanged(nameof(CoolantStatusText));
-        RaisePropertyChanged(nameof(CoolantToggleText));
         RaisePropertyChanged(nameof(ReadinessSummary));
         RaisePropertyChanged(nameof(SpindleMinRpm));
         RaisePropertyChanged(nameof(SpindleMaxRpm));
@@ -478,15 +469,6 @@ public sealed class ManualControlViewModel : PageViewModelBase
         MainVm.StatusMessage = "Spindle stopped";
     }
 
-    private void ToggleCoolant()
-    {
-        if (MainVm == null || !CanUseAuxControls) return;
-
-        MainVm.CoolantOn = !MainVm.CoolantOn;
-        SetCommandPreview(MainVm.CoolantOn ? "M8" : "M9");
-        MainVm.StatusMessage = MainVm.CoolantOn ? "Coolant enabled" : "Coolant disabled";
-    }
-
     private void JogCancel()
     {
         if (MainVm == null || !CanCancelJog) return;
@@ -565,6 +547,6 @@ public sealed class ManualControlViewModel : PageViewModelBase
         if (MainVm == null || !MainVm.IsConnected) return "Machine is disconnected.";
         if (MainVm.MotionState == MotionState.EStopLatched) return "E-stop is latched.";
         if (MainVm.MotionState == MotionState.Fault) return "Controller fault is active.";
-        return "Spindle and coolant controls are available.";
+        return "Spindle controls are available.";
     }
 }

@@ -337,18 +337,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     }
     public string SpindleStatusText => SpindleOn ? $"ON ({SpindleSpeed:F0} RPM)" : "OFF";
 
-    private bool _coolantOn;
-    public bool CoolantOn
-    {
-        get => _coolantOn;
-        set
-        {
-            if (SetProperty(ref _coolantOn, value))
-                RaisePropertyChanged(nameof(CoolantStatusText));
-        }
-    }
-    public string CoolantStatusText => CoolantOn ? "ON" : "OFF";
-
     private double _feedRate;
     public double FeedRate
     {
@@ -372,9 +360,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     
     private double _temperature;
     public double Temperature { get => _temperature; set => SetProperty(ref _temperature, value); }
-
-    private double _humidity;
-    public double Humidity { get => _humidity; set => SetProperty(ref _humidity, value); }
 
     private bool _xHomed;
     public bool XHomed
@@ -729,7 +714,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         SafetyState = SafetyState.EStopActive;
         SpindleOn = false;
         SpindleSpeed = 0;
-        CoolantOn = false;
         SetAllAxesHomed(false);
         ClearLimitStates();
         StatusMessage = "EMERGENCY STOP ACTIVATED";
@@ -819,7 +803,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         SafetyState            = SafetyState.SafeIdle;
         SpindleOn              = false;
         SpindleSpeed           = 0;
-        CoolantOn              = false;
         StatusMessage          = "Device disconnected";
         IsStatusError          = true;
         SetAllAxesHomed(false);
@@ -871,7 +854,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         else if (line.StartsWith("ALARM:"))
         {
             MotionState = MotionState.Fault;
-            CoolantOn = false;
             SpindleOn = false;
             SpindleSpeed = 0;
             SetAllAxesHomed(false);

@@ -6,83 +6,48 @@ namespace PortableCncApp.ViewModels;
 
 public sealed class DiagnosticsViewModel : PageViewModelBase
 {
-    // ════════════════════════════════════════════════════════════════
-    // CONSOLE
-    // ════════════════════════════════════════════════════════════════
-
     public ObservableCollection<LogEntry> LogEntries { get; } = new();
     public int LogEntryCount => LogEntries.Count;
     public string LatestLogSummary => LogEntries.Count == 0
         ? "No console entries yet."
         : $"{LogEntries[^1].Type}: {LogEntries[^1].Message}";
 
-    private string _commandInput = "";
+    private string _commandInput = string.Empty;
     public string CommandInput
     {
         get => _commandInput;
         set => SetProperty(ref _commandInput, value);
     }
 
-    // ════════════════════════════════════════════════════════════════
-    // SENSOR DATA
-    // ════════════════════════════════════════════════════════════════
+    private double _controllerTemperature;
+    public double ControllerTemperature
+    {
+        get => _controllerTemperature;
+        set => SetProperty(ref _controllerTemperature, value);
+    }
 
-    private double _cpuTemperature;
-    public double CpuTemperature { get => _cpuTemperature; set => SetProperty(ref _cpuTemperature, value); }
-
-    private double _ambientTemperature;
-    public double AmbientTemperature { get => _ambientTemperature; set => SetProperty(ref _ambientTemperature, value); }
+    private double _electronicsTemperature;
+    public double ElectronicsTemperature
+    {
+        get => _electronicsTemperature;
+        set => SetProperty(ref _electronicsTemperature, value);
+    }
 
     private double _spindleTemperature;
-    public double SpindleTemperature { get => _spindleTemperature; set => SetProperty(ref _spindleTemperature, value); }
+    public double SpindleTemperature
+    {
+        get => _spindleTemperature;
+        set => SetProperty(ref _spindleTemperature, value);
+    }
 
-    private double _humidity;
-    public double Humidity { get => _humidity; set => SetProperty(ref _humidity, value); }
+    public bool XLimitTriggered => MainVm?.XLimitTriggered == true;
+    public bool YLimitTriggered => MainVm?.YLimitTriggered == true;
+    public bool ZLimitTriggered => MainVm?.ZLimitTriggered == true;
 
-    private double _vibrationLevel;
-    public double VibrationLevel { get => _vibrationLevel; set => SetProperty(ref _vibrationLevel, value); }
-
-    // ════════════════════════════════════════════════════════════════
-    // DRIVER STATUS
-    // ════════════════════════════════════════════════════════════════
-
-    private bool _xDriverOk = true;
-    public bool XDriverOk { get => _xDriverOk; set => SetProperty(ref _xDriverOk, value); }
-
-    private bool _yDriverOk = true;
-    public bool YDriverOk { get => _yDriverOk; set => SetProperty(ref _yDriverOk, value); }
-
-    private bool _zDriverOk = true;
-    public bool ZDriverOk { get => _zDriverOk; set => SetProperty(ref _zDriverOk, value); }
-
-    private bool _spindleDriverOk = true;
-    public bool SpindleDriverOk { get => _spindleDriverOk; set => SetProperty(ref _spindleDriverOk, value); }
-
-    // ════════════════════════════════════════════════════════════════
-    // LIMIT SWITCHES
-    // ════════════════════════════════════════════════════════════════
-
-    private bool _xMinLimit;
-    public bool XMinLimit { get => _xMinLimit; set => SetProperty(ref _xMinLimit, value); }
-
-    private bool _xMaxLimit;
-    public bool XMaxLimit { get => _xMaxLimit; set => SetProperty(ref _xMaxLimit, value); }
-
-    private bool _yMinLimit;
-    public bool YMinLimit { get => _yMinLimit; set => SetProperty(ref _yMinLimit, value); }
-
-    private bool _yMaxLimit;
-    public bool YMaxLimit { get => _yMaxLimit; set => SetProperty(ref _yMaxLimit, value); }
-
-    private bool _zMinLimit;
-    public bool ZMinLimit { get => _zMinLimit; set => SetProperty(ref _zMinLimit, value); }
-
-    private bool _zMaxLimit;
-    public bool ZMaxLimit { get => _zMaxLimit; set => SetProperty(ref _zMaxLimit, value); }
-
-    // ════════════════════════════════════════════════════════════════
-    // COMMANDS
-    // ════════════════════════════════════════════════════════════════
+    public string XLimitText => XLimitTriggered ? "TRIGGERED" : "CLEAR";
+    public string YLimitText => YLimitTriggered ? "TRIGGERED" : "CLEAR";
+    public string ZLimitText => ZLimitTriggered ? "TRIGGERED" : "CLEAR";
+    public string LimitSummaryText => MainVm?.LimitSummaryText ?? "XYZ CLEAR";
 
     public ICommand SendCommandCommand { get; }
     public ICommand ClearLogCommand { get; }
@@ -98,9 +63,26 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
         ResetFaultCommand = new RelayCommand(ResetFault);
         UnlockCommand = new RelayCommand(Unlock);
 
-        // Add some demo log entries
         AddLog("INFO", "Diagnostics panel initialized");
         AddLog("INFO", "Ready for commands");
+    }
+
+    protected override void OnMainViewModelSet()
+    {
+        RaiseLimitProperties();
+    }
+
+    protected override void OnMainViewModelPropertyChanged(string? propertyName)
+    {
+        switch (propertyName)
+        {
+            case nameof(MainWindowViewModel.XLimitTriggered):
+            case nameof(MainWindowViewModel.YLimitTriggered):
+            case nameof(MainWindowViewModel.ZLimitTriggered):
+            case nameof(MainWindowViewModel.LimitSummaryText):
+                RaiseLimitProperties();
+                break;
+        }
     }
 
     private void SendCommand()
@@ -109,23 +91,20 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
 
         AddLog("TX", CommandInput);
 
-        // TODO: Actually send command to machine
-        // Simulate response
+        // TODO: Wire this through the Pico/Teensy command path.
         AddLog("RX", "ok");
 
-        CommandInput = "";
+        CommandInput = string.Empty;
     }
 
     private void RefreshSensors()
     {
-        // TODO: Query actual sensor values
-        CpuTemperature = 42.5;
-        AmbientTemperature = MainVm?.Temperature ?? 24.0;
+        // TODO: Replace placeholder values with thermistor telemetry from the machine.
+        ControllerTemperature = MainVm?.Temperature ?? 42.5;
+        ElectronicsTemperature = 31.0;
         SpindleTemperature = 35.0;
-        Humidity = MainVm?.Humidity ?? 45.0;
-        VibrationLevel = 0.02;
 
-        AddLog("INFO", "Sensors refreshed");
+        AddLog("INFO", "Thermal readings refreshed");
     }
 
     private void ResetFault()
@@ -136,7 +115,7 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
         {
             MainVm.MotionState = MotionState.Idle;
             MainVm.StatusMessage = "Fault cleared";
-            AddLog("INFO", "Fault reset - Machine now IDLE");
+            AddLog("INFO", "Fault reset - machine now idle");
         }
     }
 
@@ -148,9 +127,9 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
         {
             MainVm.MotionState = MotionState.Idle;
             MainVm.SafetyState = SafetyState.SafeIdle;
-            MainVm.StatusMessage = "E-Stop cleared - Machine unlocked";
+            MainVm.StatusMessage = "E-stop cleared - machine unlocked";
             MainVm.IsStatusError = false;
-            AddLog("INFO", "E-Stop cleared - Machine unlocked");
+            AddLog("INFO", "E-stop cleared - machine unlocked");
         }
     }
 
@@ -162,6 +141,7 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
             Type = type,
             Message = message
         });
+
         RaisePropertyChanged(nameof(LogEntryCount));
         RaisePropertyChanged(nameof(LatestLogSummary));
     }
@@ -172,13 +152,24 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(LogEntryCount));
         RaisePropertyChanged(nameof(LatestLogSummary));
     }
+
+    private void RaiseLimitProperties()
+    {
+        RaisePropertyChanged(nameof(XLimitTriggered));
+        RaisePropertyChanged(nameof(YLimitTriggered));
+        RaisePropertyChanged(nameof(ZLimitTriggered));
+        RaisePropertyChanged(nameof(XLimitText));
+        RaisePropertyChanged(nameof(YLimitText));
+        RaisePropertyChanged(nameof(ZLimitText));
+        RaisePropertyChanged(nameof(LimitSummaryText));
+    }
 }
 
 public class LogEntry
 {
     public DateTime Timestamp { get; set; }
-    public string Type { get; set; } = "";
-    public string Message { get; set; } = "";
-    
+    public string Type { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+
     public string FormattedTime => Timestamp.ToString("HH:mm:ss.fff");
 }
