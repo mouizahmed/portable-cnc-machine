@@ -169,17 +169,132 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                                     SafetyState == SafetyState.EStopActive;
 
     // ════════════════════════════════════════════════════════════════
-    // MACHINE POSITION (DRO - Digital Readout)
+    // MACHINE / WORK COORDINATES
     // ════════════════════════════════════════════════════════════════
     
-    private double _positionX;
-    public double PositionX { get => _positionX; set => SetProperty(ref _positionX, value); }
+    private double _machineX;
+    public double MachineX
+    {
+        get => _machineX;
+        set
+        {
+            if (SetProperty(ref _machineX, value))
+            {
+                RaisePropertyChanged(nameof(MachineCoordinatesText));
+            }
+        }
+    }
 
-    private double _positionY;
-    public double PositionY { get => _positionY; set => SetProperty(ref _positionY, value); }
+    private double _machineY;
+    public double MachineY
+    {
+        get => _machineY;
+        set
+        {
+            if (SetProperty(ref _machineY, value))
+            {
+                RaisePropertyChanged(nameof(MachineCoordinatesText));
+            }
+        }
+    }
 
-    private double _positionZ;
-    public double PositionZ { get => _positionZ; set => SetProperty(ref _positionZ, value); }
+    private double _machineZ;
+    public double MachineZ
+    {
+        get => _machineZ;
+        set
+        {
+            if (SetProperty(ref _machineZ, value))
+            {
+                RaisePropertyChanged(nameof(MachineCoordinatesText));
+            }
+        }
+    }
+
+    private double _workX;
+    public double WorkX
+    {
+        get => _workX;
+        set
+        {
+            if (SetProperty(ref _workX, value))
+            {
+                RaisePropertyChanged(nameof(PositionX));
+                RaisePropertyChanged(nameof(WorkCoordinatesText));
+            }
+        }
+    }
+
+    private double _workY;
+    public double WorkY
+    {
+        get => _workY;
+        set
+        {
+            if (SetProperty(ref _workY, value))
+            {
+                RaisePropertyChanged(nameof(PositionY));
+                RaisePropertyChanged(nameof(WorkCoordinatesText));
+            }
+        }
+    }
+
+    private double _workZ;
+    public double WorkZ
+    {
+        get => _workZ;
+        set
+        {
+            if (SetProperty(ref _workZ, value))
+            {
+                RaisePropertyChanged(nameof(PositionZ));
+                RaisePropertyChanged(nameof(WorkCoordinatesText));
+            }
+        }
+    }
+
+    private double _workOffsetX;
+    public double WorkOffsetX
+    {
+        get => _workOffsetX;
+        set
+        {
+            _hasWorkOffset = true;
+            SetProperty(ref _workOffsetX, value);
+        }
+    }
+
+    private double _workOffsetY;
+    public double WorkOffsetY
+    {
+        get => _workOffsetY;
+        set
+        {
+            _hasWorkOffset = true;
+            SetProperty(ref _workOffsetY, value);
+        }
+    }
+
+    private double _workOffsetZ;
+    public double WorkOffsetZ
+    {
+        get => _workOffsetZ;
+        set
+        {
+            _hasWorkOffset = true;
+            SetProperty(ref _workOffsetZ, value);
+        }
+    }
+
+    private bool _hasWorkOffset;
+
+    // Backward-compatible aliases for existing bindings that still expect one coordinate set.
+    public double PositionX { get => WorkX; set => WorkX = value; }
+    public double PositionY { get => WorkY; set => WorkY = value; }
+    public double PositionZ { get => WorkZ; set => WorkZ = value; }
+
+    public string WorkCoordinatesText => $"{WorkX:F3}, {WorkY:F3}, {WorkZ:F3}";
+    public string MachineCoordinatesText => $"{MachineX:F3}, {MachineY:F3}, {MachineZ:F3}";
 
     // ════════════════════════════════════════════════════════════════
     // SPINDLE & FEED
@@ -259,6 +374,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 RaisePropertyChanged(nameof(ActiveToolpathDepth));
                 RaisePropertyChanged(nameof(ActiveToolpathSegmentCount));
                 RaisePropertyChanged(nameof(ActiveToolpathWarnings));
+                DashboardVm.NotifyToolpathAvailabilityChanged();
             }
         }
     }
@@ -561,7 +677,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void ParseStatusReport(string report)
     {
-        // Format: State|MPos:x,y,z|FS:feed,spindle|...
+        // Format: State|MPos:x,y,z|WPos:x,y,z|WCO:x,y,z|FS:feed,spindle|...
         var parts = report.Split('|');
         if (parts.Length == 0) return;
 
@@ -582,6 +698,16 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         };
         if (MotionState != newState) MotionState = newState;
 
+        double? machineX = null;
+        double? machineY = null;
+        double? machineZ = null;
+        double? workX = null;
+        double? workY = null;
+        double? workZ = null;
+        double? workOffsetX = null;
+        double? workOffsetY = null;
+        double? workOffsetZ = null;
+
         for (int i = 1; i < parts.Length; i++)
         {
             var sep = parts[i].IndexOf(':');
@@ -592,17 +718,30 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             switch (key)
             {
                 case "MPos":
-                case "WPos":
-                {
-                    var coords = val.Split(',');
-                    if (coords.Length >= 3)
+                    if (TryParseCoordinateTriplet(val, out var parsedMachineX, out var parsedMachineY, out var parsedMachineZ))
                     {
-                        if (double.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var x)) PositionX = x;
-                        if (double.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var y)) PositionY = y;
-                        if (double.TryParse(coords[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var z)) PositionZ = z;
+                        machineX = parsedMachineX;
+                        machineY = parsedMachineY;
+                        machineZ = parsedMachineZ;
                     }
                     break;
-                }
+                case "WPos":
+                    if (TryParseCoordinateTriplet(val, out var parsedWorkX, out var parsedWorkY, out var parsedWorkZ))
+                    {
+                        workX = parsedWorkX;
+                        workY = parsedWorkY;
+                        workZ = parsedWorkZ;
+                    }
+                    break;
+                case "WCO":
+                    if (TryParseCoordinateTriplet(val, out var parsedOffsetX, out var parsedOffsetY, out var parsedOffsetZ))
+                    {
+                        workOffsetX = parsedOffsetX;
+                        workOffsetY = parsedOffsetY;
+                        workOffsetZ = parsedOffsetZ;
+                        _hasWorkOffset = true;
+                    }
+                    break;
                 case "FS":
                 {
                     var fs = val.Split(',');
@@ -618,6 +757,58 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                     break;
             }
         }
+
+        if (workOffsetX.HasValue && workOffsetY.HasValue && workOffsetZ.HasValue)
+        {
+            WorkOffsetX = workOffsetX.Value;
+            WorkOffsetY = workOffsetY.Value;
+            WorkOffsetZ = workOffsetZ.Value;
+        }
+
+        if (!workX.HasValue && !workY.HasValue && !workZ.HasValue &&
+            machineX.HasValue && machineY.HasValue && machineZ.HasValue &&
+            _hasWorkOffset)
+        {
+            workX = machineX.Value - WorkOffsetX;
+            workY = machineY.Value - WorkOffsetY;
+            workZ = machineZ.Value - WorkOffsetZ;
+        }
+
+        if (!machineX.HasValue && !machineY.HasValue && !machineZ.HasValue &&
+            workX.HasValue && workY.HasValue && workZ.HasValue &&
+            _hasWorkOffset)
+        {
+            machineX = workX.Value + WorkOffsetX;
+            machineY = workY.Value + WorkOffsetY;
+            machineZ = workZ.Value + WorkOffsetZ;
+        }
+
+        if (machineX.HasValue && machineY.HasValue && machineZ.HasValue)
+        {
+            MachineX = machineX.Value;
+            MachineY = machineY.Value;
+            MachineZ = machineZ.Value;
+        }
+
+        if (workX.HasValue && workY.HasValue && workZ.HasValue)
+        {
+            WorkX = workX.Value;
+            WorkY = workY.Value;
+            WorkZ = workZ.Value;
+        }
+    }
+
+    private static bool TryParseCoordinateTriplet(string value, out double x, out double y, out double z)
+    {
+        x = 0;
+        y = 0;
+        z = 0;
+
+        var coords = value.Split(',');
+        return coords.Length >= 3
+            && double.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out x)
+            && double.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out y)
+            && double.TryParse(coords[2], NumberStyles.Float, CultureInfo.InvariantCulture, out z);
     }
 
     public void Dispose()

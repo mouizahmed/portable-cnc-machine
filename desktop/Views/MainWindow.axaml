@@ -1,7 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:materialIcons="using:Material.Icons.Avalonia"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
         xmlns:converters="clr-namespace:PortableCncApp.ViewModels"
@@ -32,55 +31,37 @@
           <Button Classes="NavButton"
                   Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Dashboard}"
                   Command="{Binding GoDashboardCommand}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <materialIcons:MaterialIcon Kind="Play" />
-              <TextBlock Text="Dashboard" VerticalAlignment="Center"/>
-            </StackPanel>
+            <TextBlock Text="Dashboard" VerticalAlignment="Center"/>
           </Button>
 
           <Button Classes="NavButton"
                   Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Jog}"
                   Command="{Binding GoJogCommand}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <materialIcons:MaterialIcon Kind="CameraControl" />
-              <TextBlock Text="Jog Control" VerticalAlignment="Center"/>
-            </StackPanel>
+            <TextBlock Text="Jog Control" VerticalAlignment="Center"/>
           </Button>
 
           <Button Classes="NavButton"
                   Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Files}"
                   Command="{Binding GoFilesCommand}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <materialIcons:MaterialIcon Kind="Folder" />
-              <TextBlock Text="Files" VerticalAlignment="Center"/>
-            </StackPanel>
+            <TextBlock Text="Files" VerticalAlignment="Center"/>
           </Button>
 
           <Button Classes="NavButton"
                   Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Connect}"
                   Command="{Binding GoConnectCommand}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <materialIcons:MaterialIcon Kind="PowerPlug" />
-              <TextBlock Text="Connect" VerticalAlignment="Center"/>
-            </StackPanel>
+            <TextBlock Text="Connect" VerticalAlignment="Center"/>
           </Button>
 
           <Button Classes="NavButton"
                   Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Settings}"
                   Command="{Binding GoSettingsCommand}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <materialIcons:MaterialIcon Kind="Settings" />
-              <TextBlock Text="Settings" VerticalAlignment="Center"/>
-            </StackPanel>
+            <TextBlock Text="Settings" VerticalAlignment="Center"/>
           </Button>
 
           <Button Classes="NavButton"
                   Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Diagnostics}"
                   Command="{Binding GoDiagnosticsCommand}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <materialIcons:MaterialIcon Kind="Wrench" />
-              <TextBlock Text="Diagnostics" VerticalAlignment="Center"/>
-            </StackPanel>
+            <TextBlock Text="Diagnostics" VerticalAlignment="Center"/>
           </Button>
 
         </StackPanel>

@@ -122,7 +122,22 @@ public sealed class JogViewModel : PageViewModelBase
     {
         if (MainVm == null) return;
 
-        // TODO: Send G92 command to set work offset
+        switch (axis)
+        {
+            case "X":
+                MainVm.WorkX = 0;
+                MainVm.WorkOffsetX = MainVm.MachineX;
+                break;
+            case "Y":
+                MainVm.WorkY = 0;
+                MainVm.WorkOffsetY = MainVm.MachineY;
+                break;
+            case "Z":
+                MainVm.WorkZ = 0;
+                MainVm.WorkOffsetZ = MainVm.MachineZ;
+                break;
+        }
+
         MainVm.StatusMessage = $"Work offset {axis} = 0";
     }
 
@@ -130,9 +145,12 @@ public sealed class JogViewModel : PageViewModelBase
     {
         if (MainVm == null) return;
 
-        MainVm.PositionX = 0;
-        MainVm.PositionY = 0;
-        MainVm.PositionZ = 0;
+        MainVm.WorkX = 0;
+        MainVm.WorkY = 0;
+        MainVm.WorkZ = 0;
+        MainVm.WorkOffsetX = MainVm.MachineX;
+        MainVm.WorkOffsetY = MainVm.MachineY;
+        MainVm.WorkOffsetZ = MainVm.MachineZ;
         MainVm.StatusMessage = "Work offset XYZ = 0";
     }
 }

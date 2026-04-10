@@ -39,6 +39,7 @@
             <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="BorderThickness" Value="0,0,0,2"/>
+            <Setter Property="CornerRadius" Value="0"/>
         </Style>
         <Style Selector="Button.NavButton.active /template/ ContentPresenter">
             <Setter Property="Background" Value="#252525"/>

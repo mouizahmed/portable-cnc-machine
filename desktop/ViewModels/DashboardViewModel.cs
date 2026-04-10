@@ -6,6 +6,8 @@ namespace PortableCncApp.ViewModels;
 public sealed class DashboardViewModel : PageViewModelBase
 {
     private string _cameraPreset = "Iso";
+    private bool _isViewerPanelOpen;
+
     public string CameraPreset
     {
         get => _cameraPreset;
@@ -96,6 +98,21 @@ public sealed class DashboardViewModel : PageViewModelBase
 
     public string ViewerTitle => "3D TOOLPATH";
     public string ViewerHint => "Wheel to zoom. Drag to orbit. Right-drag to pan. Live machine position overlays the loaded toolpath.";
+    public bool HasLoadedToolpath => MainVm?.HasActiveGCodeDocument == true;
+
+    public bool IsViewerPanelOpen
+    {
+        get => _isViewerPanelOpen;
+        set
+        {
+            if (!HasLoadedToolpath && value)
+            {
+                value = false;
+            }
+
+            SetProperty(ref _isViewerPanelOpen, value);
+        }
+    }
 
     public string ScrubberLabel => $"Preview line {PreviewLine}";
 
@@ -115,5 +132,14 @@ public sealed class DashboardViewModel : PageViewModelBase
             CameraPreset = preset;
             ResetViewToken++;
         });
+    }
+
+    public void NotifyToolpathAvailabilityChanged()
+    {
+        RaisePropertyChanged(nameof(HasLoadedToolpath));
+        if (!HasLoadedToolpath)
+        {
+            IsViewerPanelOpen = false;
+        }
     }
 }

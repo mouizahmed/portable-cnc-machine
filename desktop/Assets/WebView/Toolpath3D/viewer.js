@@ -52,10 +52,19 @@ const viewHelper = new ViewHelper(camera, renderer.domElement);
 viewHelper.setLabels('X', 'Y', 'Z');
 
 renderer.domElement.addEventListener('click', e => {
+  if (!hasLoadedToolpath()) {
+    return;
+  }
+
   viewHelper.handleClick(e);
 });
 
 renderer.domElement.addEventListener('mousemove', e => {
+  if (!hasLoadedToolpath()) {
+    renderer.domElement.style.cursor = '';
+    return;
+  }
+
   const rect = renderer.domElement.getBoundingClientRect();
   const dim = 128;
   const x = e.clientX - rect.left;
@@ -373,6 +382,10 @@ function createBucket() {
   return { positions: [], colors: [] };
 }
 
+function hasLoadedToolpath() {
+  return Boolean(currentScene && currentScene.hasScene && currentScene.bounds);
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -388,12 +401,18 @@ function resize() {
 function animate() {
   requestAnimationFrame(animate);
   const delta = clock.getDelta();
-  if (viewHelper.animating) viewHelper.update(delta);
-  viewHelper.center.copy(controls.target);
+  if (hasLoadedToolpath()) {
+    if (viewHelper.animating) viewHelper.update(delta);
+    viewHelper.center.copy(controls.target);
+  }
+
   controls.update();
   renderer.clear();
   renderer.render(scene, camera);
-  viewHelper.render(renderer);
+
+  if (hasLoadedToolpath()) {
+    viewHelper.render(renderer);
+  }
 }
 
 function createControls(camera) {
