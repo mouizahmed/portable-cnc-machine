@@ -29,6 +29,22 @@ public abstract class PageViewModelBase : ViewModelBase
 
     public void SetMainViewModel(MainWindowViewModel mainVm)
     {
+        if (MainVm != null)
+            MainVm.PropertyChanged -= HandleMainViewModelPropertyChanged;
+
         MainVm = mainVm;
+        MainVm.PropertyChanged += HandleMainViewModelPropertyChanged;
+        OnMainViewModelSet();
     }
+
+    protected virtual void OnMainViewModelSet()
+    {
+    }
+
+    protected virtual void OnMainViewModelPropertyChanged(string? propertyName)
+    {
+    }
+
+    private void HandleMainViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        => OnMainViewModelPropertyChanged(e.PropertyName);
 }

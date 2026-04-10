@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Windows.Input;
 using Avalonia.Media;
@@ -37,6 +38,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 RaisePropertyChanged(nameof(ConnectionStatusText));
                 RaisePropertyChanged(nameof(ConnectionStatusBrush));
                 RaisePropertyChanged(nameof(IsConnected));
+                RaisePropertyChanged(nameof(CanStart));
+                RaisePropertyChanged(nameof(CanPause));
+                RaisePropertyChanged(nameof(CanStop));
+                RaisePropertyChanged(nameof(CanHome));
+                RaisePropertyChanged(nameof(CanJog));
             }
         }
     }
@@ -55,6 +61,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 RaisePropertyChanged(nameof(ConnectionStatusText));
                 RaisePropertyChanged(nameof(ConnectionStatusBrush));
                 RaisePropertyChanged(nameof(IsConnected));
+                RaisePropertyChanged(nameof(CanStart));
+                RaisePropertyChanged(nameof(CanPause));
+                RaisePropertyChanged(nameof(CanStop));
+                RaisePropertyChanged(nameof(CanHome));
+                RaisePropertyChanged(nameof(CanJog));
             }
         }
     }
@@ -301,7 +312,18 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // ════════════════════════════════════════════════════════════════
     
     private double _spindleSpeed;
-    public double SpindleSpeed { get => _spindleSpeed; set => SetProperty(ref _spindleSpeed, value); }
+    public double SpindleSpeed
+    {
+        get => _spindleSpeed;
+        set
+        {
+            if (SetProperty(ref _spindleSpeed, value))
+            {
+                RaisePropertyChanged(nameof(FeedSpindleSummary));
+                RaisePropertyChanged(nameof(SpindleStatusText));
+            }
+        }
+    }
 
     private bool _spindleOn;
     public bool SpindleOn
@@ -315,11 +337,34 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     }
     public string SpindleStatusText => SpindleOn ? $"ON ({SpindleSpeed:F0} RPM)" : "OFF";
 
+    private bool _coolantOn;
+    public bool CoolantOn
+    {
+        get => _coolantOn;
+        set
+        {
+            if (SetProperty(ref _coolantOn, value))
+                RaisePropertyChanged(nameof(CoolantStatusText));
+        }
+    }
+    public string CoolantStatusText => CoolantOn ? "ON" : "OFF";
+
     private double _feedRate;
-    public double FeedRate { get => _feedRate; set => SetProperty(ref _feedRate, value); }
+    public double FeedRate
+    {
+        get => _feedRate;
+        set
+        {
+            if (SetProperty(ref _feedRate, value))
+            {
+                RaisePropertyChanged(nameof(FeedSpindleSummary));
+            }
+        }
+    }
 
     private int _feedOverride = 100;
     public int FeedOverride { get => _feedOverride; set => SetProperty(ref _feedOverride, value); }
+    public string FeedSpindleSummary => $"{FeedRate:F0} / {SpindleSpeed:F0}";
 
     // ════════════════════════════════════════════════════════════════
     // ENVIRONMENTAL SENSORS
@@ -331,17 +376,125 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private double _humidity;
     public double Humidity { get => _humidity; set => SetProperty(ref _humidity, value); }
 
-    private bool _limitsTriggered;
-    public bool LimitsTriggered
+    private bool _xHomed;
+    public bool XHomed
     {
-        get => _limitsTriggered;
+        get => _xHomed;
         set
         {
-            if (SetProperty(ref _limitsTriggered, value))
-                RaisePropertyChanged(nameof(LimitsStatusText));
+            if (SetProperty(ref _xHomed, value))
+            {
+                RaisePropertyChanged(nameof(AllAxesHomed));
+                RaisePropertyChanged(nameof(HomingStatusText));
+            }
         }
     }
+
+    private bool _yHomed;
+    public bool YHomed
+    {
+        get => _yHomed;
+        set
+        {
+            if (SetProperty(ref _yHomed, value))
+            {
+                RaisePropertyChanged(nameof(AllAxesHomed));
+                RaisePropertyChanged(nameof(HomingStatusText));
+            }
+        }
+    }
+
+    private bool _zHomed;
+    public bool ZHomed
+    {
+        get => _zHomed;
+        set
+        {
+            if (SetProperty(ref _zHomed, value))
+            {
+                RaisePropertyChanged(nameof(AllAxesHomed));
+                RaisePropertyChanged(nameof(HomingStatusText));
+            }
+        }
+    }
+
+    public bool AllAxesHomed => XHomed && YHomed && ZHomed;
+
+    public string HomingStatusText
+    {
+        get
+        {
+            if (AllAxesHomed) return "XYZ HOMED";
+
+            var missing = new List<string>(3);
+            if (!XHomed) missing.Add("X");
+            if (!YHomed) missing.Add("Y");
+            if (!ZHomed) missing.Add("Z");
+            return $"HOME {string.Join("/", missing)}";
+        }
+    }
+
+    private bool _xLimitTriggered;
+    public bool XLimitTriggered
+    {
+        get => _xLimitTriggered;
+        set
+        {
+            if (SetProperty(ref _xLimitTriggered, value))
+            {
+                RaisePropertyChanged(nameof(LimitsTriggered));
+                RaisePropertyChanged(nameof(LimitsStatusText));
+                RaisePropertyChanged(nameof(LimitSummaryText));
+            }
+        }
+    }
+
+    private bool _yLimitTriggered;
+    public bool YLimitTriggered
+    {
+        get => _yLimitTriggered;
+        set
+        {
+            if (SetProperty(ref _yLimitTriggered, value))
+            {
+                RaisePropertyChanged(nameof(LimitsTriggered));
+                RaisePropertyChanged(nameof(LimitsStatusText));
+                RaisePropertyChanged(nameof(LimitSummaryText));
+            }
+        }
+    }
+
+    private bool _zLimitTriggered;
+    public bool ZLimitTriggered
+    {
+        get => _zLimitTriggered;
+        set
+        {
+            if (SetProperty(ref _zLimitTriggered, value))
+            {
+                RaisePropertyChanged(nameof(LimitsTriggered));
+                RaisePropertyChanged(nameof(LimitsStatusText));
+                RaisePropertyChanged(nameof(LimitSummaryText));
+            }
+        }
+    }
+
+    public bool LimitsTriggered => XLimitTriggered || YLimitTriggered || ZLimitTriggered;
     public string LimitsStatusText => LimitsTriggered ? "TRIGGERED" : "OK";
+
+    public string LimitSummaryText
+    {
+        get
+        {
+            if (!LimitsTriggered) return "XYZ CLEAR";
+
+            var active = new List<string>(3);
+            if (XLimitTriggered) active.Add("X");
+            if (YLimitTriggered) active.Add("Y");
+            if (ZLimitTriggered) active.Add("Z");
+            return $"{string.Join("/", active)} LIMIT";
+        }
+    }
 
     // ════════════════════════════════════════════════════════════════
     // PROGRAM STATUS
@@ -447,7 +600,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // ════════════════════════════════════════════════════════════════
     
     public ICommand GoDashboardCommand { get; }
-    public ICommand GoJogCommand { get; }
+    public ICommand GoManualControlCommand { get; }
     public ICommand GoFilesCommand { get; }
     public ICommand GoConnectCommand { get; }
     public ICommand GoSettingsCommand { get; }
@@ -464,7 +617,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // ════════════════════════════════════════════════════════════════
     
     public DashboardViewModel DashboardVm { get; }
-    public JogViewModel JogVm { get; }
+    public ManualControlViewModel ManualControlVm { get; }
     public FilesViewModel FilesVm { get; }
     public ConnectViewModel ConnectVm { get; }
     public SettingsViewModel SettingsVm { get; }
@@ -478,7 +631,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     {
         // Create page ViewModels
         DashboardVm = new DashboardViewModel();
-        JogVm = new JogViewModel();
+        ManualControlVm = new ManualControlViewModel();
         FilesVm = new FilesViewModel();
         ConnectVm = new ConnectViewModel();
         SettingsVm = new SettingsViewModel();
@@ -486,7 +639,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
         // Wire up page ViewModels to main
         DashboardVm.SetMainViewModel(this);
-        JogVm.SetMainViewModel(this);
+        ManualControlVm.SetMainViewModel(this);
         FilesVm.SetMainViewModel(this);
         ConnectVm.SetMainViewModel(this);
         SettingsVm.SetMainViewModel(this);
@@ -494,7 +647,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
         // Navigation commands
         GoDashboardCommand = new RelayCommand(() => NavigateTo(DashboardVm, "Dashboard"));
-        GoJogCommand = new RelayCommand(() => NavigateTo(JogVm, "Jog"));
+        GoManualControlCommand = new RelayCommand(() => NavigateTo(ManualControlVm, "ManualControl"));
         GoFilesCommand = new RelayCommand(() => NavigateTo(FilesVm, "Files"));
         GoConnectCommand = new RelayCommand(() => NavigateTo(ConnectVm, "Connect"));
         GoSettingsCommand = new RelayCommand(() => NavigateTo(SettingsVm, "Settings"));
@@ -565,6 +718,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             MotionState = MotionState.Homing;
             StatusMessage = "Homing all axes...";
+            SetAllAxesHomed(true);
             // TODO: Actual homing logic
         }
     }
@@ -574,8 +728,50 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         MotionState = MotionState.EStopLatched;
         SafetyState = SafetyState.EStopActive;
         SpindleOn = false;
+        SpindleSpeed = 0;
+        CoolantOn = false;
+        SetAllAxesHomed(false);
+        ClearLimitStates();
         StatusMessage = "EMERGENCY STOP ACTIVATED";
         IsStatusError = true;
+    }
+
+    public void SetAllAxesHomed(bool homed)
+    {
+        XHomed = homed;
+        YHomed = homed;
+        ZHomed = homed;
+    }
+
+    public void SetAxisHomed(string axis, bool homed)
+    {
+        switch (axis.ToUpperInvariant())
+        {
+            case "X":
+                XHomed = homed;
+                break;
+            case "Y":
+                YHomed = homed;
+                break;
+            case "Z":
+                ZHomed = homed;
+                break;
+        }
+    }
+
+    public void ClearLimitStates()
+    {
+        XLimitTriggered = false;
+        YLimitTriggered = false;
+        ZLimitTriggered = false;
+    }
+
+    private void ApplyPinState(string pins)
+    {
+        var upperPins = pins.ToUpperInvariant();
+        XLimitTriggered = upperPins.Contains('X');
+        YLimitTriggered = upperPins.Contains('Y');
+        ZLimitTriggered = upperPins.Contains('Z');
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -621,8 +817,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         TeensyConnectionStatus = ConnectionStatus.Disconnected;
         MotionState            = MotionState.PowerUp;
         SafetyState            = SafetyState.SafeIdle;
+        SpindleOn              = false;
+        SpindleSpeed           = 0;
+        CoolantOn              = false;
         StatusMessage          = "Device disconnected";
         IsStatusError          = true;
+        SetAllAxesHomed(false);
+        ClearLimitStates();
 
         ConnectVm.ResetDeviceInfo();
     }
@@ -670,6 +871,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         else if (line.StartsWith("ALARM:"))
         {
             MotionState = MotionState.Fault;
+            CoolantOn = false;
+            SpindleOn = false;
+            SpindleSpeed = 0;
+            SetAllAxesHomed(false);
             StatusMessage = $"GRBL alarm {line[6..]}";
             IsStatusError = true;
         }
@@ -707,6 +912,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         double? workOffsetX = null;
         double? workOffsetY = null;
         double? workOffsetZ = null;
+        var sawPinState = false;
 
         for (int i = 1; i < parts.Length; i++)
         {
@@ -748,15 +954,26 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                     if (fs.Length >= 2)
                     {
                         if (double.TryParse(fs[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var f)) FeedRate = f;
-                        if (double.TryParse(fs[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var s)) SpindleSpeed = s;
+                        if (double.TryParse(fs[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var s))
+                        {
+                            SpindleSpeed = s;
+                            SpindleOn = s > 0;
+                        }
                     }
                     break;
                 }
                 case "F":
                     if (double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out var feed)) FeedRate = feed;
                     break;
+                case "Pn":
+                    sawPinState = true;
+                    ApplyPinState(val);
+                    break;
             }
         }
+
+        if (!sawPinState)
+            ClearLimitStates();
 
         if (workOffsetX.HasValue && workOffsetY.HasValue && workOffsetZ.HasValue)
         {

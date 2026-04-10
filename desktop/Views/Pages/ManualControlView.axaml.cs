@@ -2,9 +2,9 @@ using Avalonia.Controls;
 
 namespace PortableCncApp.Views.Pages;
 
-public partial class JogView : UserControl
+public partial class ManualControlView : UserControl
 {
-    public JogView()
+    public ManualControlView()
     {
         InitializeComponent();
     }

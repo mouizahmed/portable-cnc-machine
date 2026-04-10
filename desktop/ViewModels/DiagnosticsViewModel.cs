@@ -11,6 +11,10 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
     // ════════════════════════════════════════════════════════════════
 
     public ObservableCollection<LogEntry> LogEntries { get; } = new();
+    public int LogEntryCount => LogEntries.Count;
+    public string LatestLogSummary => LogEntries.Count == 0
+        ? "No console entries yet."
+        : $"{LogEntries[^1].Type}: {LogEntries[^1].Message}";
 
     private string _commandInput = "";
     public string CommandInput
@@ -89,7 +93,7 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
     public DiagnosticsViewModel()
     {
         SendCommandCommand = new RelayCommand(SendCommand);
-        ClearLogCommand = new RelayCommand(() => LogEntries.Clear());
+        ClearLogCommand = new RelayCommand(ClearLog);
         RefreshSensorsCommand = new RelayCommand(RefreshSensors);
         ResetFaultCommand = new RelayCommand(ResetFault);
         UnlockCommand = new RelayCommand(Unlock);
@@ -158,6 +162,15 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
             Type = type,
             Message = message
         });
+        RaisePropertyChanged(nameof(LogEntryCount));
+        RaisePropertyChanged(nameof(LatestLogSummary));
+    }
+
+    private void ClearLog()
+    {
+        LogEntries.Clear();
+        RaisePropertyChanged(nameof(LogEntryCount));
+        RaisePropertyChanged(nameof(LatestLogSummary));
     }
 }
 

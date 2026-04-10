@@ -15,12 +15,12 @@
         Title="Portable CNC Control"
         Background="{DynamicResource AppBackgroundBrush}">
 
-  <Grid RowDefinitions="Auto,*,Auto">
+  <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,248">
 
     <!-- ══════════════════════════════════════════════════════════════════ -->
     <!-- TAB NAVIGATION BAR -->
     <!-- ══════════════════════════════════════════════════════════════════ -->
-    <Border Grid.Row="0"
+    <Border Grid.Row="0" Grid.ColumnSpan="2"
             Background="{DynamicResource SidebarBackgroundBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,0,0,1">
@@ -35,9 +35,9 @@
           </Button>
 
           <Button Classes="NavButton"
-                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=Jog}"
-                  Command="{Binding GoJogCommand}">
-            <TextBlock Text="Jog Control" VerticalAlignment="Center"/>
+                  Classes.active="{Binding CurrentPageName, Converter={x:Static converters:StringEqualsConverter.Instance}, ConverterParameter=ManualControl}"
+                  Command="{Binding GoManualControlCommand}">
+            <TextBlock Text="Manual Control" VerticalAlignment="Center"/>
           </Button>
 
           <Button Classes="NavButton"
@@ -71,14 +71,459 @@
     <!-- ══════════════════════════════════════════════════════════════════ -->
     <!-- PAGE CONTENT -->
     <!-- ══════════════════════════════════════════════════════════════════ -->
-    <Border Grid.Row="1" Padding="8">
-      <ContentControl Content="{Binding CurrentPage}"/>
-    </Border>
+      <Border Grid.Row="1" Grid.Column="0" Margin="8">
+        <ContentControl Content="{Binding CurrentPage}"/>
+      </Border>
+
+      <Border Grid.Row="1" Grid.Column="1"
+              BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="1,0,0,0">
+        <Grid RowDefinitions="Auto,1,*">
+
+          <StackPanel Grid.Row="0" Spacing="8" Margin="8">
+          <Border Background="{DynamicResource PanelBackgroundBrush}"
+                  CornerRadius="4"
+                  Padding="8">
+            <StackPanel>
+              <TextBlock Text="COORDINATES"
+                         FontSize="11"
+                         FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextTertiaryBrush}"
+                         LetterSpacing="1"
+                         Margin="0,0,0,8"/>
+
+              <Grid ColumnDefinitions="64,*"
+                    RowDefinitions="Auto,Auto"
+                    RowSpacing="8">
+                <TextBlock Text="Work"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center"/>
+                <Border Grid.Column="1"
+                        Background="#2A2A2A"
+                        CornerRadius="4"
+                        Padding="8,6">
+                  <TextBlock Text="{Binding WorkCoordinatesText}"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             FontFamily="Consolas"
+                             Foreground="{DynamicResource TextPrimaryBrush}"
+                             HorizontalAlignment="Right"/>
+                </Border>
+
+                <TextBlock Grid.Row="1"
+                           Text="Machine"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center"/>
+                <Border Grid.Row="1"
+                        Grid.Column="1"
+                        Background="#2A2A2A"
+                        CornerRadius="4"
+                        Padding="8,6">
+                  <TextBlock Text="{Binding MachineCoordinatesText}"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             FontFamily="Consolas"
+                             Foreground="{DynamicResource TextSecondaryBrush}"
+                             HorizontalAlignment="Right"/>
+                </Border>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <Border Background="{DynamicResource PanelBackgroundBrush}"
+                  CornerRadius="4"
+                  Padding="8">
+            <StackPanel>
+              <TextBlock Text="MACHINE"
+                         FontSize="11"
+                         FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextTertiaryBrush}"
+                         LetterSpacing="1"
+                         Margin="0,0,0,8"/>
+
+              <Border Background="{Binding MotionStateBrush}"
+                      CornerRadius="4"
+                      Padding="8,6"
+                      Margin="0,0,0,8">
+                <TextBlock Text="{Binding MotionStateLabel}"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="White"
+                           HorizontalAlignment="Center"/>
+              </Border>
+
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+                <TextBlock Text="Connection"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Grid.Column="1"
+                           Text="{Binding ConnectionStatusText}"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+                <TextBlock Grid.Row="1"
+                           Text="Safety"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Grid.Row="1"
+                           Grid.Column="1"
+                           Text="{Binding SafetyStateLabel}"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+                <TextBlock Grid.Row="2"
+                           Text="Feed / Spindle"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <TextBlock Grid.Row="2"
+                           Grid.Column="1"
+                           Text="{Binding FeedSpindleSummary}"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          </StackPanel>
+
+          <Border Grid.Row="1" Background="{DynamicResource BorderBrush}"/>
+
+          <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="8">
+          <ContentControl Content="{Binding CurrentPage}">
+            <ContentControl.DataTemplates>
+              <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+                <Border Background="{DynamicResource PanelBackgroundBrush}"
+                        CornerRadius="4"
+                        Padding="8">
+                  <StackPanel>
+                    <TextBlock Text="DASHBOARD"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextTertiaryBrush}"
+                               LetterSpacing="1"
+                               Margin="0,0,0,8"/>
+
+                    <TextBlock Text="{Binding MainVm.CurrentFileName, TargetNullValue='No file loaded'}"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               TextTrimming="CharacterEllipsis"/>
+
+                    <Grid ColumnDefinitions="*,Auto"
+                          Margin="0,10,0,4">
+                      <TextBlock Text="Progress"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding MainVm.Progress, StringFormat={}{0:F1}%}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    </Grid>
+
+                    <ProgressBar Value="{Binding MainVm.Progress}"
+                                 Maximum="100"
+                                 Height="8"
+                                 CornerRadius="4"/>
+
+                    <TextBlock Text="{Binding MainVm.CurrentLine, StringFormat=Line {0}}"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextTertiaryBrush}"
+                               Margin="0,8,0,0"/>
+                    <TextBlock Text="{Binding MainVm.ActiveToolpathBounds}"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,6,0,0"/>
+                    <TextBlock Text="{Binding MainVm.ActiveToolpathDepth}"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,4,0,0"/>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+
+              <DataTemplate DataType="{x:Type vm:FilesViewModel}">
+                <StackPanel Spacing="8">
+                  <Border Background="{DynamicResource PanelBackgroundBrush}"
+                          CornerRadius="4"
+                          Padding="8">
+                    <StackPanel>
+                      <TextBlock Text="FILES"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextTertiaryBrush}"
+                                 LetterSpacing="1"
+                                 Margin="0,0,0,8"/>
+
+                      <TextBlock Text="{Binding SelectedFile.Name, TargetNullValue='No file selected'}"
+                                 FontSize="13"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Text="{Binding SelectedFile.Size, TargetNullValue='--'}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"
+                                 Margin="0,6,0,0"/>
+                      <TextBlock Text="{Binding SelectedFile.Modified, StringFormat=Modified {0}, TargetNullValue='Modified --'}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextTertiaryBrush}"
+                                 Margin="0,4,0,0"/>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Background="{DynamicResource PanelBackgroundBrush}"
+                          CornerRadius="4"
+                          Padding="8">
+                    <StackPanel>
+                      <TextBlock Text="TOOLPATH"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextTertiaryBrush}"
+                                 LetterSpacing="1"
+                                 Margin="0,0,0,8"/>
+                      <TextBlock Text="{Binding ToolpathStatusMessage}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding ToolpathWarningSummary}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"
+                                 TextWrapping="Wrap"
+                                 Margin="0,6,0,0"/>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </DataTemplate>
+
+              <DataTemplate DataType="{x:Type vm:ManualControlViewModel}">
+                <Border Background="{DynamicResource PanelBackgroundBrush}"
+                        CornerRadius="4"
+                        Padding="8">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="MANUAL CONTROL"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextTertiaryBrush}"
+                               LetterSpacing="1"/>
+
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                      <TextBlock Text="Step"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding JogStep, StringFormat={}{0} mm}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 HorizontalAlignment="Right"/>
+
+                      <TextBlock Grid.Row="1"
+                                 Text="Feed"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Row="1" Grid.Column="1"
+                                 Text="{Binding JogFeedRate, StringFormat={}{0:F0} mm/min}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 HorizontalAlignment="Right"/>
+                    </Grid>
+
+                    <TextBlock Text="{Binding CommandPreview}"
+                               FontFamily="Consolas"
+                               FontSize="10"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+
+              <DataTemplate DataType="{x:Type vm:ConnectViewModel}">
+                <Border Background="{DynamicResource PanelBackgroundBrush}"
+                        CornerRadius="4"
+                        Padding="8">
+                  <StackPanel>
+                    <TextBlock Text="DEVICE"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextTertiaryBrush}"
+                               LetterSpacing="1"
+                               Margin="0,0,0,8"/>
+
+                    <Grid ColumnDefinitions="*,Auto"
+                          RowDefinitions="Auto,Auto,Auto,Auto"
+                          RowSpacing="8">
+                      <TextBlock Text="Port"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding SelectedPort, TargetNullValue='--'}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+                      <TextBlock Grid.Row="1"
+                                 Text="Pico FW"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Row="1"
+                                 Grid.Column="1"
+                                 Text="{Binding PicoFirmware}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+                      <TextBlock Grid.Row="2"
+                                 Text="Teensy FW"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Row="2"
+                                 Grid.Column="1"
+                                 Text="{Binding TeensyFirmware}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+                      <TextBlock Grid.Row="3"
+                                 Text="Serial"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Row="3"
+                                 Grid.Column="1"
+                                 Text="{Binding PicoSerialNumber}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+
+              <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+                <Border Background="{DynamicResource PanelBackgroundBrush}"
+                        CornerRadius="4"
+                        Padding="8">
+                  <StackPanel>
+                    <TextBlock Text="SETTINGS"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextTertiaryBrush}"
+                               LetterSpacing="1"
+                               Margin="0,0,0,8"/>
+
+                    <Grid ColumnDefinitions="*,Auto"
+                          RowDefinitions="Auto,Auto,Auto,Auto"
+                          RowSpacing="8">
+                      <TextBlock Text="Units"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding Units}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+                      <TextBlock Grid.Row="1"
+                                 Text="Soft limits"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Row="1"
+                                 Grid.Column="1"
+                                 Text="{Binding SoftLimitsEnabled}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+                      <TextBlock Grid.Row="2"
+                                 Text="Hard limits"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Row="2"
+                                 Grid.Column="1"
+                                 Text="{Binding HardLimitsEnabled}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+                      <TextBlock Grid.Row="3"
+                                 Text="Spindle max"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Grid.Row="3"
+                                 Grid.Column="1"
+                                 Text="{Binding SpindleMaxRpm, StringFormat={}{0:F0} RPM}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+
+              <DataTemplate DataType="{x:Type vm:DiagnosticsViewModel}">
+                <StackPanel Spacing="8">
+                  <Border Background="{DynamicResource PanelBackgroundBrush}"
+                          CornerRadius="4"
+                          Padding="8">
+                    <StackPanel>
+                      <TextBlock Text="DIAGNOSTICS"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextTertiaryBrush}"
+                                 LetterSpacing="1"
+                                 Margin="0,0,0,8"/>
+
+                      <TextBlock Text="{Binding MainVm.StatusMessage}"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding MainVm.IsStatusError, StringFormat=Active fault: {0}}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"
+                                 Margin="0,6,0,0"/>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Background="{DynamicResource PanelBackgroundBrush}"
+                          CornerRadius="4"
+                          Padding="8">
+                    <StackPanel>
+                      <TextBlock Text="CONSOLE"
+                                 FontSize="11"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextTertiaryBrush}"
+                                 LetterSpacing="1"
+                                 Margin="0,0,0,8"/>
+                      <TextBlock Text="{Binding LogEntryCount, StringFormat={}{0} entries}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      <TextBlock Text="{Binding LatestLogSummary}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 TextWrapping="Wrap"
+                                 Margin="0,6,0,0"/>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </DataTemplate>
+            </ContentControl.DataTemplates>
+          </ContentControl>
+          </ScrollViewer>
+
+        </Grid>
+      </Border>
 
     <!-- ══════════════════════════════════════════════════════════════════ -->
     <!-- STATUS BAR -->
     <!-- ══════════════════════════════════════════════════════════════════ -->
-    <Border Grid.Row="2"
+    <Border Grid.Row="2" Grid.ColumnSpan="2"
             Background="{DynamicResource HeaderBackgroundBrush}"
             Padding="8"
             BorderBrush="{DynamicResource BorderBrush}"

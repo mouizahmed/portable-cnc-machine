@@ -80,6 +80,8 @@
         <Style Selector="Button.StepButton">
             <Setter Property="Background" Value="#3A3A3A"/>
             <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="FontSize" Value="11"/>
         </Style>
         <Style Selector="Button.StepButton:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#4A4A4A"/>
@@ -128,8 +130,8 @@
         <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
             <pages:DashboardView/>
         </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:JogViewModel}">
-            <pages:JogView/>
+        <DataTemplate DataType="{x:Type vm:ManualControlViewModel}">
+            <pages:ManualControlView/>
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:FilesViewModel}">
             <pages:FilesView/>
