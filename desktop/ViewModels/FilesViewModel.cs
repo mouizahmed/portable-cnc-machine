@@ -111,8 +111,16 @@ public sealed class FilesViewModel : PageViewModelBase
 
     public string FilePreviewTitle => SelectedFile?.Name ?? "No file selected";
 
+    public bool HasPreviewContent => PreviewLines.Count > 0;
+
+    public bool IsPreviewEmpty => !HasPreviewContent;
+
+    public string PreviewEmptyMessage => SelectedFile == null
+        ? "Select a file to inspect."
+        : "No source lines to display.";
+
     public string SelectedFilePathSummary
-        => SelectedFile?.FullPath ?? "Browse for a local G-code file to inspect and load into the dashboard.";
+        => SelectedFile?.FullPath ?? string.Empty;
 
     public string SelectedFileModifiedSummary
         => SelectedFile == null ? "Nothing selected" : $"Updated {SelectedFile.Modified}";
@@ -358,6 +366,9 @@ public sealed class FilesViewModel : PageViewModelBase
                     IsMetaLine = true
                 });
             }
+
+            RaisePropertyChanged(nameof(HasPreviewContent));
+            RaisePropertyChanged(nameof(IsPreviewEmpty));
         }
         catch (Exception ex)
         {
@@ -369,6 +380,8 @@ public sealed class FilesViewModel : PageViewModelBase
                 IsMetaLine = true
             });
             PreviewLineCount = 0;
+            RaisePropertyChanged(nameof(HasPreviewContent));
+            RaisePropertyChanged(nameof(IsPreviewEmpty));
             UpdateToolpathState(hasGeometry: false, hasError: true);
             ToolpathStatusMessage = "Source preview could not be loaded.";
             ToolpathWarningSummary = "Preview failed before toolpath parsing could start.";
@@ -526,6 +539,9 @@ public sealed class FilesViewModel : PageViewModelBase
     {
         PreviewLines.Clear();
         PreviewLineCount = 0;
+        RaisePropertyChanged(nameof(HasPreviewContent));
+        RaisePropertyChanged(nameof(IsPreviewEmpty));
+        RaisePropertyChanged(nameof(PreviewEmptyMessage));
         UpdateToolpathState(hasGeometry: false, hasError: false);
         ClearWarnings();
         ToolpathStatusMessage = "Select a file to build the toolpath preview.";

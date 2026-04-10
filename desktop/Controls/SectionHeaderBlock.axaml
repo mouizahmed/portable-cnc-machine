@@ -2,7 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="PortableCncApp.Controls.SectionHeaderBlock">
   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-    <StackPanel>
+    <StackPanel VerticalAlignment="Center">
       <TextBlock x:Name="TitleText" Classes="PanelTitle"/>
       <TextBlock x:Name="SubtitleText"
                  Classes="FieldLabel"

@@ -11,44 +11,30 @@
 
   <Grid RowDefinitions="Auto,*" RowSpacing="8">
 
-    <controls:SectionCard Grid.Row="0"
-                          Title="FILE LIBRARY"
-                          Subtitle="Review local G-code and inspect source before loading a job."
-                          IsLoose="True">
-      <controls:SectionCard.Actions>
-        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+    <Border Grid.Row="0"
+            Classes="PanelCard"
+            Padding="10,8">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <TextBlock Text="FILE LIBRARY"
+                   Classes="PanelTitle"
+                   VerticalAlignment="Center"/>
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    VerticalAlignment="Center">
           <Button Content="Browse..." Command="{Binding BrowseCommand}" Classes="AppButton Primary"/>
           <Button Content="Refresh" Command="{Binding RefreshCommand}" Classes="AppButton"/>
         </StackPanel>
-      </controls:SectionCard.Actions>
-
-      <controls:SectionCard.Body>
-        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
-          <controls:StatusPill Text="{Binding Files.Count, StringFormat={}{0} local file(s)}"
-                               PillBackground="{DynamicResource BorderBrush}"/>
-          <controls:StatusPill Grid.Column="1"
-                               Text="{Binding ToolpathStateLabel}"
-                               PillBackground="{Binding ToolpathStateBrush}"/>
-          <TextBlock Grid.Column="2"
-                     Text="{Binding SelectedFilePathSummary}"
-                     Classes="FieldLabel"
-                     VerticalAlignment="Center"
-                     TextTrimming="CharacterEllipsis"/>
-        </Grid>
-      </controls:SectionCard.Body>
-    </controls:SectionCard>
+      </Grid>
+    </Border>
 
     <Grid Grid.Row="1" ColumnDefinitions="344,*" ColumnSpacing="8">
 
       <controls:SectionCard Title="LIBRARY"
                             Subtitle="{Binding Files.Count, StringFormat={}{0} file(s) ready}">
         <controls:SectionCard.Body>
-          <Grid RowDefinitions="Auto,*" RowSpacing="8">
-            <TextBlock Text="Select a local file to inspect its source. Load and remove actions live in the right rail."
-                       Classes="FieldLabel"
-                       TextWrapping="Wrap"/>
-
-            <Border Grid.Row="1"
+          <Grid RowDefinitions="*" RowSpacing="8">
+            <Border
                     Classes="InsetSurface Subtle"
                     BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
@@ -121,121 +107,85 @@
         </controls:SectionCard.Body>
       </controls:SectionCard>
 
-      <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="8">
+      <Grid Grid.Column="1">
 
-        <controls:SectionCard Title="INSPECTION"
-                              Subtitle="{Binding PreviewViewportSummary}">
-          <controls:SectionCard.Body>
-            <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
-              <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                <Border Classes="InsetSurface Subtle"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1"
-                        Height="NaN"
-                        MinHeight="0"
-                        Padding="10">
-                  <StackPanel Spacing="6">
-                    <TextBlock Text="Toolpath Parser" Classes="SectionHeading"/>
-                    <TextBlock Text="{Binding ToolpathStatusMessage}"
-                               Classes="FieldValue"
-                               TextWrapping="Wrap"/>
-                  </StackPanel>
-                </Border>
-
-                <Border Grid.Column="1"
-                        Classes="InsetSurface Subtle"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1"
-                        Height="NaN"
-                        MinHeight="0"
-                        Padding="10">
-                  <StackPanel Spacing="6">
-                    <TextBlock Text="Warnings" Classes="SectionHeading"/>
-                    <TextBlock Text="{Binding WarningDetail}"
-                               Classes="FieldLabel"
-                               TextWrapping="Wrap"/>
-
-                    <TextBlock Text="{Binding GlobalWarningSummary}"
-                               Classes="FieldLabel"
-                               Foreground="{DynamicResource WarningBrush}"
-                               TextWrapping="Wrap"
-                               IsVisible="{Binding HasGlobalWarnings}"/>
-                  </StackPanel>
-                </Border>
-              </Grid>
-            </Grid>
-          </controls:SectionCard.Body>
-        </controls:SectionCard>
-
-        <controls:SectionCard Grid.Row="1"
-                              Title="SOURCE PREVIEW"
+        <controls:SectionCard Title="SOURCE PREVIEW"
                               Subtitle="{Binding FilePreviewTitle}">
           <controls:SectionCard.Body>
             <Border Classes="InsetSurface Code"
                     Height="NaN"
                     MinHeight="0">
-              <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                            VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding PreviewLines}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:GCodePreviewLine">
-                      <Border Background="{Binding HasWarning, Converter={x:Static vm:BoolToWarningHighlightBrushConverter.Instance}}"
-                              CornerRadius="3"
-                              Padding="4,1">
-                        <Grid ColumnDefinitions="24,Auto,*" ColumnSpacing="6">
-                          <TextBlock Text="{Binding LineNumberText}"
-                                     Classes="CodeText"
-                                     Foreground="{DynamicResource TextTertiaryBrush}"
-                                     HorizontalAlignment="Right"
-                                     VerticalAlignment="Center"/>
+              <Grid>
+                <TextBlock Text="{Binding PreviewEmptyMessage}"
+                           Classes="FieldLabel"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           IsVisible="{Binding IsPreviewEmpty}"/>
 
-                          <Button Grid.Column="1"
-                                  IsVisible="{Binding HasWarning}"
-                                  Width="16"
-                                  Height="16"
-                                  Padding="0"
-                                  MinWidth="16"
-                                  MinHeight="16"
-                                  CornerRadius="8"
-                                  Background="Transparent"
-                                  BorderBrush="Transparent"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center"
-                                  VerticalContentAlignment="Center"
-                                  HorizontalContentAlignment="Center">
-                            <Button.Flyout>
-                              <Flyout Placement="RightEdgeAlignedTop">
-                                <Border Background="#1F1F1F"
-                                        BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="4"
-                                        Padding="10"
-                                        MaxWidth="360">
-                                  <TextBlock Text="{Binding WarningTooltip}"
-                                             Classes="FieldLabel"
-                                             TextWrapping="Wrap"/>
-                                </Border>
-                              </Flyout>
-                            </Button.Flyout>
-                            <materialIcons:MaterialIcon Kind="AlertCircleOutline"
-                                                        Width="12"
-                                                        Height="12"
-                                                        VerticalAlignment="Center"
-                                                        Foreground="{DynamicResource WarningBrush}"/>
-                          </Button>
+                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              IsVisible="{Binding HasPreviewContent}">
+                  <ItemsControl ItemsSource="{Binding PreviewLines}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:GCodePreviewLine">
+                        <Border Background="{Binding HasWarning, Converter={x:Static vm:BoolToWarningHighlightBrushConverter.Instance}}"
+                                CornerRadius="3"
+                                Padding="4,1">
+                          <Grid ColumnDefinitions="24,Auto,*" ColumnSpacing="6">
+                            <TextBlock Text="{Binding LineNumberText}"
+                                       Classes="CodeText"
+                                       Foreground="{DynamicResource TextTertiaryBrush}"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"/>
 
-                          <TextBlock Grid.Column="2"
-                                     Text="{Binding Text}"
-                                     Classes="CodeText"
-                                     Foreground="{Binding HasWarning, Converter={x:Static vm:BoolToWarningForegroundConverter.Instance}}"
-                                     VerticalAlignment="Center"
-                                     TextWrapping="NoWrap"/>
-                        </Grid>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </ScrollViewer>
+                            <Button Grid.Column="1"
+                                    IsVisible="{Binding HasWarning}"
+                                    Width="16"
+                                    Height="16"
+                                    Padding="0"
+                                    MinWidth="16"
+                                    MinHeight="16"
+                                    CornerRadius="8"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    HorizontalContentAlignment="Center">
+                              <Button.Flyout>
+                                <Flyout Placement="RightEdgeAlignedTop">
+                                  <Border Background="#1F1F1F"
+                                          BorderBrush="{DynamicResource BorderBrush}"
+                                          BorderThickness="1"
+                                          CornerRadius="4"
+                                          Padding="10"
+                                          MaxWidth="360">
+                                    <TextBlock Text="{Binding WarningTooltip}"
+                                               Classes="FieldLabel"
+                                               TextWrapping="Wrap"/>
+                                  </Border>
+                                </Flyout>
+                              </Button.Flyout>
+                              <materialIcons:MaterialIcon Kind="AlertCircleOutline"
+                                                          Width="12"
+                                                          Height="12"
+                                                          VerticalAlignment="Center"
+                                                          Foreground="{DynamicResource WarningBrush}"/>
+                            </Button>
+
+                            <TextBlock Grid.Column="2"
+                                       Text="{Binding Text}"
+                                       Classes="CodeText"
+                                       Foreground="{Binding HasWarning, Converter={x:Static vm:BoolToWarningForegroundConverter.Instance}}"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="NoWrap"/>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </Grid>
             </Border>
           </controls:SectionCard.Body>
         </controls:SectionCard>
