@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using Avalonia.Media;
 
 namespace PortableCncApp.ViewModels;
 
@@ -16,15 +17,172 @@ public sealed class ConnectViewModel : PageViewModelBase
     public string? SelectedPort
     {
         get => _selectedPort;
-        set { if (SetProperty(ref _selectedPort, value)) _connectCommand.RaiseCanExecuteChanged(); }
+        set
+        {
+            if (SetProperty(ref _selectedPort, value))
+            {
+                _connectCommand.RaiseCanExecuteChanged();
+                RaiseConnectionStateProperties();
+            }
+        }
     }
 
     private bool _isConnecting;
     public bool IsConnecting
     {
         get => _isConnecting;
-        set { if (SetProperty(ref _isConnecting, value)) _connectCommand.RaiseCanExecuteChanged(); }
+        set
+        {
+            if (SetProperty(ref _isConnecting, value))
+            {
+                _connectCommand.RaiseCanExecuteChanged();
+                RaiseConnectionStateProperties();
+            }
+        }
     }
+
+    public string SelectedPortDisplay => SelectedPort ?? "No port selected";
+
+    public string PortInventorySummary => AvailablePorts.Count switch
+    {
+        0 => "No compatible USB serial devices detected",
+        1 => "1 compatible USB serial device detected",
+        _ => $"{AvailablePorts.Count} compatible USB serial devices detected"
+    };
+
+    public string ConnectionHeadline
+    {
+        get
+        {
+            if (IsConnecting)
+                return "CONNECTING";
+
+            if (MainVm?.PiConnectionStatus == ConnectionStatus.Error ||
+                MainVm?.TeensyConnectionStatus == ConnectionStatus.Error)
+                return "ATTENTION REQUIRED";
+
+            if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected &&
+                MainVm.TeensyConnectionStatus == ConnectionStatus.Connected)
+                return "MACHINE ONLINE";
+
+            if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
+                return "PICO LINKED";
+
+            return SelectedPort is null ? "SELECT A PORT" : "READY TO CONNECT";
+        }
+    }
+
+    public string ConnectionSummary
+    {
+        get
+        {
+            if (IsConnecting)
+                return "Handshaking with the Pico over USB serial.";
+
+            if (MainVm?.PiConnectionStatus == ConnectionStatus.Error ||
+                MainVm?.TeensyConnectionStatus == ConnectionStatus.Error)
+                return "The last connection attempt failed. Re-scan ports or inspect Diagnostics for the fault.";
+
+            if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected &&
+                MainVm.TeensyConnectionStatus == ConnectionStatus.Connected)
+                return "Both controllers are responding and the polling loop is active.";
+
+            if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
+                return "The Pico link is healthy. Waiting for the motion controller to report in.";
+
+            return SelectedPort is null
+                ? "Scan for the Pico 2W USB serial device to begin."
+                : "The port is selected and ready for a connection attempt.";
+        }
+    }
+
+    public string PortSelectionStageText => SelectedPort is null
+        ? "Pick a serial device to arm the connection."
+        : $"{SelectedPort} selected for the handshake.";
+
+    public string PicoStageText => MainVm?.PiConnectionStatus switch
+    {
+        ConnectionStatus.Connected => "Pico responded over USB serial.",
+        ConnectionStatus.Connecting => "Probing the Pico for a response.",
+        ConnectionStatus.Error => "No Pico response on the selected port.",
+        _ => SelectedPort is null
+            ? "Waiting for a port selection."
+            : "Ready to probe the Pico."
+    };
+
+    public string TeensyStageText => MainVm?.TeensyConnectionStatus switch
+    {
+        ConnectionStatus.Connected => "Teensy motion controller is online.",
+        ConnectionStatus.Connecting => "Waiting for the motion controller.",
+        ConnectionStatus.Error => "Motion controller reported a connection error.",
+        _ => MainVm?.PiConnectionStatus == ConnectionStatus.Connected
+            ? "Waiting for the Teensy to identify itself."
+            : "Teensy handshake starts after the Pico link is up."
+    };
+
+    public string PicoLinkSummary => MainVm?.PiConnectionStatus switch
+    {
+        ConnectionStatus.Connected => "Online",
+        ConnectionStatus.Connecting => "Linking",
+        ConnectionStatus.Error => "Fault",
+        _ => "Idle"
+    };
+
+    public string TeensyLinkSummary => MainVm?.TeensyConnectionStatus switch
+    {
+        ConnectionStatus.Connected => "Online",
+        ConnectionStatus.Connecting => "Linking",
+        ConnectionStatus.Error => "Fault",
+        _ => "Idle"
+    };
+
+    public IBrush PortStageBackground => SelectedPort is null
+        ? WarningStageBackgroundBrush
+        : SuccessStageBackgroundBrush;
+
+    public IBrush PicoStageBackground => MainVm?.PiConnectionStatus switch
+    {
+        ConnectionStatus.Connected => SuccessStageBackgroundBrush,
+        ConnectionStatus.Connecting => WarningStageBackgroundBrush,
+        ConnectionStatus.Error => DangerStageBackgroundBrush,
+        _ => SelectedPort is null ? NeutralStageBackgroundBrush : WarningStageBackgroundBrush
+    };
+
+    public IBrush TeensyStageBackground => MainVm?.TeensyConnectionStatus switch
+    {
+        ConnectionStatus.Connected => SuccessStageBackgroundBrush,
+        ConnectionStatus.Connecting => WarningStageBackgroundBrush,
+        ConnectionStatus.Error => DangerStageBackgroundBrush,
+        _ => MainVm?.PiConnectionStatus == ConnectionStatus.Error
+            ? DangerStageBackgroundBrush
+            : MainVm?.PiConnectionStatus == ConnectionStatus.Connected
+                ? WarningStageBackgroundBrush
+                : NeutralStageBackgroundBrush
+    };
+
+    public IBrush PortStageBorderBrush => SelectedPort is null
+        ? WarningStageBorderBrush
+        : SuccessStageBorderBrush;
+
+    public IBrush PicoStageBorderBrush => MainVm?.PiConnectionStatus switch
+    {
+        ConnectionStatus.Connected => SuccessStageBorderBrush,
+        ConnectionStatus.Connecting => WarningStageBorderBrush,
+        ConnectionStatus.Error => DangerStageBorderBrush,
+        _ => SelectedPort is null ? NeutralStageBorderBrush : WarningStageBorderBrush
+    };
+
+    public IBrush TeensyStageBorderBrush => MainVm?.TeensyConnectionStatus switch
+    {
+        ConnectionStatus.Connected => SuccessStageBorderBrush,
+        ConnectionStatus.Connecting => WarningStageBorderBrush,
+        ConnectionStatus.Error => DangerStageBorderBrush,
+        _ => MainVm?.PiConnectionStatus == ConnectionStatus.Error
+            ? DangerStageBorderBrush
+            : MainVm?.PiConnectionStatus == ConnectionStatus.Connected
+                ? WarningStageBorderBrush
+                : NeutralStageBorderBrush
+    };
 
     // ════════════════════════════════════════════════════════════════
     // DEVICE INFO (populated from device responses)
@@ -69,6 +227,20 @@ public sealed class ConnectViewModel : PageViewModelBase
         TestConnectionCommand = new RelayCommand(TestConnection);
 
         RefreshPorts();
+    }
+
+    protected override void OnMainViewModelSet() => RaiseConnectionStateProperties();
+
+    protected override void OnMainViewModelPropertyChanged(string? propertyName)
+    {
+        switch (propertyName)
+        {
+            case nameof(MainWindowViewModel.PiConnectionStatus):
+            case nameof(MainWindowViewModel.TeensyConnectionStatus):
+            case nameof(MainWindowViewModel.StatusMessage):
+                RaiseConnectionStateProperties();
+                break;
+        }
     }
 
     /// <summary>Called by MainWindowViewModel after settings are loaded to trigger auto-connect.</summary>
@@ -176,8 +348,13 @@ public sealed class ConnectViewModel : PageViewModelBase
         }
         catch { }
 
+        if (SelectedPort is not null && !AvailablePorts.Contains(SelectedPort))
+            SelectedPort = null;
+
         if (AvailablePorts.Count > 0 && SelectedPort == null)
             SelectedPort = AvailablePorts[0];
+
+        RaiseConnectionStateProperties();
     }
 
     private void TestConnection()
@@ -186,4 +363,32 @@ public sealed class ConnectViewModel : PageViewModelBase
         MainVm.Serial.SendRealtime((byte)'?');
         MainVm.StatusMessage = "Status query sent";
     }
+
+    private void RaiseConnectionStateProperties()
+    {
+        RaisePropertyChanged(nameof(SelectedPortDisplay));
+        RaisePropertyChanged(nameof(PortInventorySummary));
+        RaisePropertyChanged(nameof(ConnectionHeadline));
+        RaisePropertyChanged(nameof(ConnectionSummary));
+        RaisePropertyChanged(nameof(PortSelectionStageText));
+        RaisePropertyChanged(nameof(PicoStageText));
+        RaisePropertyChanged(nameof(TeensyStageText));
+        RaisePropertyChanged(nameof(PicoLinkSummary));
+        RaisePropertyChanged(nameof(TeensyLinkSummary));
+        RaisePropertyChanged(nameof(PortStageBackground));
+        RaisePropertyChanged(nameof(PicoStageBackground));
+        RaisePropertyChanged(nameof(TeensyStageBackground));
+        RaisePropertyChanged(nameof(PortStageBorderBrush));
+        RaisePropertyChanged(nameof(PicoStageBorderBrush));
+        RaisePropertyChanged(nameof(TeensyStageBorderBrush));
+    }
+
+    private static readonly IBrush NeutralStageBackgroundBrush = new SolidColorBrush(Color.Parse("#252525"));
+    private static readonly IBrush NeutralStageBorderBrush = new SolidColorBrush(Color.Parse("#333333"));
+    private static readonly IBrush SuccessStageBackgroundBrush = new SolidColorBrush(Color.Parse("#1F3A2A"));
+    private static readonly IBrush SuccessStageBorderBrush = new SolidColorBrush(Color.Parse("#3BB273"));
+    private static readonly IBrush WarningStageBackgroundBrush = new SolidColorBrush(Color.Parse("#4A390B"));
+    private static readonly IBrush WarningStageBorderBrush = new SolidColorBrush(Color.Parse("#E0A100"));
+    private static readonly IBrush DangerStageBackgroundBrush = new SolidColorBrush(Color.Parse("#4A1616"));
+    private static readonly IBrush DangerStageBorderBrush = new SolidColorBrush(Color.Parse("#D83B3B"));
 }
