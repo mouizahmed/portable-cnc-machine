@@ -280,7 +280,7 @@ public sealed class DashboardViewModel : PageViewModelBase
         }
 
         StopPlayback();
-        ScrubberValue = MaxPreviewLine >= 1 ? 1 : 0;
+        ScrubberValue = 0;
     }
 
     private void StepBy(int delta)
@@ -406,28 +406,15 @@ public sealed class DashboardViewModel : PageViewModelBase
             return -1;
         }
 
-        if (mode is PlaybackMode.Forward)
+        for (int i = _playbackLineSequence.Length - 1; i >= 0; i--)
         {
-            for (int i = _playbackLineSequence.Length - 1; i >= 0; i--)
-            {
-                if (_playbackLineSequence[i] <= currentLine)
-                {
-                    return i;
-                }
-            }
-
-            return -1;
-        }
-
-        for (int i = 0; i < _playbackLineSequence.Length; i++)
-        {
-            if (_playbackLineSequence[i] >= currentLine)
+            if (_playbackLineSequence[i] <= currentLine)
             {
                 return i;
             }
         }
 
-        return _playbackLineSequence.Length;
+        return -1;
     }
 
     private void RaiseTransportCanExecuteChanged()

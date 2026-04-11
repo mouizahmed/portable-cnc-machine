@@ -244,7 +244,8 @@ public sealed class ToolpathWebViewerServer
         string relative = route == "/" ? "index.html" : route.TrimStart('/');
         relative = relative.Replace('/', Path.DirectorySeparatorChar);
         string candidate = Path.GetFullPath(Path.Combine(_assetRoot, relative));
-        return candidate.StartsWith(_assetRoot, StringComparison.OrdinalIgnoreCase) ? candidate : null;
+        string rootedAssetPath = Path.TrimEndingDirectorySeparator(_assetRoot) + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(rootedAssetPath, StringComparison.OrdinalIgnoreCase) ? candidate : null;
     }
 
     private void ProcessPlaybackReport(string fullPath)

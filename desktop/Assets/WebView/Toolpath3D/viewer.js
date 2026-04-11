@@ -55,6 +55,7 @@ const materials = {
   cutCompleted: new THREE.LineBasicMaterial({ transparent: true, opacity: 0.88, vertexColors: true }),
   cutRemaining: new THREE.LineBasicMaterial({ transparent: true, opacity: 0.88, vertexColors: true })
 };
+const sharedToolpathMaterials = new Set(Object.values(materials));
 
 const clock = new THREE.Clock();
 const viewHelper = new ViewHelper(camera, renderer.domElement);
@@ -142,14 +143,13 @@ async function poll() {
     }
 
     applyState();
-  } catch (error) {
-    overlay.textContent = 'Unable to load the 3D viewer state.';
-    overlay.style.display = 'flex';
+  } catch (_) {
+    // Transient errors are silently ignored; the next poll will retry.
   }
 }
 
 function buildScene() {
-  world.clear();
+  disposeWorldContents();
   rebuildToolMarker();
   toolpathRenderSignature = '';
 
@@ -207,6 +207,7 @@ function buildScene() {
   jsPlay.mode = 'stopped';
   jsPlay.index = 0;
   jsPlay.sub = 0;
+  jsPlay.frozen = false;
   fitCamera(currentCameraPreset, false);
 }
 
@@ -214,8 +215,7 @@ function rebuildToolpaths() {
   for (const child of [...world.children]) {
     if (child.name === 'toolpath' || child.name === 'toolpath-points') {
       world.remove(child);
-      child.geometry?.dispose?.();
-      child.material?.dispose?.();
+      disposeRenderableNode(child);
     }
   }
 
@@ -225,10 +225,15 @@ function rebuildToolpaths() {
 
   const bounds = currentScene.bounds;
   const depthRange = Math.max(bounds.maxZ - bounds.minZ, 0.0001);
+  const currentLine = getToolpathProgressLine(currentState);
   const buckets = {
+    rapidCompleted: createBucket(),
     rapidRemaining: createBucket(),
+    plungeCompleted: createBucket(),
     plungeRemaining: createBucket(),
+    arcCompleted: createBucket(),
     arcRemaining: createBucket(),
+    cutCompleted: createBucket(),
     cutRemaining: createBucket()
   };
   const pointCloud = createBucket();
@@ -251,13 +256,19 @@ function rebuildToolpaths() {
       continue;
     }
 
+    const pathPhase = segment.sourceLine <= currentLine ? 'Completed' : 'Remaining';
+    if ((pathPhase === 'Completed' && !currentState.showCompletedPath)
+      || (pathPhase === 'Remaining' && !currentState.showRemainingPath)) {
+      continue;
+    }
+
     const key = segment.isRapid
-      ? 'rapidRemaining'
+      ? `rapid${pathPhase}`
       : segment.isPlungeOrRetract
-        ? 'plungeRemaining'
+        ? `plunge${pathPhase}`
         : segment.isArc
-          ? 'arcRemaining'
-          : 'cutRemaining';
+          ? `arc${pathPhase}`
+          : `cut${pathPhase}`;
 
     const bucket = buckets[key];
     const start = segment.start;
@@ -332,6 +343,15 @@ function getPointKey(point) {
   return `${point[0].toFixed(4)}|${point[1].toFixed(4)}|${point[2].toFixed(4)}`;
 }
 
+function getToolpathProgressLine(state) {
+  const value = Number(state?.currentLine ?? 0);
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, value);
+}
+
 function applyState() {
   if (!currentState) {
     return;
@@ -370,7 +390,8 @@ function getToolpathRenderSignature(state) {
     state.showPlunges,
     state.showCompletedPath,
     state.showRemainingPath,
-    state.showToolpathPoints
+    state.showToolpathPoints,
+    getToolpathProgressLine(state)
   ].join('|');
 }
 
@@ -626,6 +647,39 @@ function disposeMarkerContents() {
   machineMarker.clear();
 }
 
+function disposeWorldContents() {
+  for (const child of [...world.children]) {
+    disposeRenderableNode(child);
+  }
+
+  world.clear();
+}
+
+function disposeRenderableNode(node) {
+  for (const child of node.children ?? []) {
+    disposeRenderableNode(child);
+  }
+
+  node.geometry?.dispose?.();
+
+  if (Array.isArray(node.material)) {
+    for (const material of node.material) {
+      disposeRenderableMaterial(material);
+    }
+    return;
+  }
+
+  disposeRenderableMaterial(node.material);
+}
+
+function disposeRenderableMaterial(material) {
+  if (!material || sharedToolpathMaterials.has(material)) {
+    return;
+  }
+
+  material.dispose?.();
+}
+
 function disposeNode(node) {
   for (const child of node.children ?? []) {
     disposeNode(child);
@@ -738,10 +792,11 @@ function hasLoadedToolpath() {
 }
 
 function interpolateAlongPath(kf0, kf1, t, direction) {
-  // kf1.path holds the end-point of every tessellated segment for this command,
-  // defining the exact curve from kf0 to kf1.
-  // For reverse playback we traverse the same path from the other end.
-  const path = kf1.path;
+  // For forward: follow kf1.path (waypoints of the command ending at kf1) from start to end.
+  // For reverse: follow kf0.path in reverse (waypoints of the command we're retreating through).
+  const path = direction > 0 ? kf1.path : kf0.path;
+  const arcStart = direction > 0 ? kf1 : kf0;  // path endpoint (kf for p0 fallback at si=0)
+  const arcOrigin = direction > 0 ? kf0 : kf1; // where the arc started (used when si=0)
   const n = path ? path.length : 0;
 
   let px, py, pz;
@@ -751,14 +806,23 @@ function interpolateAlongPath(kf0, kf1, t, direction) {
     px = kf0.x + (kf1.x - kf0.x) * t;
     py = kf0.y + (kf1.y - kf0.y) * t;
     pz = kf0.z + (kf1.z - kf0.z) * t;
-  } else {
-    // Map t onto the forward path regardless of direction,
-    // then reverse the parameter for reverse playback.
-    const fwdT = direction > 0 ? t : (1 - t);
-    const raw = fwdT * n;
+  } else if (direction > 0) {
+    // Forward: map t from 0→1 across path[0..n-1], with arcOrigin as the implicit start
+    const raw = t * n;
     const si = Math.min(Math.floor(raw), n - 1);
     const st = raw - si;
-    const p0 = si === 0 ? kf0 : path[si - 1];
+    const p0 = si === 0 ? arcOrigin : path[si - 1];
+    const p1 = path[si];
+    px = p0.x + (p1.x - p0.x) * st;
+    py = p0.y + (p1.y - p0.y) * st;
+    pz = p0.z + (p1.z - p0.z) * st;
+  } else {
+    // Reverse: traverse kf0.path backwards (from its last waypoint toward its first).
+    // At t=0 we're at kf0 (= path[n-1]); at t=1 we arrive at kf1 (= path start's origin).
+    const raw = (1 - t) * n;
+    const si = Math.min(Math.floor(raw), n - 1);
+    const st = raw - si;
+    const p0 = si === 0 ? arcOrigin : path[si - 1];
     const p1 = path[si];
     px = p0.x + (p1.x - p0.x) * st;
     py = p0.y + (p1.y - p0.y) * st;
