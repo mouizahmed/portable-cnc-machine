@@ -48,9 +48,10 @@ public sealed class ToolpathWebViewerServer
         true,
         false,
         "stopped",
-        0);
+        0,
+        "light");
     private string _sceneJson = "{\"sceneVersion\":0,\"hasScene\":false}";
-    private string _stateJson = "{\"sceneVersion\":0,\"currentLine\":0,\"cameraPreset\":\"Iso\",\"resetViewToken\":0}";
+    private string _stateJson = "{\"sceneVersion\":0,\"currentLine\":0,\"cameraPreset\":\"Iso\",\"resetViewToken\":0,\"themeMode\":\"light\"}";
 
     public static ToolpathWebViewerServer Instance => LazyInstance.Value;
 
@@ -389,4 +390,5 @@ public sealed record ToolpathViewerState(
     bool ShowGrid,
     bool ShowToolpathPoints,
     string PreviewPlaybackMode,
-    double PreviewPlaybackStepDurationMs);
+    double PreviewPlaybackStepDurationMs,
+    string ThemeMode);

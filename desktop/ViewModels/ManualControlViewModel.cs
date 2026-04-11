@@ -298,6 +298,8 @@ public sealed class ManualControlViewModel : PageViewModelBase
             case nameof(MainWindowViewModel.LimitSummaryText):
             case nameof(MainWindowViewModel.SpindleOn):
             case nameof(MainWindowViewModel.SpindleSpeed):
+            case nameof(MainWindowViewModel.Settings):
+                SpindleTargetRpm = ClampSpindleRpm(SpindleTargetRpm);
                 RaiseMainStateProperties();
                 break;
         }

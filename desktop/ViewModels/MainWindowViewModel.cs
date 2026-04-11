@@ -662,9 +662,15 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void NavigateTo(object page, string pageName)
     {
+        if (ReferenceEquals(page, SettingsVm))
+            SettingsVm.PrepareForDisplay();
+
         CurrentPage = page;
         CurrentPageName = pageName;
     }
+
+    public void NotifySettingsChanged()
+        => RaisePropertyChanged(nameof(Settings));
 
     private void ExecuteStart()
     {

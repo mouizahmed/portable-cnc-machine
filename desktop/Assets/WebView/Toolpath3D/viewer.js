@@ -35,6 +35,7 @@ let currentState = null;
 let currentSceneVersion = -1;
 let currentResetToken = -1;
 let currentCameraPreset = 'Iso';
+let currentThemeMode = null;
 let toolMarkerRoot = null;
 let toolMarkerGlow = null;
 let toolMarkerTarget = new THREE.Vector3();
@@ -355,6 +356,15 @@ function getToolpathProgressLine(state) {
 function applyState() {
   if (!currentState) {
     return;
+  }
+
+  const nextThemeMode = getViewerThemeMode();
+  if (nextThemeMode !== currentThemeMode) {
+    currentThemeMode = nextThemeMode;
+    applyViewerTheme();
+    if (currentScene) {
+      buildScene();
+    }
   }
 
   const grid = world.getObjectByName('grid');
@@ -927,6 +937,11 @@ function createControls(camera) {
 }
 
 function handleThemeChanged() {
+  if (currentState?.themeMode && currentState.themeMode !== 'system') {
+    return;
+  }
+
+  currentThemeMode = getViewerThemeMode();
   applyViewerTheme();
   if (currentScene) {
     buildScene();
@@ -937,11 +952,22 @@ function handleThemeChanged() {
 }
 
 function applyViewerTheme() {
-  renderer.setClearColor(getThemeColors().clearColor, 1);
+  const mode = getViewerThemeMode();
+  document.documentElement.dataset.viewerTheme = mode;
+  renderer.setClearColor(getThemeColors(mode).clearColor, 1);
 }
 
-function getThemeColors() {
-  return themeQuery.matches
+function getViewerThemeMode() {
+  const mode = String(currentState?.themeMode ?? '').toLowerCase();
+  if (mode === 'light' || mode === 'dark') {
+    return mode;
+  }
+
+  return themeQuery.matches ? 'dark' : 'light';
+}
+
+function getThemeColors(themeMode = getViewerThemeMode()) {
+  return themeMode === 'dark'
     ? {
         clearColor: 0x161616,
         gridPrimary: 0x25313d,

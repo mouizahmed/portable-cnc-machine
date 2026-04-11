@@ -8,24 +8,372 @@
              x:DataType="vm:SettingsViewModel"
              mc:Ignorable="d">
 
-  <Grid>
-    <controls:SectionCard Title="SETTINGS"
-                          Subtitle="Work in progress.">
-      <controls:SectionCard.Body>
-        <Border Classes="InsetSurface Subtle"
-                Padding="16"
-                Height="NaN"
-                MinHeight="0">
-          <StackPanel Spacing="6">
-            <TextBlock Text="WORK IN PROGRESS"
-                       Classes="FieldValue"
-                       FontSize="16"/>
-            <TextBlock Text="Settings controls have been temporarily removed while this page is being redesigned."
-                       Classes="FieldLabel"
-                       TextWrapping="Wrap"/>
-          </StackPanel>
-        </Border>
-      </controls:SectionCard.Body>
-    </controls:SectionCard>
+  <Grid RowDefinitions="Auto,*" RowSpacing="8">
+    <Border Classes="PanelCard">
+      <controls:SectionHeaderBlock Title="SETTINGS"
+                                   Subtitle="Local preferences are saved on this computer. Machine-facing values are staged separately so Save locally is never confused with controller sync.">
+        <controls:SectionHeaderBlock.Actions>
+          <WrapPanel ItemSpacing="6" LineSpacing="6">
+            <Border Classes="InsetSurface Subtle"
+                    Height="NaN"
+                    MinHeight="0"
+                    Padding="10,8">
+              <StackPanel Spacing="2">
+                <TextBlock Text="LOCAL" Classes="PanelTitle"/>
+                <TextBlock Text="{Binding LocalPersistenceText}" Classes="FieldValue"/>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="InsetSurface Subtle"
+                    Height="NaN"
+                    MinHeight="0"
+                    Padding="10,8">
+              <StackPanel Spacing="2">
+                <TextBlock Text="MACHINE" Classes="PanelTitle"/>
+                <TextBlock Text="{Binding MachineSyncStatusText}" Classes="FieldValue"/>
+              </StackPanel>
+            </Border>
+          </WrapPanel>
+        </controls:SectionHeaderBlock.Actions>
+      </controls:SectionHeaderBlock>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="8">
+        <controls:SectionCard Title="CONNECTION"
+                              Subtitle="Saved on this computer only. This does not open the port or write anything to the controller.">
+          <controls:SectionCard.Actions>
+            <Button Content="Refresh ports"
+                    Command="{Binding RefreshPortsCommand}"
+                    Classes="AppButton"/>
+          </controls:SectionCard.Actions>
+
+          <controls:SectionCard.Body>
+            <Border Classes="InsetSurface Subtle"
+                    Height="NaN"
+                    MinHeight="0"
+                    Padding="10">
+              <StackPanel Spacing="10">
+                <controls:TwoColumnInfoGrid>
+                  <TextBlock Text="Last port" Classes="FieldLabel" VerticalAlignment="Center"/>
+                  <ComboBox Grid.Column="1"
+                            ItemsSource="{Binding AvailablePorts}"
+                            SelectedItem="{Binding LastPort}"
+                            HorizontalAlignment="Stretch"
+                            PlaceholderText="Select COM port..."/>
+                </controls:TwoColumnInfoGrid>
+
+                <TextBlock Text="This saved port is only used for local startup preferences and connect-page defaults."
+                           Classes="Caption"
+                           TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+
+        <controls:SectionCard Title="MACHINE PROFILE"
+                              Subtitle="Applies to the controller profile. Save locally stores a staged copy on this computer only.">
+          <controls:SectionCard.Body>
+            <StackPanel Spacing="8">
+              <Border Classes="InsetSurface Subtle"
+                      Height="NaN"
+                      MinHeight="0"
+                      Padding="10">
+                <controls:TwoColumnInfoGrid>
+                  <TextBlock Text="Envelope" Classes="FieldLabel"/>
+                  <TextBlock Grid.Column="1" Text="{Binding MachineProfileSummary}" Classes="FieldValue"/>
+
+                  <TextBlock Grid.Row="1" Text="Steps/mm" Classes="FieldLabel"/>
+                  <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding StepsSummary}" Classes="FieldValue"/>
+                </controls:TwoColumnInfoGrid>
+              </Border>
+
+              <Border Classes="InsetSurface Subtle"
+                      Height="NaN"
+                      MinHeight="0"
+                      Padding="10">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Calibration" Classes="SectionHeading"/>
+                  <controls:TwoColumnInfoGrid>
+                    <TextBlock Text="Steps/mm X" Classes="FieldLabel" VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Column="1"
+                                   Value="{Binding StepsPerMmX}"
+                                   Minimum="1"
+                                   Maximum="20000"
+                                   Increment="10"
+                                   FormatString="F2"/>
+
+                    <TextBlock Grid.Row="1" Text="Steps/mm Y" Classes="FieldLabel" VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Row="1"
+                                   Grid.Column="1"
+                                   Value="{Binding StepsPerMmY}"
+                                   Minimum="1"
+                                   Maximum="20000"
+                                   Increment="10"
+                                   FormatString="F2"/>
+
+                    <TextBlock Grid.Row="2" Text="Steps/mm Z" Classes="FieldLabel" VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Row="2"
+                                   Grid.Column="1"
+                                   Value="{Binding StepsPerMmZ}"
+                                   Minimum="1"
+                                   Maximum="20000"
+                                   Increment="10"
+                                   FormatString="F2"/>
+                  </controls:TwoColumnInfoGrid>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+
+        <controls:SectionCard Title="MOTION"
+                              Subtitle="Staged machine motion limits. These values are not pushed to the controller in v1.">
+          <controls:SectionCard.Body>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+              <Border Classes="InsetSurface Subtle"
+                      Height="NaN"
+                      MinHeight="0"
+                      Padding="10">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Max Feed Rate" Classes="SectionHeading"/>
+                  <controls:TwoColumnInfoGrid>
+                    <TextBlock Text="X (mm/min)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Column="1"
+                                   Value="{Binding MaxFeedRateX}"
+                                   Minimum="1"
+                                   Maximum="50000"
+                                   Increment="100"
+                                   FormatString="F0"/>
+
+                    <TextBlock Grid.Row="1" Text="Y (mm/min)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Row="1"
+                                   Grid.Column="1"
+                                   Value="{Binding MaxFeedRateY}"
+                                   Minimum="1"
+                                   Maximum="50000"
+                                   Increment="100"
+                                   FormatString="F0"/>
+
+                    <TextBlock Grid.Row="2" Text="Z (mm/min)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Row="2"
+                                   Grid.Column="1"
+                                   Value="{Binding MaxFeedRateZ}"
+                                   Minimum="1"
+                                   Maximum="50000"
+                                   Increment="50"
+                                   FormatString="F0"/>
+                  </controls:TwoColumnInfoGrid>
+                </StackPanel>
+              </Border>
+
+              <Border Grid.Column="1"
+                      Classes="InsetSurface Subtle"
+                      Height="NaN"
+                      MinHeight="0"
+                      Padding="10">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Acceleration" Classes="SectionHeading"/>
+                  <controls:TwoColumnInfoGrid>
+                    <TextBlock Text="X (mm/s^2)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Column="1"
+                                   Value="{Binding AccelerationX}"
+                                   Minimum="1"
+                                   Maximum="10000"
+                                   Increment="10"
+                                   FormatString="F0"/>
+
+                    <TextBlock Grid.Row="1" Text="Y (mm/s^2)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Row="1"
+                                   Grid.Column="1"
+                                   Value="{Binding AccelerationY}"
+                                   Minimum="1"
+                                   Maximum="10000"
+                                   Increment="10"
+                                   FormatString="F0"/>
+
+                    <TextBlock Grid.Row="2" Text="Z (mm/s^2)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Row="2"
+                                   Grid.Column="1"
+                                   Value="{Binding AccelerationZ}"
+                                   Minimum="1"
+                                   Maximum="10000"
+                                   Increment="10"
+                                   FormatString="F0"/>
+                  </controls:TwoColumnInfoGrid>
+                </StackPanel>
+              </Border>
+            </Grid>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+
+        <controls:SectionCard Title="LIMITS &amp; SAFETY"
+                              Subtitle="Use warnings sparingly. Only clearly unsafe combinations are called out in this page.">
+          <controls:SectionCard.Body>
+            <StackPanel Spacing="8">
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Border Classes="InsetSurface Subtle"
+                        Height="NaN"
+                        MinHeight="0"
+                        Padding="10">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="Travel Limits" Classes="SectionHeading"/>
+                    <controls:TwoColumnInfoGrid>
+                      <TextBlock Text="X (mm)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                      <NumericUpDown Grid.Column="1"
+                                     Value="{Binding MaxTravelX}"
+                                     Minimum="1"
+                                     Maximum="5000"
+                                     Increment="5"
+                                     FormatString="F1"/>
+
+                      <TextBlock Grid.Row="1" Text="Y (mm)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                      <NumericUpDown Grid.Row="1"
+                                     Grid.Column="1"
+                                     Value="{Binding MaxTravelY}"
+                                     Minimum="1"
+                                     Maximum="5000"
+                                     Increment="5"
+                                     FormatString="F1"/>
+
+                      <TextBlock Grid.Row="2" Text="Z (mm)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                      <NumericUpDown Grid.Row="2"
+                                     Grid.Column="1"
+                                     Value="{Binding MaxTravelZ}"
+                                     Minimum="1"
+                                     Maximum="5000"
+                                     Increment="5"
+                                     FormatString="F1"/>
+                    </controls:TwoColumnInfoGrid>
+                  </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1"
+                        Classes="InsetSurface Subtle"
+                        Height="NaN"
+                        MinHeight="0"
+                        Padding="10">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="Safety" Classes="SectionHeading"/>
+                    <controls:TwoColumnInfoGrid>
+                      <TextBlock Text="Soft limits" Classes="FieldLabel" VerticalAlignment="Center"/>
+                      <CheckBox Grid.Column="1"
+                                IsChecked="{Binding SoftLimitsEnabled}"
+                                Content="Monitor travel envelope"/>
+
+                      <TextBlock Grid.Row="1" Text="Hard limits" Classes="FieldLabel" VerticalAlignment="Center"/>
+                      <CheckBox Grid.Row="1"
+                                Grid.Column="1"
+                                IsChecked="{Binding HardLimitsEnabled}"
+                                Content="Use switch inputs"/>
+
+                      <TextBlock Grid.Row="2" Text="Warn temp (C)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                      <NumericUpDown Grid.Row="2"
+                                     Grid.Column="1"
+                                     Value="{Binding WarningTemperature}"
+                                     Minimum="0"
+                                     Maximum="{Binding MaxTemperature}"
+                                     Increment="1"
+                                     FormatString="F0"/>
+
+                      <TextBlock Grid.Row="3" Text="Max temp (C)" Classes="FieldLabel" VerticalAlignment="Center"/>
+                      <NumericUpDown Grid.Row="3"
+                                     Grid.Column="1"
+                                     Value="{Binding MaxTemperature}"
+                                     Minimum="{Binding WarningTemperature}"
+                                     Maximum="150"
+                                     Increment="1"
+                                     FormatString="F0"/>
+                    </controls:TwoColumnInfoGrid>
+                  </StackPanel>
+                </Border>
+              </Grid>
+
+              <Border IsVisible="{Binding HasLimitsSafetyWarning}"
+                      Background="{DynamicResource WarningHighlightBrush}"
+                      CornerRadius="4"
+                      Padding="10">
+                <TextBlock Text="{Binding LimitsSafetyWarningText}"
+                           Foreground="{DynamicResource WarningLineForegroundBrush}"
+                           Classes="FieldLabel"
+                           TextWrapping="Wrap"/>
+              </Border>
+            </StackPanel>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+
+        <controls:SectionCard Title="SPINDLE"
+                              Subtitle="These RPM limits are saved locally and also define the staged controller profile.">
+          <controls:SectionCard.Body>
+            <Border Classes="InsetSurface Subtle"
+                    Height="NaN"
+                    MinHeight="0"
+                    Padding="10">
+              <StackPanel Spacing="8">
+                <controls:TwoColumnInfoGrid>
+                  <TextBlock Text="Min RPM" Classes="FieldLabel" VerticalAlignment="Center"/>
+                  <NumericUpDown Grid.Column="1"
+                                 Value="{Binding SpindleMinRpm}"
+                                 Minimum="0"
+                                 Maximum="{Binding SpindleMaxRpm}"
+                                 Increment="100"
+                                 FormatString="F0"/>
+
+                  <TextBlock Grid.Row="1" Text="Max RPM" Classes="FieldLabel" VerticalAlignment="Center"/>
+                  <NumericUpDown Grid.Row="1"
+                                 Grid.Column="1"
+                                 Value="{Binding SpindleMaxRpm}"
+                                 Minimum="{Binding SpindleMinRpm}"
+                                 Maximum="50000"
+                                 Increment="100"
+                                 FormatString="F0"/>
+                </controls:TwoColumnInfoGrid>
+
+                <TextBlock Text="Manual Control reads the persisted spindle bounds after Save locally."
+                           Classes="Caption"
+                           TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+
+        <controls:SectionCard Title="APP"
+                              Subtitle="Local operator preferences that only affect this desktop app.">
+          <controls:SectionCard.Body>
+            <Border Classes="InsetSurface Subtle"
+                    Height="NaN"
+                    MinHeight="0"
+                    Padding="10">
+              <StackPanel Spacing="10">
+                <controls:TwoColumnInfoGrid>
+                  <TextBlock Text="Auto-connect" Classes="FieldLabel" VerticalAlignment="Center"/>
+                  <CheckBox Grid.Column="1"
+                            IsChecked="{Binding AutoConnect}"
+                            Content="Use saved port on startup"/>
+
+                  <TextBlock Grid.Row="1" Text="Units" Classes="FieldLabel" VerticalAlignment="Center"/>
+                  <ComboBox Grid.Row="1"
+                            Grid.Column="1"
+                            ItemsSource="{Binding UnitsOptions}"
+                            SelectedItem="{Binding Units}"
+                            HorizontalAlignment="Stretch"/>
+
+                  <TextBlock Grid.Row="2" Text="Theme" Classes="FieldLabel" VerticalAlignment="Center"/>
+                  <ComboBox Grid.Row="2"
+                            Grid.Column="1"
+                            ItemsSource="{Binding ThemeModeOptions}"
+                            SelectedItem="{Binding ThemeMode}"
+                            HorizontalAlignment="Stretch"/>
+                </controls:TwoColumnInfoGrid>
+
+                <TextBlock Text="Units, startup behavior, and theme are local app preferences. They do not write to GRBL or the controller profile."
+                           Classes="Caption"
+                           TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+      </StackPanel>
+    </ScrollViewer>
   </Grid>
 </UserControl>

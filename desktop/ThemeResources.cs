@@ -1,6 +1,7 @@
 using System;
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Styling;
 
 namespace PortableCncApp;
 
@@ -27,6 +28,20 @@ internal static class ThemeResources
         }
 
         return new SolidColorBrush(Color.Parse(fallbackHex));
+    }
+
+    public static string CurrentThemeMode
+    {
+        get
+        {
+            var app = Application.Current;
+            if (app?.ActualThemeVariant == ThemeVariant.Dark)
+            {
+                return "dark";
+            }
+
+            return "light";
+        }
     }
 
     private static void EnsureSubscribed()

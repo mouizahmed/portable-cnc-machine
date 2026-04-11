@@ -24,6 +24,22 @@
       }
     }
 
+    :root[data-viewer-theme="light"] {
+      --viewer-bg: #e9eef4;
+      --viewer-fg: #52606d;
+      --viewer-overlay: #7a8794;
+      --viewer-overlay-start: rgba(233, 238, 244, 0.22);
+      --viewer-overlay-end: rgba(233, 238, 244, 0.1);
+    }
+
+    :root[data-viewer-theme="dark"] {
+      --viewer-bg: #161616;
+      --viewer-fg: #b8c0cc;
+      --viewer-overlay: #7c8694;
+      --viewer-overlay-start: rgba(22, 22, 22, 0.22);
+      --viewer-overlay-end: rgba(22, 22, 22, 0.1);
+    }
+
     html, body, #app {
       width: 100%;
       height: 100%;

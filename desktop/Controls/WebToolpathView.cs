@@ -83,6 +83,7 @@ public sealed class WebToolpathView : UserControl
         };
         _bridgeTimer.Tick += (_, _) => PushBridgeState();
         _bridgeTimer.Start();
+        ThemeResources.ThemeChanged += HandleThemeChanged;
         UpdateViewerState();
     }
 
@@ -220,7 +221,8 @@ public sealed class WebToolpathView : UserControl
             ShowGrid,
             ShowToolpathPoints,
             PreviewPlaybackMode,
-            PreviewPlaybackStepDurationMs));
+            PreviewPlaybackStepDurationMs,
+            ThemeResources.CurrentThemeMode));
 
         PushBridgeState();
     }
@@ -256,4 +258,6 @@ public sealed class WebToolpathView : UserControl
         {
         }
     }
+
+    private void HandleThemeChanged(object? sender, EventArgs e) => UpdateViewerState();
 }
