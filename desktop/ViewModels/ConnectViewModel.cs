@@ -137,51 +137,55 @@ public sealed class ConnectViewModel : PageViewModelBase
     };
 
     public IBrush PortStageBackground => SelectedPort is null
-        ? WarningStageBackgroundBrush
-        : SuccessStageBackgroundBrush;
+        ? ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B")
+        : ThemeResources.Brush("StageSuccessBackgroundBrush", "#1F3A2A");
 
     public IBrush PicoStageBackground => MainVm?.PiConnectionStatus switch
     {
-        ConnectionStatus.Connected => SuccessStageBackgroundBrush,
-        ConnectionStatus.Connecting => WarningStageBackgroundBrush,
-        ConnectionStatus.Error => DangerStageBackgroundBrush,
-        _ => SelectedPort is null ? NeutralStageBackgroundBrush : WarningStageBackgroundBrush
+        ConnectionStatus.Connected => ThemeResources.Brush("StageSuccessBackgroundBrush", "#1F3A2A"),
+        ConnectionStatus.Connecting => ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B"),
+        ConnectionStatus.Error => ThemeResources.Brush("StageDangerBackgroundBrush", "#4A1616"),
+        _ => SelectedPort is null
+            ? ThemeResources.Brush("StageNeutralBackgroundBrush", "#252525")
+            : ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B")
     };
 
     public IBrush TeensyStageBackground => MainVm?.TeensyConnectionStatus switch
     {
-        ConnectionStatus.Connected => SuccessStageBackgroundBrush,
-        ConnectionStatus.Connecting => WarningStageBackgroundBrush,
-        ConnectionStatus.Error => DangerStageBackgroundBrush,
+        ConnectionStatus.Connected => ThemeResources.Brush("StageSuccessBackgroundBrush", "#1F3A2A"),
+        ConnectionStatus.Connecting => ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B"),
+        ConnectionStatus.Error => ThemeResources.Brush("StageDangerBackgroundBrush", "#4A1616"),
         _ => MainVm?.PiConnectionStatus == ConnectionStatus.Error
-            ? DangerStageBackgroundBrush
+            ? ThemeResources.Brush("StageDangerBackgroundBrush", "#4A1616")
             : MainVm?.PiConnectionStatus == ConnectionStatus.Connected
-                ? WarningStageBackgroundBrush
-                : NeutralStageBackgroundBrush
+                ? ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B")
+                : ThemeResources.Brush("StageNeutralBackgroundBrush", "#252525")
     };
 
     public IBrush PortStageBorderBrush => SelectedPort is null
-        ? WarningStageBorderBrush
-        : SuccessStageBorderBrush;
+        ? ThemeResources.Brush("WarningBrush", "#E0A100")
+        : ThemeResources.Brush("SuccessBrush", "#3BB273");
 
     public IBrush PicoStageBorderBrush => MainVm?.PiConnectionStatus switch
     {
-        ConnectionStatus.Connected => SuccessStageBorderBrush,
-        ConnectionStatus.Connecting => WarningStageBorderBrush,
-        ConnectionStatus.Error => DangerStageBorderBrush,
-        _ => SelectedPort is null ? NeutralStageBorderBrush : WarningStageBorderBrush
+        ConnectionStatus.Connected => ThemeResources.Brush("SuccessBrush", "#3BB273"),
+        ConnectionStatus.Connecting => ThemeResources.Brush("WarningBrush", "#E0A100"),
+        ConnectionStatus.Error => ThemeResources.Brush("DangerBrush", "#D83B3B"),
+        _ => SelectedPort is null
+            ? ThemeResources.Brush("StageNeutralBorderBrush", "#333333")
+            : ThemeResources.Brush("WarningBrush", "#E0A100")
     };
 
     public IBrush TeensyStageBorderBrush => MainVm?.TeensyConnectionStatus switch
     {
-        ConnectionStatus.Connected => SuccessStageBorderBrush,
-        ConnectionStatus.Connecting => WarningStageBorderBrush,
-        ConnectionStatus.Error => DangerStageBorderBrush,
+        ConnectionStatus.Connected => ThemeResources.Brush("SuccessBrush", "#3BB273"),
+        ConnectionStatus.Connecting => ThemeResources.Brush("WarningBrush", "#E0A100"),
+        ConnectionStatus.Error => ThemeResources.Brush("DangerBrush", "#D83B3B"),
         _ => MainVm?.PiConnectionStatus == ConnectionStatus.Error
-            ? DangerStageBorderBrush
+            ? ThemeResources.Brush("DangerBrush", "#D83B3B")
             : MainVm?.PiConnectionStatus == ConnectionStatus.Connected
-                ? WarningStageBorderBrush
-                : NeutralStageBorderBrush
+                ? ThemeResources.Brush("WarningBrush", "#E0A100")
+                : ThemeResources.Brush("StageNeutralBorderBrush", "#333333")
     };
 
     // ════════════════════════════════════════════════════════════════
@@ -221,6 +225,8 @@ public sealed class ConnectViewModel : PageViewModelBase
 
     public ConnectViewModel()
     {
+        ThemeResources.ThemeChanged += HandleThemeChanged;
+
         _connectCommand = new RelayCommand(Connect, () => SelectedPort != null && !IsConnecting);
         DisconnectCommand = new RelayCommand(Disconnect);
         RefreshPortsCommand = new RelayCommand(RefreshPorts);
@@ -383,12 +389,5 @@ public sealed class ConnectViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(TeensyStageBorderBrush));
     }
 
-    private static readonly IBrush NeutralStageBackgroundBrush = new SolidColorBrush(Color.Parse("#252525"));
-    private static readonly IBrush NeutralStageBorderBrush = new SolidColorBrush(Color.Parse("#333333"));
-    private static readonly IBrush SuccessStageBackgroundBrush = new SolidColorBrush(Color.Parse("#1F3A2A"));
-    private static readonly IBrush SuccessStageBorderBrush = new SolidColorBrush(Color.Parse("#3BB273"));
-    private static readonly IBrush WarningStageBackgroundBrush = new SolidColorBrush(Color.Parse("#4A390B"));
-    private static readonly IBrush WarningStageBorderBrush = new SolidColorBrush(Color.Parse("#E0A100"));
-    private static readonly IBrush DangerStageBackgroundBrush = new SolidColorBrush(Color.Parse("#4A1616"));
-    private static readonly IBrush DangerStageBorderBrush = new SolidColorBrush(Color.Parse("#D83B3B"));
+    private void HandleThemeChanged(object? sender, EventArgs e) => RaiseConnectionStateProperties();
 }

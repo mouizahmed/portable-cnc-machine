@@ -22,7 +22,7 @@
         <controls:SectionCard.Body>
           <DockPanel>
             <Border DockPanel.Dock="Top"
-                    Background="#0D0D0D"
+                    Background="{DynamicResource ConsoleSurfaceBrush}"
                     CornerRadius="4"
                     Padding="8"
                     Height="300"
@@ -35,7 +35,7 @@
                       <StackPanel Orientation="Horizontal" Margin="0,2">
                         <TextBlock Text="{Binding FormattedTime}"
                                    Classes="CodeText"
-                                   Foreground="#666666"
+                                   Foreground="{DynamicResource TextTertiaryBrush}"
                                    Width="90"/>
                         <TextBlock Text="{Binding Type}"
                                    Classes="CodeText"

@@ -50,7 +50,7 @@
             </controls:SectionCard.Body>
           </controls:SectionCard>
 
-          <Border Background="#1A1A1A"
+          <Border Background="{DynamicResource ViewerBackgroundBrush}"
                   IsEnabled="{Binding HasLoadedToolpath}"
                   CornerRadius="4"
                   BorderBrush="{DynamicResource BorderBrush}"

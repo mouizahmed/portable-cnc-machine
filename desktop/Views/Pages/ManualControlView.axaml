@@ -13,7 +13,7 @@
     <Style Selector="Button.JogPadButton">
       <Setter Property="Padding" Value="0"/>
       <Setter Property="CornerRadius" Value="6"/>
-      <Setter Property="Background" Value="#2A2A2A"/>
+      <Setter Property="Background" Value="{DynamicResource InsetSurfaceBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
@@ -21,11 +21,11 @@
       <Setter Property="VerticalAlignment" Value="Stretch"/>
     </Style>
     <Style Selector="Button.JogPadButton:pointerover">
-      <Setter Property="Background" Value="#313131"/>
+      <Setter Property="Background" Value="{DynamicResource StepButtonHoverBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
     </Style>
     <Style Selector="Button.JogPadButton:pressed">
-      <Setter Property="Background" Value="#353535"/>
+      <Setter Property="Background" Value="{DynamicResource NavButtonPressedBrush}"/>
     </Style>
     <Style Selector="Border.JogPadGap">
       <Setter Property="CornerRadius" Value="6"/>

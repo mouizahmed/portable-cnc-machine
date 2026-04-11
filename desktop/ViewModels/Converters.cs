@@ -15,13 +15,13 @@ public class ConnectionStatusToBrushConverter : IValueConverter
         {
             return status switch
             {
-                ConnectionStatus.Connected => new SolidColorBrush(Color.Parse("#3BB273")),
-                ConnectionStatus.Connecting => new SolidColorBrush(Color.Parse("#E0A100")),
-                ConnectionStatus.Error => new SolidColorBrush(Color.Parse("#D83B3B")),
-                _ => new SolidColorBrush(Color.Parse("#666666"))
+                ConnectionStatus.Connected => ThemeResources.Brush("SuccessBrush", "#3BB273"),
+                ConnectionStatus.Connecting => ThemeResources.Brush("WarningBrush", "#E0A100"),
+                ConnectionStatus.Error => ThemeResources.Brush("DangerBrush", "#D83B3B"),
+                _ => ThemeResources.Brush("NeutralStateBrush", "#808080")
             };
         }
-        return new SolidColorBrush(Color.Parse("#666666"));
+        return ThemeResources.Brush("NeutralStateBrush", "#808080");
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -42,10 +42,10 @@ public class BoolToStatusBrushConverter : IValueConverter
         if (value is bool b)
         {
             return b 
-                ? new SolidColorBrush(Color.Parse("#3BB273"))  // Green for OK/true
-                : new SolidColorBrush(Color.Parse("#D83B3B")); // Red for error/false
+                ? ThemeResources.Brush("SuccessBrush", "#3BB273")
+                : ThemeResources.Brush("DangerBrush", "#D83B3B");
         }
-        return new SolidColorBrush(Color.Parse("#666666")); // Gray for unknown
+        return ThemeResources.Brush("NeutralStateBrush", "#808080");
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -66,10 +66,10 @@ public class BoolToLimitBrushConverter : IValueConverter
         if (value is bool triggered)
         {
             return triggered
-                ? new SolidColorBrush(Color.Parse("#D83B3B"))  // Red when triggered
-                : new SolidColorBrush(Color.Parse("#444444")); // Dark gray when not triggered
+                ? ThemeResources.Brush("DangerBrush", "#D83B3B")
+                : ThemeResources.Brush("NeutralIndicatorBrush", "#444444");
         }
-        return new SolidColorBrush(Color.Parse("#444444"));
+        return ThemeResources.Brush("NeutralIndicatorBrush", "#444444");
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -95,7 +95,7 @@ public class BoolToWarningHighlightBrushConverter : IValueConverter
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => value is bool hasWarning && hasWarning
-            ? new SolidColorBrush(Color.Parse("#3A2A14"))
+            ? ThemeResources.Brush("WarningHighlightBrush", "#3A2A14")
             : Brushes.Transparent;
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -108,8 +108,8 @@ public class BoolToWarningForegroundConverter : IValueConverter
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => value is bool hasWarning && hasWarning
-            ? new SolidColorBrush(Color.Parse("#FFD27A"))
-            : new SolidColorBrush(Color.Parse("#A0A0A0"));
+            ? ThemeResources.Brush("WarningLineForegroundBrush", "#FFD27A")
+            : ThemeResources.Brush("TextSecondaryBrush", "#A0A0A0");
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotImplementedException();

@@ -24,7 +24,7 @@
       <Expander Grid.Row="2"
                 Header="Details"
                 IsExpanded="True">
-        <Border Background="#171717"
+        <Border Background="{DynamicResource CodeSurfaceBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="4"

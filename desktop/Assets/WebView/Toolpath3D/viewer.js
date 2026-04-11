@@ -4,10 +4,10 @@ import { ViewHelper } from './vendor/ViewHelper.js';
 
 const overlay = document.getElementById('overlay');
 const host = document.getElementById('app');
+const themeQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setPixelRatio(window.devicePixelRatio || 1);
-renderer.setClearColor(0x161616, 1);
 renderer.autoClear = false;
 host.appendChild(renderer.domElement);
 
@@ -51,6 +51,12 @@ const clock = new THREE.Clock();
 const viewHelper = new ViewHelper(camera, renderer.domElement);
 viewHelper.setLabels('X', 'Y', 'Z');
 
+if (typeof themeQuery.addEventListener === 'function') {
+  themeQuery.addEventListener('change', handleThemeChanged);
+} else if (typeof themeQuery.addListener === 'function') {
+  themeQuery.addListener(handleThemeChanged);
+}
+
 renderer.domElement.addEventListener('click', e => {
   if (!hasLoadedToolpath()) {
     return;
@@ -76,6 +82,7 @@ renderer.domElement.addEventListener('mousemove', e => {
 
 const resizeObserver = new ResizeObserver(() => resize());
 resizeObserver.observe(host);
+applyViewerTheme();
 resize();
 animate();
 poll();
@@ -145,7 +152,8 @@ function buildScene() {
   const span = Math.max(size.x, size.y, 10);
   const gridSize = Math.max(span * 1.3, 30);
   const gridDivisions = Math.max(10, Math.round(gridSize / chooseGridStep(span)));
-  const grid = new THREE.GridHelper(gridSize, gridDivisions, 0x25313d, 0x1e2934);
+  const colors = getThemeColors();
+  const grid = new THREE.GridHelper(gridSize, gridDivisions, colors.gridPrimary, colors.gridSecondary);
   grid.rotation.x = Math.PI / 2;
   grid.position.set(center.x, center.y, bounds.minZ);
   world.add(grid);
@@ -163,7 +171,11 @@ function buildScene() {
   const stockEdges = new THREE.EdgesGeometry(stockGeometry);
   const stockLines = new THREE.LineSegments(
     stockEdges,
-    new THREE.LineBasicMaterial({ color: 0x3a5367, transparent: true, opacity: currentState?.showStockBox ? 0.22 : 0 })
+    new THREE.LineBasicMaterial({
+      color: colors.stockBox,
+      transparent: true,
+      opacity: currentState?.showStockBox ? 0.22 : 0
+    })
   );
   stockLines.name = 'stock-box';
   world.add(stockLines);
@@ -423,6 +435,36 @@ function createControls(camera) {
   nextControls.screenSpacePanning = true;
 
   return nextControls;
+}
+
+function handleThemeChanged() {
+  applyViewerTheme();
+  if (currentScene) {
+    buildScene();
+    if (currentState) {
+      applyState();
+    }
+  }
+}
+
+function applyViewerTheme() {
+  renderer.setClearColor(getThemeColors().clearColor, 1);
+}
+
+function getThemeColors() {
+  return themeQuery.matches
+    ? {
+        clearColor: 0x161616,
+        gridPrimary: 0x25313d,
+        gridSecondary: 0x1e2934,
+        stockBox: 0x3a5367
+      }
+    : {
+        clearColor: 0xe9eef4,
+        gridPrimary: 0x9fb2c7,
+        gridSecondary: 0xc4cfdb,
+        stockBox: 0x7a90a7
+      };
 }
 
 async function fetchJson(url) {

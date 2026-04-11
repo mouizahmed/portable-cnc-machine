@@ -66,7 +66,7 @@
                     <Setter Property="Background" Value="Transparent"/>
                   </Style>
                   <Style Selector="ListBoxItem:pointerover Border.FileCard">
-                    <Setter Property="BorderBrush" Value="#3A3A3A"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource SelectionBorderBrush}"/>
                   </Style>
                   <Style Selector="ListBoxItem:selected:pointerover Border.FileCard">
                     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
@@ -77,7 +77,7 @@
                     <Border Padding="12,10"
                             Classes="FileCard"
                             Margin="0"
-                            Background="#272727"
+                            Background="{DynamicResource FileCardBrush}"
                             CornerRadius="6">
                       <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
                         <StackPanel Spacing="4">
@@ -91,7 +91,7 @@
                         </StackPanel>
 
                         <Border Grid.Column="1"
-                                Background="#313131"
+                                Background="{DynamicResource FileSizeBadgeBrush}"
                                 CornerRadius="4"
                                 Padding="8,2"
                                 Margin="10,0,0,0"
@@ -198,7 +198,7 @@
                                     HorizontalContentAlignment="Center">
                               <Button.Flyout>
                                 <Flyout Placement="RightEdgeAlignedTop">
-                                  <Border Background="#1F1F1F"
+                                  <Border Background="{DynamicResource FlyoutSurfaceBrush}"
                                           BorderBrush="{DynamicResource BorderBrush}"
                                           BorderThickness="1"
                                           CornerRadius="4"

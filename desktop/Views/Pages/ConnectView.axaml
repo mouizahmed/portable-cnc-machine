@@ -19,8 +19,8 @@
 
       <controls:SectionCard.Body>
         <StackPanel Spacing="12">
-          <Border Background="#1E2732"
-                  BorderBrush="#35506B"
+          <Border Background="{DynamicResource ConnectInfoSurfaceBrush}"
+                  BorderBrush="{DynamicResource ConnectInfoBorderBrush}"
                   BorderThickness="1"
                   CornerRadius="6"
                   Padding="10">
@@ -68,8 +68,8 @@
           </WrapPanel>
 
           <Border IsVisible="{Binding IsConnecting}"
-                  Background="#35280F"
-                  BorderBrush="#6E5421"
+                  Background="{DynamicResource ConnectingSurfaceBrush}"
+                  BorderBrush="{DynamicResource ConnectingBorderBrush}"
                   BorderThickness="1"
                   CornerRadius="6"
                   Padding="12,10">

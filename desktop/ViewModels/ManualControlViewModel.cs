@@ -6,8 +6,6 @@ namespace PortableCncApp.ViewModels;
 
 public sealed class ManualControlViewModel : PageViewModelBase
 {
-    private static readonly IBrush OfflineBrush = new SolidColorBrush(Color.Parse("#3A3A3A"));
-
     private double _jogStep = 1.0;
     public double JogStep
     {
@@ -135,9 +133,9 @@ public sealed class ManualControlViewModel : PageViewModelBase
     public ICommand RapidOverride100Command { get; }
 
     public string MotionStateLabel => MainVm?.MotionStateLabel ?? "OFFLINE";
-    public IBrush MotionStateBrush => MainVm?.MotionStateBrush ?? OfflineBrush;
+    public IBrush MotionStateBrush => MainVm?.MotionStateBrush ?? ThemeResources.Brush("NeutralStateBrush", "#808080");
     public string SafetyStateLabel => MainVm?.SafetyStateLabel ?? "OFFLINE";
-    public IBrush SafetyStateBrush => MainVm?.SafetyStateBrush ?? OfflineBrush;
+    public IBrush SafetyStateBrush => MainVm?.SafetyStateBrush ?? ThemeResources.Brush("NeutralStateBrush", "#808080");
 
     public bool IsMachineConnected => MainVm?.IsConnected == true;
     public bool CanJogControls => MainVm?.CanJog == true;
@@ -209,6 +207,8 @@ public sealed class ManualControlViewModel : PageViewModelBase
 
     public ManualControlViewModel()
     {
+        ThemeResources.ThemeChanged += HandleThemeChanged;
+
         JogXPlusCommand = new RelayCommand(() => Jog("X", JogStep));
         JogXMinusCommand = new RelayCommand(() => Jog("X", -JogStep));
         JogYPlusCommand = new RelayCommand(() => Jog("Y", JogStep));
@@ -549,4 +549,6 @@ public sealed class ManualControlViewModel : PageViewModelBase
         if (MainVm.MotionState == MotionState.Fault) return "Controller fault is active.";
         return "Spindle controls are available.";
     }
+
+    private void HandleThemeChanged(object? sender, EventArgs e) => RaiseMainStateProperties();
 }

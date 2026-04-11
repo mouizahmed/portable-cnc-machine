@@ -86,8 +86,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     public IBrush ConnectionStatusBrush => IsConnected 
-        ? new SolidColorBrush(Color.Parse("#3BB273")) 
-        : new SolidColorBrush(Color.Parse("#808080"));
+        ? ThemeResources.Brush("SuccessBrush", "#3BB273")
+        : ThemeResources.Brush("NeutralStateBrush", "#808080");
 
     // ════════════════════════════════════════════════════════════════
     // MOTION CONTROLLER STATE (Teensy FSM)
@@ -127,14 +127,14 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public IBrush MotionStateBrush => MotionState switch
     {
-        MotionState.Idle => new SolidColorBrush(Color.Parse("#3BB273")),        // Green
-        MotionState.Homing => new SolidColorBrush(Color.Parse("#5B9BD5")),      // Blue
-        MotionState.Jog => new SolidColorBrush(Color.Parse("#5B9BD5")),         // Blue
-        MotionState.RunProgram => new SolidColorBrush(Color.Parse("#3BB273")),  // Green
-        MotionState.FeedHold => new SolidColorBrush(Color.Parse("#E0A100")),    // Yellow/Amber
-        MotionState.Fault => new SolidColorBrush(Color.Parse("#D83B3B")),       // Red
-        MotionState.EStopLatched => new SolidColorBrush(Color.Parse("#D83B3B")),// Red
-        _ => new SolidColorBrush(Color.Parse("#3A3A3A"))                         // Gray
+        MotionState.Idle => ThemeResources.Brush("SuccessBrush", "#3BB273"),
+        MotionState.Homing => ThemeResources.Brush("InfoBrush", "#5B9BD5"),
+        MotionState.Jog => ThemeResources.Brush("InfoBrush", "#5B9BD5"),
+        MotionState.RunProgram => ThemeResources.Brush("SuccessBrush", "#3BB273"),
+        MotionState.FeedHold => ThemeResources.Brush("WarningBrush", "#E0A100"),
+        MotionState.Fault => ThemeResources.Brush("DangerBrush", "#D83B3B"),
+        MotionState.EStopLatched => ThemeResources.Brush("DangerBrush", "#D83B3B"),
+        _ => ThemeResources.Brush("NeutralStateBrush", "#808080")
     };
 
     // ════════════════════════════════════════════════════════════════
@@ -168,12 +168,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public IBrush SafetyStateBrush => SafetyState switch
     {
-        SafetyState.SafeIdle => new SolidColorBrush(Color.Parse("#3BB273")),
-        SafetyState.Monitoring => new SolidColorBrush(Color.Parse("#3BB273")),
-        SafetyState.Warning => new SolidColorBrush(Color.Parse("#E0A100")),
-        SafetyState.EStopActive => new SolidColorBrush(Color.Parse("#D83B3B")),
-        SafetyState.ShutdownSequence => new SolidColorBrush(Color.Parse("#D83B3B")),
-        _ => new SolidColorBrush(Color.Parse("#3A3A3A"))
+        SafetyState.SafeIdle => ThemeResources.Brush("SuccessBrush", "#3BB273"),
+        SafetyState.Monitoring => ThemeResources.Brush("SuccessBrush", "#3BB273"),
+        SafetyState.Warning => ThemeResources.Brush("WarningBrush", "#E0A100"),
+        SafetyState.EStopActive => ThemeResources.Brush("DangerBrush", "#D83B3B"),
+        SafetyState.ShutdownSequence => ThemeResources.Brush("DangerBrush", "#D83B3B"),
+        _ => ThemeResources.Brush("NeutralStateBrush", "#808080")
     };
 
     public bool HasSafetyWarning => SafetyState == SafetyState.Warning || 
@@ -614,6 +614,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     
     public MainWindowViewModel()
     {
+        ThemeResources.ThemeChanged += HandleThemeChanged;
+
         // Create page ViewModels
         DashboardVm = new DashboardViewModel();
         ManualControlVm = new ManualControlViewModel();
@@ -1014,6 +1016,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     {
         StopPolling();
         Serial.Dispose();
+    }
+
+    private void HandleThemeChanged(object? sender, EventArgs e)
+    {
+        RaisePropertyChanged(nameof(ConnectionStatusBrush));
+        RaisePropertyChanged(nameof(MotionStateBrush));
+        RaisePropertyChanged(nameof(SafetyStateBrush));
     }
 
 }

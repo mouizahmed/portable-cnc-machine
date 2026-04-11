@@ -29,6 +29,8 @@ public sealed class FilesViewModel : PageViewModelBase
 
     public FilesViewModel()
     {
+        ThemeResources.ThemeChanged += HandleThemeChanged;
+
         BrowseCommand = new RelayCommand(BrowseForFile);
         LoadSelectedCommand = new RelayCommand(LoadSelectedFile, () => HasSelectedFile);
         RefreshCommand = new RelayCommand(RefreshFileList);
@@ -169,11 +171,11 @@ public sealed class FilesViewModel : PageViewModelBase
 
     public IBrush ToolpathStateBrush => ToolpathStateLabel switch
     {
-        "READY" => new SolidColorBrush(Color.Parse("#3BB273")),
-        "PARSING" => new SolidColorBrush(Color.Parse("#5B9BD5")),
-        "ERROR" => new SolidColorBrush(Color.Parse("#D83B3B")),
-        "NO PATH" => new SolidColorBrush(Color.Parse("#E0A100")),
-        _ => new SolidColorBrush(Color.Parse("#3A3A3A"))
+        "READY" => ThemeResources.Brush("SuccessBrush", "#3BB273"),
+        "PARSING" => ThemeResources.Brush("InfoBrush", "#5B9BD5"),
+        "ERROR" => ThemeResources.Brush("DangerBrush", "#D83B3B"),
+        "NO PATH" => ThemeResources.Brush("WarningBrush", "#E0A100"),
+        _ => ThemeResources.Brush("NeutralStateBrush", "#808080")
     };
 
     public string WarningDetail
@@ -591,6 +593,16 @@ public sealed class FilesViewModel : PageViewModelBase
 
         return $"{bytes / (1024.0 * 1024):F1} MB";
     }
+
+    private void HandleThemeChanged(object? sender, EventArgs e)
+    {
+        RaisePropertyChanged(nameof(ToolpathStateBrush));
+
+        foreach (var previewLine in PreviewLines)
+        {
+            previewLine.RefreshThemeDependentBindings();
+        }
+    }
 }
 
 public sealed class GCodeFileInfo
@@ -630,6 +642,11 @@ public sealed class GCodePreviewLine : ViewModelBase
     {
         get => _warningTooltip;
         set => SetProperty(ref _warningTooltip, value);
+    }
+
+    public void RefreshThemeDependentBindings()
+    {
+        RaisePropertyChanged(nameof(HasWarning));
     }
 }
 

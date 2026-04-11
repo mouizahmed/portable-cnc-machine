@@ -4,7 +4,7 @@
              xmlns:pages="clr-namespace:PortableCncApp.Views.Pages"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="PortableCncApp.App"
-             RequestedThemeVariant="Dark">
+             RequestedThemeVariant="Default">
 
     <Application.Styles>
         <FluentTheme />
@@ -60,18 +60,18 @@
             <Setter Property="Padding" Value="10"/>
         </Style>
         <Style Selector="Border.InsetSurface">
-            <Setter Property="Background" Value="#2A2A2A"/>
+            <Setter Property="Background" Value="{DynamicResource InsetSurfaceBrush}"/>
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Height" Value="32"/>
             <Setter Property="MinHeight" Value="32"/>
             <Setter Property="Padding" Value="8,0"/>
         </Style>
         <Style Selector="Border.InsetSurface.Subtle">
-            <Setter Property="Background" Value="#1F1F1F"/>
+            <Setter Property="Background" Value="{DynamicResource InsetSurfaceSubtleBrush}"/>
             <Setter Property="Padding" Value="8"/>
         </Style>
         <Style Selector="Border.InsetSurface.Code">
-            <Setter Property="Background" Value="#171717"/>
+            <Setter Property="Background" Value="{DynamicResource CodeSurfaceBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10"/>
@@ -159,15 +159,15 @@
             <Setter Property="Foreground" Value="White"/>
         </Style>
         <Style Selector="Button.AppButton.Success">
-            <Setter Property="Background" Value="#3BB273"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
         <Style Selector="Button.AppButton.Warning">
-            <Setter Property="Background" Value="#E0A100"/>
+            <Setter Property="Background" Value="{DynamicResource WarningBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
         <Style Selector="Button.AppButton.Danger">
-            <Setter Property="Background" Value="#D83B3B"/>
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
         <Style Selector="ToggleButton.AppButton">
@@ -195,7 +195,7 @@
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
         </Style>
         <Style Selector="Button.NavButton:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#2A2A2A"/>
+            <Setter Property="Background" Value="{DynamicResource NavButtonHoverBrush}"/>
         </Style>
         <Style Selector="Button.NavButton:pointerover">
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
@@ -204,7 +204,7 @@
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
         </Style>
         <Style Selector="Button.NavButton:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="#333333"/>
+            <Setter Property="Background" Value="{DynamicResource NavButtonPressedBrush}"/>
         </Style>
         <Style Selector="Button.NavButton:pressed">
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
@@ -267,13 +267,13 @@
             <Setter Property="Foreground" Value="White"/>
         </Style>
         <Style Selector="Button.ControlButton.Success">
-            <Setter Property="Background" Value="#3BB273"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessBrush}"/>
         </Style>
         <Style Selector="Button.ControlButton.Warning">
-            <Setter Property="Background" Value="#E0A100"/>
+            <Setter Property="Background" Value="{DynamicResource WarningBrush}"/>
         </Style>
         <Style Selector="Button.ControlButton.Danger">
-            <Setter Property="Background" Value="#D83B3B"/>
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
         </Style>
         
         <!-- Jog Button Styles -->
@@ -294,7 +294,7 @@
         
         <!-- Step Button Styles -->
         <Style Selector="Button.StepButton">
-            <Setter Property="Background" Value="#3A3A3A"/>
+            <Setter Property="Background" Value="{DynamicResource StepButtonBrush}"/>
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Padding" Value="12,4"/>
             <Setter Property="FontSize" Value="11"/>
@@ -303,45 +303,107 @@
             <Setter Property="MinHeight" Value="32"/>
         </Style>
         <Style Selector="Button.StepButton:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#4A4A4A"/>
+            <Setter Property="Background" Value="{DynamicResource StepButtonHoverBrush}"/>
         </Style>
     </Application.Styles>
 
     <Application.Resources>
-        <!-- Color Palette -->
-        <Color x:Key="AppBackgroundColor">#1A1A1A</Color>
-        <Color x:Key="PanelBackgroundColor">#242424</Color>
-        <Color x:Key="SidebarBackgroundColor">#1E1E1E</Color>
-        <Color x:Key="HeaderBackgroundColor">#1E1E1E</Color>
-        <Color x:Key="BorderColor">#333333</Color>
-        
-        <Color x:Key="TextPrimaryColor">#FFFFFF</Color>
-        <Color x:Key="TextSecondaryColor">#A0A0A0</Color>
-        <Color x:Key="TextTertiaryColor">#666666</Color>
-        
-        <Color x:Key="AccentColor">#4A9EFF</Color>
-        <Color x:Key="DangerColor">#D83B3B</Color>
-        <Color x:Key="SuccessColor">#3BB273</Color>
-        <Color x:Key="WarningColor">#E0A100</Color>
-        
-        <!-- Brushes -->
-        <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackgroundColor}"/>
-        <SolidColorBrush x:Key="PanelBackgroundBrush" Color="{StaticResource PanelBackgroundColor}"/>
-        <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="{StaticResource SidebarBackgroundColor}"/>
-        <SolidColorBrush x:Key="HeaderBackgroundBrush" Color="{StaticResource HeaderBackgroundColor}"/>
-        <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
-        
-        <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
-        <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
-        <SolidColorBrush x:Key="TextTertiaryBrush" Color="{StaticResource TextTertiaryColor}"/>
-        
-        <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
-        <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
-        <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
-        <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
-        
-        <!-- Thickness -->
-        <Thickness x:Key="PagePadding">20</Thickness>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F3F5F8"/>
+                    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#F7F9FC"/>
+                    <SolidColorBrush x:Key="HeaderBackgroundBrush" Color="#F7F9FC"/>
+                    <SolidColorBrush x:Key="BorderBrush" Color="#D4DAE2"/>
+
+                    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#18202A"/>
+                    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#52606D"/>
+                    <SolidColorBrush x:Key="TextTertiaryBrush" Color="#7A8794"/>
+
+                    <SolidColorBrush x:Key="InsetSurfaceBrush" Color="#EEF2F6"/>
+                    <SolidColorBrush x:Key="InsetSurfaceSubtleBrush" Color="#F7F9FB"/>
+                    <SolidColorBrush x:Key="CodeSurfaceBrush" Color="#F5F7FA"/>
+                    <SolidColorBrush x:Key="NavButtonHoverBrush" Color="#E6ECF3"/>
+                    <SolidColorBrush x:Key="NavButtonPressedBrush" Color="#DCE4EE"/>
+                    <SolidColorBrush x:Key="StepButtonBrush" Color="#E8EDF3"/>
+                    <SolidColorBrush x:Key="StepButtonHoverBrush" Color="#DCE4EE"/>
+
+                    <SolidColorBrush x:Key="ViewerBackgroundBrush" Color="#E9EEF4"/>
+                    <SolidColorBrush x:Key="FileCardBrush" Color="#F7F9FB"/>
+                    <SolidColorBrush x:Key="FileSizeBadgeBrush" Color="#E6ECF3"/>
+                    <SolidColorBrush x:Key="FlyoutSurfaceBrush" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="ConsoleSurfaceBrush" Color="#F5F7FA"/>
+                    <SolidColorBrush x:Key="SelectionBorderBrush" Color="#C5CDD6"/>
+
+                    <SolidColorBrush x:Key="ConnectInfoSurfaceBrush" Color="#EAF3FF"/>
+                    <SolidColorBrush x:Key="ConnectInfoBorderBrush" Color="#8EB7E6"/>
+                    <SolidColorBrush x:Key="ConnectingSurfaceBrush" Color="#FFF7E1"/>
+                    <SolidColorBrush x:Key="ConnectingBorderBrush" Color="#D8B760"/>
+
+                    <SolidColorBrush x:Key="StageNeutralBackgroundBrush" Color="#F3F5F8"/>
+                    <SolidColorBrush x:Key="StageNeutralBorderBrush" Color="#D4DAE2"/>
+                    <SolidColorBrush x:Key="StageSuccessBackgroundBrush" Color="#E8F6EE"/>
+                    <SolidColorBrush x:Key="StageWarningBackgroundBrush" Color="#FFF3D6"/>
+                    <SolidColorBrush x:Key="StageDangerBackgroundBrush" Color="#FDEAEA"/>
+
+                    <SolidColorBrush x:Key="WarningHighlightBrush" Color="#FFF1CC"/>
+                    <SolidColorBrush x:Key="WarningLineForegroundBrush" Color="#7A5600"/>
+                    <SolidColorBrush x:Key="NeutralIndicatorBrush" Color="#C5CDD6"/>
+                </ResourceDictionary>
+
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#1A1A1A"/>
+                    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#242424"/>
+                    <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#1E1E1E"/>
+                    <SolidColorBrush x:Key="HeaderBackgroundBrush" Color="#1E1E1E"/>
+                    <SolidColorBrush x:Key="BorderBrush" Color="#333333"/>
+
+                    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#A0A0A0"/>
+                    <SolidColorBrush x:Key="TextTertiaryBrush" Color="#666666"/>
+
+                    <SolidColorBrush x:Key="InsetSurfaceBrush" Color="#2A2A2A"/>
+                    <SolidColorBrush x:Key="InsetSurfaceSubtleBrush" Color="#1F1F1F"/>
+                    <SolidColorBrush x:Key="CodeSurfaceBrush" Color="#171717"/>
+                    <SolidColorBrush x:Key="NavButtonHoverBrush" Color="#2A2A2A"/>
+                    <SolidColorBrush x:Key="NavButtonPressedBrush" Color="#333333"/>
+                    <SolidColorBrush x:Key="StepButtonBrush" Color="#3A3A3A"/>
+                    <SolidColorBrush x:Key="StepButtonHoverBrush" Color="#4A4A4A"/>
+
+                    <SolidColorBrush x:Key="ViewerBackgroundBrush" Color="#1A1A1A"/>
+                    <SolidColorBrush x:Key="FileCardBrush" Color="#272727"/>
+                    <SolidColorBrush x:Key="FileSizeBadgeBrush" Color="#313131"/>
+                    <SolidColorBrush x:Key="FlyoutSurfaceBrush" Color="#1F1F1F"/>
+                    <SolidColorBrush x:Key="ConsoleSurfaceBrush" Color="#0D0D0D"/>
+                    <SolidColorBrush x:Key="SelectionBorderBrush" Color="#3A3A3A"/>
+
+                    <SolidColorBrush x:Key="ConnectInfoSurfaceBrush" Color="#1E2732"/>
+                    <SolidColorBrush x:Key="ConnectInfoBorderBrush" Color="#35506B"/>
+                    <SolidColorBrush x:Key="ConnectingSurfaceBrush" Color="#35280F"/>
+                    <SolidColorBrush x:Key="ConnectingBorderBrush" Color="#6E5421"/>
+
+                    <SolidColorBrush x:Key="StageNeutralBackgroundBrush" Color="#252525"/>
+                    <SolidColorBrush x:Key="StageNeutralBorderBrush" Color="#333333"/>
+                    <SolidColorBrush x:Key="StageSuccessBackgroundBrush" Color="#1F3A2A"/>
+                    <SolidColorBrush x:Key="StageWarningBackgroundBrush" Color="#4A390B"/>
+                    <SolidColorBrush x:Key="StageDangerBackgroundBrush" Color="#4A1616"/>
+
+                    <SolidColorBrush x:Key="WarningHighlightBrush" Color="#3A2A14"/>
+                    <SolidColorBrush x:Key="WarningLineForegroundBrush" Color="#FFD27A"/>
+                    <SolidColorBrush x:Key="NeutralIndicatorBrush" Color="#444444"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <SolidColorBrush x:Key="AccentBrush" Color="#4A9EFF"/>
+            <SolidColorBrush x:Key="DangerBrush" Color="#D83B3B"/>
+            <SolidColorBrush x:Key="SuccessBrush" Color="#3BB273"/>
+            <SolidColorBrush x:Key="WarningBrush" Color="#E0A100"/>
+            <SolidColorBrush x:Key="InfoBrush" Color="#5B9BD5"/>
+            <SolidColorBrush x:Key="NeutralStateBrush" Color="#808080"/>
+
+            <Thickness x:Key="PagePadding">20</Thickness>
+        </ResourceDictionary>
     </Application.Resources>
 
     <!-- DataTemplates for page navigation -->
