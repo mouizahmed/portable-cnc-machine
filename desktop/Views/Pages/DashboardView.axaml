@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:PortableCncApp.Controls"
              xmlns:webControls="clr-namespace:PortableCncApp.Controls"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
@@ -9,16 +10,65 @@
              x:DataType="vm:DashboardViewModel"
              mc:Ignorable="d">
 
+  <UserControl.Styles>
+    <Style Selector="Button.TransportButton">
+      <Setter Property="Width" Value="34"/>
+      <Setter Property="MinWidth" Value="34"/>
+      <Setter Property="Height" Value="30"/>
+      <Setter Property="MinHeight" Value="30"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Background" Value="{DynamicResource StepButtonBrush}"/>
+    </Style>
+    <Style Selector="Button.TransportButton:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource StepButtonHoverBrush}"/>
+    </Style>
+  </UserControl.Styles>
+
   <Grid>
     <controls:SectionCard Title="{Binding ViewerTitle}"
                           Subtitle="{Binding ViewerHint}">
       <controls:SectionCard.Actions>
-        <ToggleButton x:Name="ViewerPanelToggle"
-                      Content="Viewer"
-                      IsChecked="{Binding IsViewerPanelOpen, Mode=TwoWay}"
-                      IsEnabled="{Binding HasLoadedToolpath}"
-                      VerticalAlignment="Center"
-                      Classes="AppButton"/>
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button IsEnabled="{Binding HasLoadedToolpath}"
+                  VerticalAlignment="Center"
+                  Classes="AppButton">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight">
+                <Border Background="{DynamicResource FlyoutSurfaceBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="12"
+                        MinWidth="180">
+                  <StackPanel Spacing="10">
+                    <TextBlock Text="Viewer Options"
+                               Classes="FieldValue"/>
+                    <CheckBox Content="Show Grid"
+                              IsChecked="{Binding ShowGrid}"
+                              Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <CheckBox Content="Show Rapid Movement"
+                              IsChecked="{Binding ShowRapids}"
+                              Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <CheckBox Content="Show Toolpath Points"
+                              IsChecked="{Binding ShowToolpathPoints}"
+                              Foreground="{DynamicResource TextPrimaryBrush}"/>
+                  </StackPanel>
+                </Border>
+              </Flyout>
+            </Button.Flyout>
+            <materialIcons:MaterialIcon Kind="TuneVariant"
+                                        Width="16"
+                                        Height="16"
+                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
+          </Button>
+          <ToggleButton x:Name="ViewerPanelToggle"
+                        Content="Viewer"
+                        IsChecked="{Binding IsViewerPanelOpen, Mode=TwoWay}"
+                        IsEnabled="{Binding HasLoadedToolpath}"
+                        VerticalAlignment="Center"
+                        Classes="AppButton"/>
+        </StackPanel>
       </controls:SectionCard.Actions>
 
       <controls:SectionCard.Body>
@@ -41,6 +91,75 @@
                   <StackPanel Grid.Row="1" Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <TextBlock Text="SCRUBBER" Classes="Caption" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding ScrubberLabel}" Classes="FieldValue" FontWeight="Normal" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
+                <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
+                  <Border Classes="InsetSurface Subtle"
+                          Padding="8"
+                          VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <Button Classes="TransportButton"
+                              Command="{Binding StepBackwardCommand}"
+                              ToolTip.Tip="Step back one keyframe">
+                        <materialIcons:MaterialIcon Kind="SkipPrevious"
+                                                    Width="16"
+                                                    Height="16"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      </Button>
+                      <Button Classes="TransportButton"
+                              Command="{Binding PlayReverseCommand}"
+                              ToolTip.Tip="Play reverse">
+                        <materialIcons:MaterialIcon Kind="Rewind"
+                                                    Width="16"
+                                                    Height="16"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      </Button>
+                      <Button Classes="TransportButton"
+                              Command="{Binding StopPlaybackCommand}"
+                              ToolTip.Tip="Stop playback">
+                        <materialIcons:MaterialIcon Kind="Stop"
+                                                    Width="16"
+                                                    Height="16"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      </Button>
+                      <Button Classes="TransportButton"
+                              Command="{Binding PlayForwardCommand}"
+                              ToolTip.Tip="Play forward">
+                        <materialIcons:MaterialIcon Kind="Play"
+                                                    Width="16"
+                                                    Height="16"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      </Button>
+                      <Button Classes="TransportButton"
+                              Command="{Binding StepForwardCommand}"
+                              ToolTip.Tip="Step forward one keyframe">
+                        <materialIcons:MaterialIcon Kind="SkipNext"
+                                                    Width="16"
+                                                    Height="16"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}"/>
+                      </Button>
+                    </StackPanel>
+                  </Border>
+
+                  <StackPanel Grid.Column="1"
+                              Spacing="4"
+                              VerticalAlignment="Center">
+                    <TextBlock Text="Speed (×)" Classes="FieldLabel"/>
+                    <NumericUpDown Value="{Binding PlaybackSpeed, Mode=TwoWay}"
+                                   Minimum="0.1"
+                                   Maximum="10"
+                                   Increment="0.25"
+                                   FormatString="0.##"
+                                   Width="100"/>
+                  </StackPanel>
+
+                  <StackPanel Grid.Column="2"
+                              Orientation="Horizontal"
+                              Spacing="8"
+                              VerticalAlignment="Center">
+                    <TextBlock Text="{Binding PlaybackStatusLabel}"
+                               Classes="FieldLabel"
+                               VerticalAlignment="Center"/>
                   </StackPanel>
                 </Grid>
                 <Slider Minimum="0"
@@ -68,7 +187,11 @@
                                          ShowPlunges="{Binding ShowPlunges}"
                                          ShowCompletedPath="{Binding ShowCompletedPath}"
                                          ShowRemainingPath="{Binding ShowRemainingPath}"
-                                         ShowStockBox="{Binding ShowStockBox}"/>
+                                         ShowStockBox="{Binding ShowStockBox}"
+                                         ShowGrid="{Binding ShowGrid}"
+                                         ShowToolpathPoints="{Binding ShowToolpathPoints}"
+                                         PreviewPlaybackMode="{Binding PreviewPlaybackMode}"
+                                         PreviewPlaybackStepDurationMs="{Binding PreviewPlaybackStepDurationMs}"/>
           </Border>
         </DockPanel>
       </controls:SectionCard.Body>

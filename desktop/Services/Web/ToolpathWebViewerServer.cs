@@ -28,6 +28,8 @@ public sealed class ToolpathWebViewerServer
     private readonly object _gate = new();
 
     private int _sceneVersion;
+    private int _reportedKeyframeIndex = -1;
+    private bool _reportedPlaybackDone;
     private ToolpathViewerState _state = new(
         0,
         0,
@@ -42,13 +44,36 @@ public sealed class ToolpathWebViewerServer
         true,
         true,
         true,
-        false);
+        false,
+        true,
+        false,
+        "stopped",
+        0);
     private string _sceneJson = "{\"sceneVersion\":0,\"hasScene\":false}";
     private string _stateJson = "{\"sceneVersion\":0,\"currentLine\":0,\"cameraPreset\":\"Iso\",\"resetViewToken\":0}";
 
     public static ToolpathWebViewerServer Instance => LazyInstance.Value;
 
     public string ViewerUrl { get; }
+
+    public int ReportedKeyframeIndex
+    {
+        get { lock (_gate) { return _reportedKeyframeIndex; } }
+    }
+
+    public bool ReportedPlaybackDone
+    {
+        get { lock (_gate) { return _reportedPlaybackDone; } }
+    }
+
+    public void ClearReportedPosition()
+    {
+        lock (_gate)
+        {
+            _reportedKeyframeIndex = -1;
+            _reportedPlaybackDone = false;
+        }
+    }
 
     private ToolpathWebViewerServer()
     {
@@ -175,6 +200,7 @@ public sealed class ToolpathWebViewerServer
             string route = NormalizeRoute(path);
             if (route == "/state")
             {
+                ProcessPlaybackReport(path);
                 await WriteJsonAsync(stream, GetStateJson(), cancellationToken);
                 return;
             }
@@ -219,6 +245,31 @@ public sealed class ToolpathWebViewerServer
         relative = relative.Replace('/', Path.DirectorySeparatorChar);
         string candidate = Path.GetFullPath(Path.Combine(_assetRoot, relative));
         return candidate.StartsWith(_assetRoot, StringComparison.OrdinalIgnoreCase) ? candidate : null;
+    }
+
+    private void ProcessPlaybackReport(string fullPath)
+    {
+        int qIdx = fullPath.IndexOf('?');
+        if (qIdx < 0) return;
+        int? kf = null;
+        bool? done = null;
+        foreach (string param in fullPath.AsSpan(qIdx + 1).ToString().Split('&'))
+        {
+            int eqIdx = param.IndexOf('=');
+            if (eqIdx <= 0) continue;
+            string key = param[..eqIdx];
+            string val = param[(eqIdx + 1)..];
+            if (key == "kf" && int.TryParse(val, out int kfVal)) kf = kfVal;
+            else if (key == "done") done = val == "1";
+        }
+        if (kf.HasValue)
+        {
+            lock (_gate)
+            {
+                _reportedKeyframeIndex = kf.Value;
+                if (done.HasValue) _reportedPlaybackDone = done.Value;
+            }
+        }
     }
 
     private static string NormalizeRoute(string path)
@@ -333,4 +384,8 @@ public sealed record ToolpathViewerState(
     bool ShowPlunges,
     bool ShowCompletedPath,
     bool ShowRemainingPath,
-    bool ShowStockBox);
+    bool ShowStockBox,
+    bool ShowGrid,
+    bool ShowToolpathPoints,
+    string PreviewPlaybackMode,
+    double PreviewPlaybackStepDurationMs);

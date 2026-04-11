@@ -51,6 +51,18 @@ public sealed class WebToolpathView : UserControl
     public static readonly StyledProperty<bool> ShowStockBoxProperty =
         AvaloniaProperty.Register<WebToolpathView, bool>(nameof(ShowStockBox), false);
 
+    public static readonly StyledProperty<bool> ShowGridProperty =
+        AvaloniaProperty.Register<WebToolpathView, bool>(nameof(ShowGrid), true);
+
+    public static readonly StyledProperty<bool> ShowToolpathPointsProperty =
+        AvaloniaProperty.Register<WebToolpathView, bool>(nameof(ShowToolpathPoints), false);
+
+    public static readonly StyledProperty<string> PreviewPlaybackModeProperty =
+        AvaloniaProperty.Register<WebToolpathView, string>(nameof(PreviewPlaybackMode), "stopped");
+
+    public static readonly StyledProperty<double> PreviewPlaybackStepDurationMsProperty =
+        AvaloniaProperty.Register<WebToolpathView, double>(nameof(PreviewPlaybackStepDurationMs), 0d);
+
     private readonly WebView _webView;
     private readonly DispatcherTimer _bridgeTimer;
     private int _lastPushedResetToken = int.MinValue;
@@ -158,6 +170,30 @@ public sealed class WebToolpathView : UserControl
         set => SetValue(ShowStockBoxProperty, value);
     }
 
+    public bool ShowGrid
+    {
+        get => GetValue(ShowGridProperty);
+        set => SetValue(ShowGridProperty, value);
+    }
+
+    public bool ShowToolpathPoints
+    {
+        get => GetValue(ShowToolpathPointsProperty);
+        set => SetValue(ShowToolpathPointsProperty, value);
+    }
+
+    public string PreviewPlaybackMode
+    {
+        get => GetValue(PreviewPlaybackModeProperty);
+        set => SetValue(PreviewPlaybackModeProperty, value);
+    }
+
+    public double PreviewPlaybackStepDurationMs
+    {
+        get => GetValue(PreviewPlaybackStepDurationMsProperty);
+        set => SetValue(PreviewPlaybackStepDurationMsProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -180,7 +216,11 @@ public sealed class WebToolpathView : UserControl
             ShowPlunges,
             ShowCompletedPath,
             ShowRemainingPath,
-            ShowStockBox));
+            ShowStockBox,
+            ShowGrid,
+            ShowToolpathPoints,
+            PreviewPlaybackMode,
+            PreviewPlaybackStepDurationMs));
 
         PushBridgeState();
     }
