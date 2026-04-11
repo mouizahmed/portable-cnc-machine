@@ -139,85 +139,48 @@
                                              PillBackground="{Binding ToolpathStateBrush}"/>
                         <TextBlock Text="{Binding FilePreviewTitle}"
                                    Classes="CodeValue"
+                                   IsVisible="{Binding HasSelectedFile}"
                                    TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Text="{Binding SelectedFilePathSummary}"
-                                   Classes="FieldLabel"
-                                   TextWrapping="Wrap"/>
+                        <StackPanel Spacing="8"
+                                    IsVisible="{Binding HasSelectedFile}">
+                          <TextBlock Text="{Binding SelectedFilePathSummary}"
+                                     Classes="FieldLabel"
+                                     TextWrapping="Wrap"/>
 
-                        <controls:TwoColumnInfoGrid>
-                          <TextBlock Text="Size" Classes="FieldLabel"/>
-                          <TextBlock Grid.Column="1"
-                                     Text="{Binding SelectedFile.Size, TargetNullValue='--'}"
-                                     Classes="FieldValue"/>
+                          <controls:TwoColumnInfoGrid>
+                            <TextBlock Text="Size" Classes="FieldLabel"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding SelectedFile.Size, TargetNullValue='--'}"
+                                       Classes="FieldValue"/>
 
-                          <TextBlock Grid.Row="1" Text="Modified" Classes="FieldLabel"/>
-                          <TextBlock Grid.Row="1"
-                                     Grid.Column="1"
-                                     Text="{Binding SelectedFile.Modified, TargetNullValue='--'}"
-                                     Classes="FieldValue"/>
+                            <TextBlock Grid.Row="1" Text="Modified" Classes="FieldLabel"/>
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="1"
+                                       Text="{Binding SelectedFile.Modified, TargetNullValue='--'}"
+                                       Classes="FieldValue"/>
 
-                          <TextBlock Grid.Row="2" Text="Lines" Classes="FieldLabel"/>
-                          <TextBlock Grid.Row="2"
-                                     Grid.Column="1"
-                                     Text="{Binding SelectedFileLineSummary}"
-                                     Classes="FieldValue"/>
-                        </controls:TwoColumnInfoGrid>
+                            <TextBlock Grid.Row="2" Text="Lines" Classes="FieldLabel"/>
+                            <TextBlock Grid.Row="2"
+                                       Grid.Column="1"
+                                       Text="{Binding SelectedFileLineSummary}"
+                                       Classes="FieldValue"/>
+                          </controls:TwoColumnInfoGrid>
+
+                          <Button Content="Load Into Dashboard"
+                                  Command="{Binding LoadSelectedCommand}"
+                                  IsEnabled="{Binding HasSelectedFile}"
+                                  HorizontalAlignment="Stretch"
+                                  Classes="AppButton Primary"/>
+                          <Button Content="Remove From Library"
+                                  Command="{Binding RemoveCommand}"
+                                  IsEnabled="{Binding HasSelectedFile}"
+                                  HorizontalAlignment="Stretch"
+                                  Classes="AppButton"/>
+                        </StackPanel>
                       </StackPanel>
                     </controls:SectionCard.Body>
                   </controls:SectionCard>
 
-                  <controls:SectionCard Title="ACTIONS">
-                    <controls:SectionCard.Body>
-                      <StackPanel Spacing="8">
-                        <Button Content="Load Into Dashboard"
-                                Command="{Binding LoadSelectedCommand}"
-                                IsEnabled="{Binding HasSelectedFile}"
-                                HorizontalAlignment="Stretch"
-                                Classes="AppButton Primary"/>
-                        <Button Content="Remove From Library"
-                                Command="{Binding RemoveCommand}"
-                                IsEnabled="{Binding HasSelectedFile}"
-                                HorizontalAlignment="Stretch"
-                                Classes="AppButton"/>
-                        <TextBlock Text="{Binding SelectedFileModifiedSummary}"
-                                   Classes="FieldLabel Muted"
-                                   TextWrapping="Wrap"/>
-                      </StackPanel>
-                    </controls:SectionCard.Body>
-                  </controls:SectionCard>
-
-                  <controls:SectionCard Title="TOOLPATH">
-                    <controls:SectionCard.Body>
-                      <StackPanel Spacing="8">
-                        <TextBlock Text="{Binding ToolpathStatusMessage}"
-                                   Classes="FieldValue"
-                                   TextWrapping="Wrap"/>
-
-                        <controls:TwoColumnInfoGrid>
-                          <TextBlock Text="Bounds" Classes="FieldLabel"/>
-                          <TextBlock Grid.Column="1"
-                                     Text="{Binding MainVm.ActiveToolpathBounds}"
-                                     Classes="FieldValue"/>
-
-                          <TextBlock Grid.Row="1" Text="Depth" Classes="FieldLabel"/>
-                          <TextBlock Grid.Row="1"
-                                     Grid.Column="1"
-                                     Text="{Binding MainVm.ActiveToolpathDepth}"
-                                     Classes="FieldValue"/>
-
-                          <TextBlock Grid.Row="2" Text="Segments" Classes="FieldLabel"/>
-                          <TextBlock Grid.Row="2"
-                                     Grid.Column="1"
-                                     Text="{Binding MainVm.ActiveToolpathSegmentCount}"
-                                     Classes="FieldValue"/>
-                        </controls:TwoColumnInfoGrid>
-
-                        <TextBlock Text="{Binding WarningDetail}"
-                                   Classes="FieldLabel"
-                                   TextWrapping="Wrap"/>
-                      </StackPanel>
-                    </controls:SectionCard.Body>
-                  </controls:SectionCard>
                 </StackPanel>
               </DataTemplate>
 

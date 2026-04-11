@@ -51,7 +51,6 @@ public sealed class FilesViewModel : PageViewModelBase
                 RaisePropertyChanged(nameof(HasSelectedFile));
                 RaisePropertyChanged(nameof(FilePreviewTitle));
                 RaisePropertyChanged(nameof(SelectedFilePathSummary));
-                RaisePropertyChanged(nameof(SelectedFileModifiedSummary));
                 RaisePropertyChanged(nameof(SelectedFileLineSummary));
                 RaisePropertyChanged(nameof(PreviewViewportSummary));
                 RaisePropertyChanged(nameof(ToolpathStateLabel));
@@ -121,9 +120,6 @@ public sealed class FilesViewModel : PageViewModelBase
 
     public string SelectedFilePathSummary
         => SelectedFile?.FullPath ?? string.Empty;
-
-    public string SelectedFileModifiedSummary
-        => SelectedFile == null ? "Nothing selected" : $"Updated {SelectedFile.Modified}";
 
     public string SelectedFileLineSummary
         => PreviewLineCount > 0 ? $"{PreviewLineCount} total lines" : "--";

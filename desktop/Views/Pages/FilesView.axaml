@@ -34,10 +34,8 @@
                             Subtitle="{Binding Files.Count, StringFormat={}{0} file(s) ready}">
         <controls:SectionCard.Body>
           <Grid RowDefinitions="*" RowSpacing="8">
-            <Border
-                    Classes="InsetSurface Subtle"
-                    BorderBrush="{DynamicResource BorderBrush}"
-                    BorderThickness="1"
+            <Border Classes="InsetSurface Subtle"
+                    Padding="0"
                     Height="NaN"
                     MinHeight="0">
               <ListBox ItemsSource="{Binding Files}"
@@ -45,31 +43,41 @@
                        Background="Transparent"
                        BorderThickness="0">
                 <ListBox.Styles>
+                  <Style Selector="ListBoxItem Border.FileCard">
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                  </Style>
                   <Style Selector="ListBoxItem">
                     <Setter Property="Padding" Value="0"/>
                     <Setter Property="Margin" Value="0"/>
                     <Setter Property="Background" Value="Transparent"/>
-                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="BorderThickness" Value="0"/>
                     <Setter Property="BorderBrush" Value="Transparent"/>
                     <Setter Property="CornerRadius" Value="6"/>
                     <Setter Property="Cursor" Value="Hand"/>
                   </Style>
                   <Style Selector="ListBoxItem:selected">
-                    <Setter Property="Background" Value="#202020"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected Border.FileCard">
                     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                   </Style>
                   <Style Selector="ListBoxItem:pointerover">
-                    <Setter Property="Background" Value="#1D1D1D"/>
-                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:pointerover Border.FileCard">
+                    <Setter Property="BorderBrush" Value="#3A3A3A"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected:pointerover Border.FileCard">
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                   </Style>
                 </ListBox.Styles>
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:GCodeFileInfo">
                     <Border Padding="12,10"
-                            Margin="4,3"
+                            Classes="FileCard"
+                            Margin="0"
                             Background="#272727"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
                             CornerRadius="6">
                       <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
                         <StackPanel Spacing="4">
@@ -107,9 +115,45 @@
         </controls:SectionCard.Body>
       </controls:SectionCard>
 
-      <Grid Grid.Column="1">
+      <Grid Grid.Column="1"
+            RowDefinitions="Auto,*"
+            RowSpacing="8">
 
-        <controls:SectionCard Title="SOURCE PREVIEW"
+        <controls:SectionCard Title="TOOLPATH">
+          <controls:SectionCard.Body>
+            <StackPanel Spacing="8">
+              <TextBlock Text="{Binding ToolpathStatusMessage}"
+                         Classes="FieldValue"
+                         TextWrapping="Wrap"/>
+
+              <controls:TwoColumnInfoGrid>
+                <TextBlock Text="Bounds" Classes="FieldLabel"/>
+                <TextBlock Grid.Column="1"
+                           Text="{Binding MainVm.ActiveToolpathBounds}"
+                           Classes="FieldValue"/>
+
+                <TextBlock Grid.Row="1" Text="Depth" Classes="FieldLabel"/>
+                <TextBlock Grid.Row="1"
+                           Grid.Column="1"
+                           Text="{Binding MainVm.ActiveToolpathDepth}"
+                           Classes="FieldValue"/>
+
+                <TextBlock Grid.Row="2" Text="Segments" Classes="FieldLabel"/>
+                <TextBlock Grid.Row="2"
+                           Grid.Column="1"
+                           Text="{Binding MainVm.ActiveToolpathSegmentCount}"
+                           Classes="FieldValue"/>
+              </controls:TwoColumnInfoGrid>
+
+              <TextBlock Text="{Binding WarningDetail}"
+                         Classes="FieldLabel"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+
+        <controls:SectionCard Grid.Row="1"
+                              Title="SOURCE PREVIEW"
                               Subtitle="{Binding FilePreviewTitle}">
           <controls:SectionCard.Body>
             <Border Classes="InsetSurface Code"
