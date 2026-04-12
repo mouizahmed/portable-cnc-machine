@@ -57,10 +57,50 @@
       align-items: center;
       justify-content: center;
       pointer-events: none;
+      background: linear-gradient(180deg, var(--viewer-overlay-start), var(--viewer-overlay-end));
+    }
+
+    #overlay-panel {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--viewer-bg) 80%, transparent);
+      border: 1px solid color-mix(in srgb, var(--viewer-overlay) 22%, transparent);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    #overlay[data-state="empty"] #overlay-panel {
+      border-radius: 10px;
+      padding: 12px 16px;
+    }
+
+    #overlay-spinner {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid color-mix(in srgb, var(--viewer-overlay) 28%, transparent);
+      border-top-color: var(--viewer-overlay);
+      animation: viewer-spin 0.9s linear infinite;
+      flex: 0 0 auto;
+    }
+
+    #overlay[data-state="empty"] #overlay-spinner {
+      display: none;
+    }
+
+    #overlay-text {
       font-size: 13px;
       letter-spacing: 0.02em;
       color: var(--viewer-overlay);
-      background: linear-gradient(180deg, var(--viewer-overlay-start), var(--viewer-overlay-end));
+    }
+
+    @keyframes viewer-spin {
+      to {
+        transform: rotate(360deg);
+      }
     }
 
     canvas {
@@ -70,7 +110,12 @@
 </head>
 <body>
   <div id="app"></div>
-  <div id="overlay">Select a G-code file to build the 3D preview.</div>
+  <div id="overlay" data-state="loading">
+    <div id="overlay-panel">
+      <div id="overlay-spinner" aria-hidden="true"></div>
+      <div id="overlay-text">Loading 3D preview...</div>
+    </div>
+  </div>
   <script type="importmap">
     {
       "imports": {

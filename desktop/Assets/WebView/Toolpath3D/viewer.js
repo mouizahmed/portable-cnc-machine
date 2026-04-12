@@ -3,6 +3,7 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { ViewHelper } from './vendor/ViewHelper.js';
 
 const overlay = document.getElementById('overlay');
+const overlayText = document.getElementById('overlay-text');
 const host = document.getElementById('app');
 const themeQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -98,6 +99,7 @@ resize();
 animate();
 poll();
 setInterval(poll, 200);
+showOverlay('Loading 3D preview...');
 
 window.setToolpathScene = (scene) => {
   if (!scene) {
@@ -138,6 +140,7 @@ async function poll() {
 
     currentState = state;
     if (state.sceneVersion !== currentSceneVersion) {
+      showOverlay('Loading 3D preview...');
       currentScene = await fetchJson('./scene');
       currentSceneVersion = state.sceneVersion;
       buildScene();
@@ -155,14 +158,13 @@ function buildScene() {
   toolpathRenderSignature = '';
 
   if (!currentScene || !currentScene.hasScene || !currentScene.bounds) {
-    overlay.textContent = 'Select a G-code file to build the 3D preview.';
-    overlay.style.display = 'flex';
+    showOverlay('Select a G-code file to build the 3D preview.', 'empty');
     currentSceneVersion = currentScene?.sceneVersion ?? -1;
     playbackKeyframes = [];
     return;
   }
 
-  overlay.style.display = 'none';
+  hideOverlay();
 
   const { bounds } = currentScene;
   const min = new THREE.Vector3(bounds.minX, bounds.minY, bounds.minZ);
@@ -799,6 +801,26 @@ function createBucket() {
 
 function hasLoadedToolpath() {
   return Boolean(currentScene && currentScene.hasScene && currentScene.bounds);
+}
+
+function showOverlay(message, state = 'loading') {
+  if (!overlay) {
+    return;
+  }
+
+  overlay.dataset.state = state;
+  overlay.style.display = 'flex';
+  if (overlayText) {
+    overlayText.textContent = message;
+  }
+}
+
+function hideOverlay() {
+  if (!overlay) {
+    return;
+  }
+
+  overlay.style.display = 'none';
 }
 
 function interpolateAlongPath(kf0, kf1, t, direction) {

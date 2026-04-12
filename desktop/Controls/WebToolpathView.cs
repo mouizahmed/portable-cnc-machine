@@ -9,6 +9,10 @@ namespace PortableCncApp.Controls;
 
 public sealed class WebToolpathView : UserControl
 {
+    private static readonly object SharedWebViewGate = new();
+    private static WebView? s_sharedWebView;
+    private static WebToolpathView? s_sharedWebViewOwner;
+
     public static readonly StyledProperty<GCodeDocument?> DocumentProperty =
         AvaloniaProperty.Register<WebToolpathView, GCodeDocument?>(nameof(Document));
 
@@ -68,14 +72,11 @@ public sealed class WebToolpathView : UserControl
     private int _lastPushedResetToken = int.MinValue;
     private int _lastPushedSceneVersion = int.MinValue;
     private string? _lastPushedStateJson;
+    private bool _isDisposed;
 
     public WebToolpathView()
     {
-        _webView = new WebView
-        {
-            Address = ToolpathWebViewerServer.Instance.ViewerUrl
-        };
-
+        _webView = AcquireSharedWebView(this);
         Content = _webView;
         _bridgeTimer = new DispatcherTimer
         {
@@ -84,7 +85,23 @@ public sealed class WebToolpathView : UserControl
         _bridgeTimer.Tick += (_, _) => PushBridgeState();
         _bridgeTimer.Start();
         ThemeResources.ThemeChanged += HandleThemeChanged;
+        Unloaded += (_, _) => DisposeControl();
         UpdateViewerState();
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        ReattachSharedWebView();
+        _bridgeTimer.Start();
+        PushBridgeState();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        ReleaseSharedWebView();
+        _bridgeTimer.Stop();
     }
 
     public GCodeDocument? Document
@@ -260,4 +277,72 @@ public sealed class WebToolpathView : UserControl
     }
 
     private void HandleThemeChanged(object? sender, EventArgs e) => UpdateViewerState();
+
+    private void ReattachSharedWebView()
+    {
+        lock (SharedWebViewGate)
+        {
+            if (!ReferenceEquals(s_sharedWebView, _webView))
+            {
+                return;
+            }
+
+            if (!ReferenceEquals(s_sharedWebViewOwner, this))
+            {
+                s_sharedWebViewOwner?.SetCurrentValue(ContentProperty, null);
+                s_sharedWebViewOwner = this;
+            }
+        }
+
+        if (!ReferenceEquals(Content, _webView))
+        {
+            Content = _webView;
+        }
+    }
+
+    private void ReleaseSharedWebView()
+    {
+        lock (SharedWebViewGate)
+        {
+            if (!ReferenceEquals(s_sharedWebViewOwner, this))
+            {
+                return;
+            }
+
+            if (ReferenceEquals(Content, _webView))
+            {
+                Content = null;
+            }
+
+            s_sharedWebViewOwner = null;
+        }
+    }
+
+    private void DisposeControl()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        _bridgeTimer.Stop();
+        ThemeResources.ThemeChanged -= HandleThemeChanged;
+        ReleaseSharedWebView();
+    }
+
+    private static WebView AcquireSharedWebView(WebToolpathView owner)
+    {
+        lock (SharedWebViewGate)
+        {
+            s_sharedWebView ??= new WebView
+            {
+                Address = ToolpathWebViewerServer.Instance.ViewerUrl
+            };
+
+            s_sharedWebViewOwner?.SetCurrentValue(ContentProperty, null);
+            s_sharedWebViewOwner = owner;
+            return s_sharedWebView;
+        }
+    }
 }
