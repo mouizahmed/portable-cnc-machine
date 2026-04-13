@@ -23,6 +23,12 @@
     <Style Selector="Button.TransportButton:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource StepButtonHoverBrush}"/>
     </Style>
+    <Style Selector="Button.OptionsButton:enabled">
+      <Setter Property="Foreground" Value="White"/>
+    </Style>
+    <Style Selector="Button.OptionsButton:disabled">
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+    </Style>
   </UserControl.Styles>
 
   <Grid>
@@ -32,47 +38,43 @@
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <Button IsEnabled="{Binding HasLoadedToolpath}"
                   VerticalAlignment="Center"
-                  Classes="AppButton">
+                  Classes="AppButton OptionsButton">
             <Button.Flyout>
-              <Flyout Placement="BottomEdgeAlignedRight">
-                <Border Background="{DynamicResource FlyoutSurfaceBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="4"
-                        Padding="12"
-                        MinWidth="220">
-                  <StackPanel Spacing="10">
-                    <TextBlock Text="Viewer Options"
-                               Classes="FieldValue"/>
-                    <CheckBox Content="Grid"
-                              IsChecked="{Binding ShowGrid}"
-                              Foreground="{DynamicResource TextPrimaryBrush}"/>
-                    <CheckBox Content="Rapids"
-                              IsChecked="{Binding ShowRapids}"
-                              Foreground="{DynamicResource TextPrimaryBrush}"/>
-                    <CheckBox Content="Cuts"
-                              IsChecked="{Binding ShowCuts}"
-                              Foreground="{DynamicResource TextPrimaryBrush}"/>
-                    <CheckBox Content="Arcs"
-                              IsChecked="{Binding ShowArcs}"
-                              Foreground="{DynamicResource TextPrimaryBrush}"/>
-                    <CheckBox Content="Plunges"
-                              IsChecked="{Binding ShowPlunges}"
-                              Foreground="{DynamicResource TextPrimaryBrush}"/>
-                    <CheckBox Content="Stock Box"
-                              IsChecked="{Binding ShowStockBox}"
-                              Foreground="{DynamicResource TextPrimaryBrush}"/>
-                    <CheckBox Content="Toolpath Points"
-                              IsChecked="{Binding ShowToolpathPoints}"
-                              Foreground="{DynamicResource TextPrimaryBrush}"/>
-                  </StackPanel>
-                </Border>
+              <Flyout Placement="BottomEdgeAlignedRight"
+                      FlyoutPresenterClasses="CompactFlyout">
+                <controls:FlyoutPanel Title="Viewer Options"
+                                      MinWidth="148">
+                  <controls:FlyoutPanel.Body>
+                    <StackPanel Spacing="2">
+                      <CheckBox Content="Grid"
+                                IsChecked="{Binding ShowGrid}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Rapids"
+                                IsChecked="{Binding ShowRapids}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Cuts"
+                                IsChecked="{Binding ShowCuts}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Arcs"
+                                IsChecked="{Binding ShowArcs}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Plunges"
+                                IsChecked="{Binding ShowPlunges}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Stock Box"
+                                IsChecked="{Binding ShowStockBox}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Toolpath Points"
+                                IsChecked="{Binding ShowToolpathPoints}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
+                  </controls:FlyoutPanel.Body>
+                </controls:FlyoutPanel>
               </Flyout>
             </Button.Flyout>
             <materialIcons:MaterialIcon Kind="TuneVariant"
                                         Width="16"
-                                        Height="16"
-                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                        Height="16"/>
           </Button>
           <ToggleButton x:Name="ViewerPanelToggle"
                         Content="Viewer"
@@ -85,10 +87,11 @@
 
       <controls:SectionCard.Body>
         <Grid RowDefinitions="Auto,*"
-              RowSpacing="8">
+              RowSpacing="0">
           <Border Grid.Row="0"
                   IsVisible="{Binding IsViewerPanelOpen}"
                   Padding="8"
+                  Margin="0,0,0,8"
                   Background="{DynamicResource PanelBackgroundBrush}"
                   BorderBrush="{DynamicResource BorderBrush}"
                   BorderThickness="1"

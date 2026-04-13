@@ -197,17 +197,15 @@
                                     VerticalContentAlignment="Center"
                                     HorizontalContentAlignment="Center">
                               <Button.Flyout>
-                                <Flyout Placement="RightEdgeAlignedTop">
-                                  <Border Background="{DynamicResource FlyoutSurfaceBrush}"
-                                          BorderBrush="{DynamicResource BorderBrush}"
-                                          BorderThickness="1"
-                                          CornerRadius="4"
-                                          Padding="10"
-                                          MaxWidth="360">
-                                    <TextBlock Text="{Binding WarningTooltip}"
-                                               Classes="FieldLabel"
-                                               TextWrapping="Wrap"/>
-                                  </Border>
+                                <Flyout Placement="RightEdgeAlignedTop"
+                                        FlyoutPresenterClasses="CompactFlyout">
+                                  <controls:FlyoutPanel MaxWidth="320">
+                                    <controls:FlyoutPanel.Body>
+                                      <TextBlock Text="{Binding WarningTooltip}"
+                                                 Classes="FieldLabel"
+                                                 TextWrapping="Wrap"/>
+                                    </controls:FlyoutPanel.Body>
+                                  </controls:FlyoutPanel>
                                 </Flyout>
                               </Button.Flyout>
                               <materialIcons:MaterialIcon Kind="AlertCircleOutline"

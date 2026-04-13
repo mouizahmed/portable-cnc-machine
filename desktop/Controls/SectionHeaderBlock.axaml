@@ -12,6 +12,7 @@
 
     <ContentControl x:Name="ActionsHost"
                     Grid.Column="1"
-                    VerticalAlignment="Center"/>
+                    VerticalAlignment="Center"
+                    VerticalContentAlignment="Center"/>
   </Grid>
 </UserControl>
