@@ -2,7 +2,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <PlatformTarget>x64</PlatformTarget>
+    <PlatformTarget Condition="$([MSBuild]::IsOSPlatform('Windows'))">x64</PlatformTarget>
+    <PlatformTarget Condition="!$([MSBuild]::IsOSPlatform('Windows'))">AnyCPU</PlatformTarget>
     <Nullable>enable</Nullable>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -43,10 +44,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Rendering\Shaders\line.vert" />
-    <EmbeddedResource Include="Rendering\Shaders\line.frag" />
-    <EmbeddedResource Include="Rendering\Shaders\mesh.vert" />
-    <EmbeddedResource Include="Rendering\Shaders\mesh.frag" />
+    <EmbeddedResource Include="Rendering/Shaders/*" />
   </ItemGroup>
 
 </Project>

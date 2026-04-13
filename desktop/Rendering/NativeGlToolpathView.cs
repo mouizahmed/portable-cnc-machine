@@ -1,5 +1,7 @@
 using System;
+using System.Diagnostics;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Input.Platform;
@@ -95,8 +97,12 @@ public sealed class NativeGlToolpathView : OpenGlControlBase, IToolpathViewportB
 
     // ---- GL state ----
 
-    private ToolpathGlRenderer? _renderer;
+    private IToolpathRenderBackend? _renderer;
+    private bool _rendererFailed;
     private int _lastResetToken = int.MinValue;
+    private double _lastLoggedRenderScale = double.NaN;
+    private int _lastLoggedPixelWidth = -1;
+    private int _lastLoggedPixelHeight = -1;
 
     // ---- Mouse input state ----
 
@@ -127,7 +133,7 @@ public sealed class NativeGlToolpathView : OpenGlControlBase, IToolpathViewportB
 
     public void LoadScene(GCodeDocument? document)
     {
-        _renderer?.SetDocument(document, IsDark());
+        _renderer?.LoadScene(document, IsDark());
         RequestNextFrameRendering();
     }
 
@@ -145,7 +151,7 @@ public sealed class NativeGlToolpathView : OpenGlControlBase, IToolpathViewportB
 
     public void ResetCamera()
     {
-        _renderer?.FitCamera();
+        _renderer?.ResetCamera();
         RequestNextFrameRendering();
     }
 
@@ -177,12 +183,26 @@ public sealed class NativeGlToolpathView : OpenGlControlBase, IToolpathViewportB
 
     protected override void OnOpenGlInit(GlInterface gl)
     {
-        var silkGl = GL.GetApi(name => gl.GetProcAddress(name));
-        _renderer = new ToolpathGlRenderer(silkGl);
-        _renderer.Initialize();
-        _renderer.SetDocument(Document, IsDark());
-        _renderer.SetCurrentLine(CurrentLine);
-        SyncAllState();
+        try
+        {
+            var silkGl = GL.GetApi(name => gl.GetProcAddress(name));
+            _renderer = new ToolpathGlRenderer(silkGl);
+            _renderer.Initialize();
+            _renderer.LoadScene(Document, IsDark());
+            _renderer.SetCurrentLine(CurrentLine);
+            SyncAllState();
+            Trace.WriteLine($"Toolpath viewer backend initialized: {_renderer.Diagnostics.ToLogString()}");
+            Console.WriteLine($"Toolpath viewer backend initialized: {_renderer.Diagnostics.ToLogString()}");
+            _rendererFailed = false;
+        }
+        catch (Exception ex)
+        {
+            _rendererFailed = true;
+            _renderer?.Dispose();
+            _renderer = null;
+            Trace.WriteLine($"Toolpath viewer initialization failed: {ex}");
+            Console.Error.WriteLine($"Toolpath viewer initialization failed: {ex}");
+        }
     }
 
     protected override void OnOpenGlDeinit(GlInterface gl)
@@ -193,8 +213,31 @@ public sealed class NativeGlToolpathView : OpenGlControlBase, IToolpathViewportB
 
     protected override void OnOpenGlRender(GlInterface gl, int fb)
     {
-        _renderer?.Render(fb, (float)Bounds.Width, (float)Bounds.Height);
-        if (_renderer?.WantsAnimationFrame == true)
+        if (_rendererFailed || _renderer == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
+            var pixelWidth = (float)Math.Max(1.0, Bounds.Width * scale);
+            var pixelHeight = (float)Math.Max(1.0, Bounds.Height * scale);
+            LogFramebufferMetrics(scale, pixelWidth, pixelHeight);
+            _renderer.Render(fb, pixelWidth, pixelHeight);
+        }
+        catch (Exception ex)
+        {
+            _rendererFailed = true;
+            var scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
+            var pixelWidth = (float)Math.Max(1.0, Bounds.Width * scale);
+            var pixelHeight = (float)Math.Max(1.0, Bounds.Height * scale);
+            Trace.WriteLine($"Toolpath viewer render failed: scale={scale:F2} framebuffer={pixelWidth:F0}x{pixelHeight:F0} bounds={Bounds.Width:F1}x{Bounds.Height:F1} {ex}");
+            Console.Error.WriteLine($"Toolpath viewer render failed: scale={scale:F2} framebuffer={pixelWidth:F0}x{pixelHeight:F0} bounds={Bounds.Width:F1}x{Bounds.Height:F1} {ex}");
+            return;
+        }
+
+        if (_renderer.WantsAnimationFrame)
         {
             RequestNextFrameRendering();
         }
@@ -210,7 +253,7 @@ public sealed class NativeGlToolpathView : OpenGlControlBase, IToolpathViewportB
 
         if (change.Property == DocumentProperty)
         {
-            _renderer.SetDocument((GCodeDocument?)change.NewValue, IsDark());
+            _renderer.LoadScene((GCodeDocument?)change.NewValue, IsDark());
             RequestNextFrameRendering();
         }
         else if (change.Property == CurrentLineProperty)
@@ -259,7 +302,7 @@ public sealed class NativeGlToolpathView : OpenGlControlBase, IToolpathViewportB
             {
                 _lastResetToken = token;
                 _renderer.SetCameraPreset(CameraPreset);
-                _renderer.FitCamera();
+                _renderer.ResetCamera();
                 RequestNextFrameRendering();
             }
         }
@@ -369,6 +412,27 @@ public sealed class NativeGlToolpathView : OpenGlControlBase, IToolpathViewportB
     private void SyncVisibility()
     {
         _renderer?.SetVisibility(ShowRapids, ShowCuts, ShowArcs, ShowPlunges, ShowCompletedPath, ShowRemainingPath);
+    }
+
+    private void LogFramebufferMetrics(double scale, float pixelWidth, float pixelHeight)
+    {
+        int width = (int)MathF.Round(pixelWidth);
+        int height = (int)MathF.Round(pixelHeight);
+        if (Math.Abs(scale - _lastLoggedRenderScale) < 0.001 &&
+            width == _lastLoggedPixelWidth &&
+            height == _lastLoggedPixelHeight)
+        {
+            return;
+        }
+
+        _lastLoggedRenderScale = scale;
+        _lastLoggedPixelWidth = width;
+        _lastLoggedPixelHeight = height;
+
+        string message =
+            $"Toolpath viewer framebuffer: scale={scale:F2} framebuffer={width}x{height} bounds={Bounds.Width:F1}x{Bounds.Height:F1}";
+        Trace.WriteLine(message);
+        Console.WriteLine(message);
     }
 
     private void StopPointerInteraction(IPointer pointer)

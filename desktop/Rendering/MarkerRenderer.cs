@@ -61,12 +61,11 @@ internal sealed class MarkerRenderer : IDisposable
         fixed (uint* p = indices)
             _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(indices.Length * sizeof(uint)), p, BufferUsageARB.StaticDraw);
 
-        // position (location 0) - 3 floats, stride 3 floats
+        // position (location 0) - 3 floats, stride 3 floats.
+        // The marker shaders derive a simple local-space normal from position,
+        // so there is no second vertex attribute to bind here.
         _gl.EnableVertexAttribArray(0);
         _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 3 * sizeof(float), (void*)0);
-
-        // We will pass normals as a uniform for simplicity (use view-space up)
-        // location 1 not needed for this simple marker
 
         _gl.BindVertexArray(0);
     }

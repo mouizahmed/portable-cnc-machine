@@ -9,11 +9,12 @@ namespace PortableCncApp.Rendering;
 /// <summary>
 /// Orchestrates all GL sub-renderers. All GL calls happen on the GL thread (inside OpenGlControlBase callbacks).
 /// </summary>
-internal sealed class ToolpathGlRenderer : IDisposable
+internal sealed class ToolpathGlRenderer : IToolpathRenderBackend
 {
     private readonly GL _gl;
     private uint _lineProgram;
     private uint _meshProgram;
+    private ToolpathRenderBackendDiagnostics _diagnostics = ToolpathRenderBackendDiagnostics.Empty;
 
     private readonly LineRenderer _lines;
     private readonly GridRenderer _grid;
@@ -68,14 +69,29 @@ internal sealed class ToolpathGlRenderer : IDisposable
         _marker = new MarkerRenderer(gl);
     }
 
+    public string BackendName => "OpenGL";
+    public ToolpathRenderBackendDiagnostics Diagnostics => _diagnostics;
+
     public void Initialize()
     {
-        _lineProgram = GlShaderHelper.CompileProgram(_gl,
-            "PortableCncApp.Rendering.Shaders.line.vert",
-            "PortableCncApp.Rendering.Shaders.line.frag");
-        _meshProgram = GlShaderHelper.CompileProgram(_gl,
-            "PortableCncApp.Rendering.Shaders.mesh.vert",
-            "PortableCncApp.Rendering.Shaders.mesh.frag");
+        var runtimeInfo = GlShaderHelper.GetRuntimeInfo(_gl);
+        var lineShaderSet = runtimeInfo.IsOpenGles
+            ? new GlShaderHelper.ShaderResourceSet(
+                "PortableCncApp.Rendering.Shaders.line.gles.vert",
+                "PortableCncApp.Rendering.Shaders.line.gles.frag")
+            : new GlShaderHelper.ShaderResourceSet(
+                "PortableCncApp.Rendering.Shaders.line.desktop.vert",
+                "PortableCncApp.Rendering.Shaders.line.desktop.frag");
+        var meshShaderSet = runtimeInfo.IsOpenGles
+            ? new GlShaderHelper.ShaderResourceSet(
+                "PortableCncApp.Rendering.Shaders.mesh.gles.vert",
+                "PortableCncApp.Rendering.Shaders.mesh.gles.frag")
+            : new GlShaderHelper.ShaderResourceSet(
+                "PortableCncApp.Rendering.Shaders.mesh.desktop.vert",
+                "PortableCncApp.Rendering.Shaders.mesh.desktop.frag");
+
+        _lineProgram = GlShaderHelper.CompileProgram(_gl, lineShaderSet);
+        _meshProgram = GlShaderHelper.CompileProgram(_gl, meshShaderSet);
 
         _lines.Initialize();
         _grid.Initialize();
@@ -86,6 +102,12 @@ internal sealed class ToolpathGlRenderer : IDisposable
         _gl.Enable(EnableCap.DepthTest);
         _gl.LineWidth(1.0f);
 
+        _diagnostics = new ToolpathRenderBackendDiagnostics(
+            BackendName,
+            runtimeInfo.Version,
+            runtimeInfo.ShadingLanguageVersion,
+            runtimeInfo.Vendor,
+            runtimeInfo.Renderer);
         _initialized = true;
     }
 
@@ -97,7 +119,7 @@ internal sealed class ToolpathGlRenderer : IDisposable
 
     // -- UI-thread setters (snapshot into pending state) --
 
-    public void SetDocument(GCodeDocument? document, bool isDark)
+    public void LoadScene(GCodeDocument? document, bool isDark)
     {
         _pendingDocument = document;
         _pendingIsDark = isDark;
@@ -143,7 +165,7 @@ internal sealed class ToolpathGlRenderer : IDisposable
         _pendingIsDark = isDark;
     }
 
-    public void FitCamera()
+    public void ResetCamera()
     {
         var doc = _document;
         if (doc != null && doc.HasGeometry)

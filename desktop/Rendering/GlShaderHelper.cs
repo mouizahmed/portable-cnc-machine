@@ -6,10 +6,19 @@ namespace PortableCncApp.Rendering;
 
 internal static class GlShaderHelper
 {
-    public static uint CompileProgram(GL gl, string vertResourceName, string fragResourceName)
+    internal readonly record struct ShaderResourceSet(string VertexResourceName, string FragmentResourceName);
+
+    internal readonly record struct GlRuntimeInfo(
+        string Version,
+        string ShadingLanguageVersion,
+        string Vendor,
+        string Renderer,
+        bool IsOpenGles);
+
+    public static uint CompileProgram(GL gl, ShaderResourceSet shaderSet)
     {
-        string vertSrc = LoadEmbeddedResource(vertResourceName);
-        string fragSrc = LoadEmbeddedResource(fragResourceName);
+        string vertSrc = LoadEmbeddedResource(shaderSet.VertexResourceName);
+        string fragSrc = LoadEmbeddedResource(shaderSet.FragmentResourceName);
 
         uint vert = CompileShader(gl, ShaderType.VertexShader, vertSrc);
         uint frag = CompileShader(gl, ShaderType.FragmentShader, fragSrc);
@@ -26,7 +35,8 @@ internal static class GlShaderHelper
             gl.DeleteProgram(program);
             gl.DeleteShader(vert);
             gl.DeleteShader(frag);
-            throw new InvalidOperationException($"Shader link failed: {log}");
+            throw new InvalidOperationException(
+                $"Shader link failed for {shaderSet.VertexResourceName} + {shaderSet.FragmentResourceName}: {log}");
         }
 
         gl.DetachShader(program, vert);
@@ -35,6 +45,21 @@ internal static class GlShaderHelper
         gl.DeleteShader(frag);
 
         return program;
+    }
+
+    public static GlRuntimeInfo GetRuntimeInfo(GL gl)
+    {
+        string version = SafeGetString(gl, StringName.Version);
+        string shadingLanguageVersion = SafeGetString(gl, StringName.ShadingLanguageVersion);
+        string vendor = SafeGetString(gl, StringName.Vendor);
+        string renderer = SafeGetString(gl, StringName.Renderer);
+
+        bool isOpenGles =
+            version.Contains("OpenGL ES", StringComparison.OrdinalIgnoreCase) ||
+            shadingLanguageVersion.Contains(" ES ", StringComparison.OrdinalIgnoreCase) ||
+            shadingLanguageVersion.Contains("OpenGL ES", StringComparison.OrdinalIgnoreCase);
+
+        return new GlRuntimeInfo(version, shadingLanguageVersion, vendor, renderer, isOpenGles);
     }
 
     private static uint CompileShader(GL gl, ShaderType type, string source)
@@ -52,6 +77,18 @@ internal static class GlShaderHelper
         }
 
         return shader;
+    }
+
+    private static string SafeGetString(GL gl, StringName name)
+    {
+        try
+        {
+            return gl.GetStringS(name) ?? "unknown";
+        }
+        catch
+        {
+            return "unknown";
+        }
     }
 
     private static string LoadEmbeddedResource(string name)
