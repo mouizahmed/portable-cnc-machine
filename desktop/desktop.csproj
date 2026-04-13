@@ -5,6 +5,7 @@
     <PlatformTarget>x64</PlatformTarget>
     <Nullable>enable</Nullable>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     
     <!-- Cross-platform settings -->
     <ImplicitUsings>enable</ImplicitUsings>
@@ -21,6 +22,7 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.3.11" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
     <PackageReference Include="Material.Icons.Avalonia" Version="2.4.1" />
     
     <!-- Serial port communication (cross-platform) -->
@@ -34,12 +36,17 @@
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="WebViewControl-Avalonia" Version="3.120.11" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\WebView\Toolpath3D\**\*.*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <PackageReference Include="Silk.NET.OpenGL" Version="2.22.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Rendering\Shaders\line.vert" />
+    <EmbeddedResource Include="Rendering\Shaders\line.frag" />
+    <EmbeddedResource Include="Rendering\Shaders\mesh.vert" />
+    <EmbeddedResource Include="Rendering\Shaders\mesh.frag" />
+  </ItemGroup>
+
 </Project>

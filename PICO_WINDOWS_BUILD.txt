@@ -1,0 +1,129 @@
+Portable CNC Machine Pico Build + Flash Instructions (Windows)
+
+Last verified: April 11, 2026
+
+This repo's Pico firmware lives in:
+  pico2W
+
+Important board note
+
+The build target must match the actual hardware:
+
+- For a regular Raspberry Pi Pico, build with:
+  -DPICO_BOARD=pico
+
+- For a Raspberry Pi Pico 2 W, build with:
+  -DPICO_BOARD=pico2_w
+
+Do not flash a UF2 built for Pico 2 W onto a regular Pico.
+
+Prerequisites
+
+Install these tools first. Open PowerShell and run:
+
+winget install --id Git.Git -e --source winget
+winget install --id Kitware.CMake -e --source winget
+winget install --id Ninja-build.Ninja -e --source winget
+winget install --id OpenJS.NodeJS.LTS -e --source winget
+winget install --id Arm.ArmGnuToolchain -e --source winget
+
+After installation, close PowerShell and open a new PowerShell window.
+
+Verify the tools are available
+
+Run:
+
+git --version
+cmake --version
+ninja --version
+node --version
+arm-none-eabi-gcc --version
+
+If any command fails, that tool is either not installed correctly or is not on PATH.
+
+Build the Pico firmware
+
+Regular Raspberry Pi Pico:
+
+cmake -S pico2W -B pico2W/build-pico -G Ninja -DPICO_BOARD=pico
+cmake --build pico2W/build-pico
+
+Raspberry Pi Pico 2 W:
+
+cmake -S pico2W -B pico2W/build-pico2w -G Ninja -DPICO_BOARD=pico2_w
+cmake --build pico2W/build-pico2w
+
+Open PowerShell in the repository root and run the pair of commands for the board you actually have.
+
+Notes:
+- This project can fetch the Pico SDK automatically.
+- You do not need to install pico-sdk manually unless you want to.
+- Node.js is required because the build generates embedded web assets.
+
+Output file
+
+For a regular Pico:
+
+pico2W\build-pico\portable_cnc_machine.uf2
+
+For a Pico 2 W:
+
+pico2W\build-pico2w\portable_cnc_machine.uf2
+
+Flash to the Pico
+
+1. Unplug the Pico.
+2. Hold the BOOTSEL button.
+3. Plug the Pico into USB while still holding BOOTSEL.
+4. Release BOOTSEL when the RPI-RP2 drive appears in Windows.
+5. Copy the correct UF2 file for the board onto the RPI-RP2 drive:
+
+   Regular Pico:
+   pico2W\build-pico\portable_cnc_machine.uf2
+
+   Pico 2 W:
+   pico2W\build-pico2w\portable_cnc_machine.uf2
+
+6. The Pico will reboot automatically into the new firmware.
+
+Optional PowerShell copy command:
+
+Regular Pico:
+Copy-Item .\pico2W\build-pico\portable_cnc_machine.uf2 <DRIVE_LETTER>:
+
+Pico 2 W:
+Copy-Item .\pico2W\build-pico2w\portable_cnc_machine.uf2 <DRIVE_LETTER>:
+
+Common problems
+
+- arm-none-eabi-gcc not found
+  The Arm GNU toolchain is missing or not on PATH.
+
+- node not found
+  Node.js is missing.
+
+- ninja not found
+  Ninja is missing. Install it, or rerun CMake without "-G Ninja".
+
+- CMake fails during first configure
+  Retry the configure step once. The project may be fetching the Pico SDK.
+
+Official download pages
+
+Git:
+https://git-scm.com/install/windows
+
+CMake:
+https://cmake.org/download/
+
+Node.js:
+https://nodejs.org/en/download
+
+Ninja:
+https://ninja-build.org/
+
+Arm GNU Toolchain:
+https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads
+
+WinGet / App Installer:
+https://learn.microsoft.com/en-us/windows/package-manager/winget/

@@ -1,16 +1,24 @@
 # Toolpath Renderer Migration Plan
-> Add a native OpenGL renderer using Avalonia `OpenGlControlBase` with `Silk.NET.OpenGL` as the primary path, while keeping the current Three.js/WebView viewer as a compatibility fallback.
+> Replace the current Three.js/WebView toolpath viewer with a native OpenGL renderer using Avalonia `OpenGlControlBase` and `Silk.NET.OpenGL`.
+
+## Implementation Status (2026-04-12)
+
+**Phases 0–3 are implemented and building.** The native renderer is live in the dashboard.
+
+- **Phase 0 ✅** — `IToolpathViewportBridge`, `ToolpathViewportState`, `RendererSelectionMode` created. `DashboardViewModel` no longer depends on `ToolpathWebViewerServer` for playback (now uses `DateTime`-based time accumulation).
+- **Phase 1 ✅** — `Silk.NET.OpenGL 2.22.0` added. `NativeGlToolpathView` (OpenGlControlBase), `ToolpathGlRenderer`, `GlMath`, `GlShaderHelper`, `OrbitCamera`, `LineRenderer`, `GridRenderer`, `MarkerRenderer` implemented. Shaders embedded as resources.
+- **Phase 2 ✅** — Static geometry upload from `GCodeDocument`. Grid/axes/stock box rendering. Orbit/pan/zoom camera. Completed-vs-remaining split via `gl_VertexID` uniform (no buffer rebuilds). Category visibility via uniform bitmask. Idle rendering via `RequestNextFrameRendering()`. Theme color support.
+- **Phase 3 ✅** — Playback driven by C# timer (`AdvancePlayback` time-accumulation). `PreviewLine` binding drives `CurrentLine` → renderer computes completed segment count. Marker position tracks last segment end at current line.
+- **Phase 4** — Performance benchmarking and validation. Not yet done.
+- **Phase 5** — WebView/CEF removal. Kept for now; `WebToolpathView` and `ToolpathWebViewerServer` still present but not rendered in dashboard.
+
+**Files added:** `desktop/Rendering/` directory with 13 C# files + 4 GLSL shaders.
+**`AllowUnsafeBlocks`** enabled in csproj for GL pointer operations.
 
 ## Goal
 Improve viewer performance, reduce app size and runtime overhead, and keep compatibility across weak, old, and unusual laptops.
 
-This is **not** a hard cutover plan.
-
-This plan keeps the current WebView renderer until the native renderer proves it is:
-
-- faster on target machines
-- stable on Windows, Linux, and macOS
-- functionally equivalent for the dashboard workflow
+This plan assumes work happens in an isolated environment / branch until the native renderer is ready to replace the current implementation.
 
 ## Why Migrate
 
@@ -35,33 +43,12 @@ This plan keeps the current WebView renderer until the native renderer proves it
 - It **can** reduce memory, startup cost, and packaging size.
 - It **can** improve frame pacing and large-scene handling if the native renderer is designed around mostly static GPU buffers.
 - It **does not automatically** make the viewer faster on every laptop.
-- It **does not justify** deleting the current WebView viewer before parity is proven.
+- It still requires parity for the dashboard workflow before merge.
 
 ## Non-Goals
-- Do not remove the WebView renderer in Phase 1.
 - Do not change the G-code parser or document model.
 - Do not redesign dashboard UX during renderer migration.
 - Do not assume a native GL path is universally more compatible than WebGL.
-
----
-
-## Renderer Strategy
-
-We will support two renderer paths:
-
-1. `Native GL` preferred path
-   - Avalonia `OpenGlControlBase`
-   - `Silk.NET.OpenGL` for GL API access
-
-2. `WebView` fallback path
-   - existing Three.js/WebView implementation
-   - used when native GL initialization fails, performs poorly, or is disabled by config
-
-### Why this architecture
-- Reduces migration risk
-- Preserves compatibility for odd hardware/driver combinations
-- Lets us compare native vs current renderer on the same app build
-- Avoids blocking the app on renderer parity work
 
 ---
 
@@ -81,7 +68,7 @@ The migration is only successful if it meets measurable goals.
 - Preview fidelity should remain acceptable while arc-heavy files avoid runaway segment counts.
 
 ### Required benchmarking
-Measure both renderer paths on at least:
+Measure the current implementation and the native implementation on at least:
 - one modern laptop
 - one older laptop with integrated graphics
 - one low-power / weaker CPU machine if available
@@ -106,13 +93,6 @@ Capture:
 - Dashboard ViewModels and UI bindings
 - `ThemeResources`
 
-### Existing pieces that will remain during migration
-- `desktop/Controls/WebToolpathView.cs`
-- `desktop/Services/Web/ToolpathWebViewerServer.cs`
-- `desktop/Assets/WebView/Toolpath3D/`
-
-These stay until native parity is proven.
-
 ### Existing pieces that should be abstracted
 The current WebView stack is doing more than hosting HTML:
 - scene creation from `GCodeDocument`
@@ -135,10 +115,6 @@ Dashboard / ViewModels
        -> camera commands
        -> capability / health reporting
 
-Renderer Host
-  -> NativeGlToolpathView        (preferred)
-  -> WebToolpathView             (fallback)
-
 NativeGlToolpathView
   -> OpenGlControlBase
   -> ToolpathGlRenderer
@@ -146,9 +122,6 @@ NativeGlToolpathView
        -> GridRenderer
        -> MarkerRenderer
        -> OrbitCamera
-
-WebToolpathView
-  -> existing Three.js viewer
 ```
 
 ### Core principle
@@ -189,11 +162,6 @@ The renderer should support lower-cost modes for weak systems:
 - simplified marker effects
 - optional disabling of point cloud / gizmo / nonessential polish
 
-### 5. Fallback is a product feature, not temporary scaffolding
-The fallback renderer should remain available until the native path has enough field confidence.
-
----
-
 ## New Dependencies
 
 Add to `desktop.csproj` when native work begins:
@@ -203,7 +171,7 @@ Add to `desktop.csproj` when native work begins:
 <PackageReference Include="Silk.NET.Maths" Version="2.x" />
 ```
 
-Do **not** remove `WebViewControl-Avalonia` during initial phases.
+Keep `WebViewControl-Avalonia` only until the native renderer is ready for full replacement in the isolated branch.
 
 ---
 
@@ -310,14 +278,9 @@ Required follow-up:
 1. Add `Silk.NET.OpenGL` and `Silk.NET.Maths`.
 2. Create `NativeGlToolpathView` based on `OpenGlControlBase`.
 3. Build GL context lifecycle, resize handling, invalidation, and disposal.
-4. Add renderer selection setting:
-   - `Auto`
-   - `Native`
-   - `WebView`
-5. On failure to initialize native GL, automatically fall back to WebView.
-6. Add adaptive settings hooks for render scale, optional FPS cap, and simplified effects.
+4. Add adaptive settings hooks for render scale, optional FPS cap, and simplified effects.
 
-**Result:** app can launch with either renderer.
+**Result:** native renderer is available for development and parity work.
 
 ### Phase 2 - Core native parity
 1. Implement static toolpath geometry upload from `GCodeDocument`.
@@ -342,7 +305,7 @@ Required follow-up:
 **Result:** native renderer reaches dashboard-level parity.
 
 ### Phase 4 - Performance validation
-1. Benchmark native vs WebView on representative machines.
+1. Benchmark native implementation against the current implementation on representative machines.
 2. Profile hot paths:
    - buffer uploads
    - draw counts
@@ -359,19 +322,12 @@ Required follow-up:
 
 **Result:** native path is validated for the target hardware mix.
 
-### Phase 5 - Default switch
-1. Make native GL the default in `Auto` mode if benchmarks and stability are acceptable.
-2. Keep WebView fallback available.
-3. Add logging/diagnostics to record which renderer was selected and whether fallback occurred.
+### Phase 5 - Replacement cutover
+1. Replace `WebToolpathView` with the native view in the dashboard.
+2. Remove WebView-specific infrastructure once native parity and performance targets are met.
+3. Re-run packaging and hardware validation after dependency removal.
 
-**Result:** native becomes the primary production path without removing compatibility.
-
-### Phase 6 - Optional WebView retirement
-Only after enough confidence:
-1. decide whether fallback is still needed
-2. remove WebView/CEF dependencies only if native path is proven acceptable across target machines
-
-This phase is optional.
+**Result:** native renderer fully replaces the current implementation.
 
 ---
 
@@ -402,7 +358,7 @@ This phase is optional.
 These modifications are expected because the current ViewModels and WebView path depend on Web-specific scene/playback transport.
 
 ## Files to Delete Later
-Only after Phase 6:
+After replacement cutover:
 - `desktop/Controls/WebToolpathView.cs`
 - `desktop/Services/Web/ToolpathWebViewerServer.cs`
 - `desktop/Assets/WebView/Toolpath3D/`
@@ -426,7 +382,6 @@ Only after Phase 6:
 - arc-heavy files can still overload the preview path if tessellation remains too dense
 
 ### Product risks
-- removing fallback too early would reduce compatibility
 - shipping without playback parity would regress existing dashboard behavior
 
 ---
@@ -437,7 +392,6 @@ Proceed with the native renderer only if all of the following remain true after 
 
 - native path is measurably lighter or faster on target laptops
 - dashboard behavior is at or near current parity
-- fallback works when native initialization fails
 - maintenance complexity stays acceptable
 
-If those are not true, keep the current WebView path and treat the native renderer as an optional experiment, not the default.
+If those are not true, do not merge the native replacement yet.

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Windows.Input;
 using Avalonia.Threading;
-using PortableCncApp.Services.Web;
 
 namespace PortableCncApp.ViewModels;
 
@@ -23,6 +22,8 @@ public sealed class DashboardViewModel : PageViewModelBase
     private double _playbackSpeed = 1.0;
     private int _playbackCursorIndex = -1;
     private int[] _playbackLineSequence = Array.Empty<int>();
+    private DateTime _lastTickTime;
+    private double _fractionalStep;
 
     public string CameraPreset
     {
@@ -144,6 +145,7 @@ public sealed class DashboardViewModel : PageViewModelBase
     public string ViewerTitle => "3D TOOLPATH";
     public string ViewerHint => "Wheel to zoom. Drag to orbit. Right-drag to pan. Live machine position overlays the loaded toolpath.";
     public bool HasLoadedToolpath => MainVm?.HasActiveGCodeDocument == true;
+    public bool HasNoLoadedToolpath => !HasLoadedToolpath;
 
     public bool IsViewerPanelOpen
     {
@@ -213,6 +215,7 @@ public sealed class DashboardViewModel : PageViewModelBase
     public void NotifyToolpathAvailabilityChanged()
     {
         RaisePropertyChanged(nameof(HasLoadedToolpath));
+        RaisePropertyChanged(nameof(HasNoLoadedToolpath));
         RaisePropertyChanged(nameof(ScrubberLabel));
         if (!HasLoadedToolpath)
         {
@@ -235,6 +238,8 @@ public sealed class DashboardViewModel : PageViewModelBase
     {
         if (propertyName is nameof(MainWindowViewModel.ActiveGCodeDocument) or nameof(MainWindowViewModel.TotalLines))
         {
+            RaisePropertyChanged(nameof(HasLoadedToolpath));
+            RaisePropertyChanged(nameof(HasNoLoadedToolpath));
             RebuildPlaybackLineSequence();
             RaisePropertyChanged(nameof(ScrubberLabel));
             RaiseTransportCanExecuteChanged();
@@ -253,7 +258,8 @@ public sealed class DashboardViewModel : PageViewModelBase
         ScrubberValue = PreviewLine;
         _playbackMode = mode;
         _playbackCursorIndex = ResolvePlaybackStartIndex(mode, PreviewLine);
-        ToolpathWebViewerServer.Instance.ClearReportedPosition();
+        _lastTickTime = DateTime.UtcNow;
+        _fractionalStep = 0;
         _playbackTimer.Start();
         RaisePropertyChanged(nameof(PlaybackStatusLabel));
         RaisePropertyChanged(nameof(PreviewPlaybackMode));
@@ -340,22 +346,29 @@ public sealed class DashboardViewModel : PageViewModelBase
             return;
         }
 
-        // JS is the single playback clock. Read the position it has reported back
-        // via the HTTP polling endpoint and sync the scrubber to it.
-        var server = ToolpathWebViewerServer.Instance;
-        int reportedKf = server.ReportedKeyframeIndex;
+        var now = DateTime.UtcNow;
+        double elapsed = (now - _lastTickTime).TotalSeconds;
+        _lastTickTime = now;
 
-        // reportedKf is JS keyframe index minus 1 (JS has an extra initial-position
-        // keyframe at index 0 that has no counterpart in _playbackLineSequence).
-        if (reportedKf >= 0 && reportedKf < _playbackLineSequence.Length && reportedKf != _playbackCursorIndex)
+        _fractionalStep += elapsed * BasePlaybackLinesPerSecond * _playbackSpeed;
+        int steps = (int)_fractionalStep;
+        _fractionalStep -= steps;
+
+        if (steps == 0) return;
+
+        if (_playbackMode == PlaybackMode.Forward)
         {
-            _playbackCursorIndex = reportedKf;
+            _playbackCursorIndex = Math.Min(_playbackCursorIndex + steps, _playbackLineSequence.Length - 1);
             SetPlaybackLine(_playbackLineSequence[_playbackCursorIndex]);
+            if (_playbackCursorIndex >= _playbackLineSequence.Length - 1)
+                StopPlayback();
         }
-
-        if (server.ReportedPlaybackDone)
+        else
         {
-            StopPlayback();
+            _playbackCursorIndex = Math.Max(_playbackCursorIndex - steps, 0);
+            SetPlaybackLine(_playbackLineSequence[_playbackCursorIndex]);
+            if (_playbackCursorIndex <= 0)
+                StopPlayback();
         }
     }
 

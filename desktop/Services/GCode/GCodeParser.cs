@@ -13,14 +13,85 @@ public static class GCodeParser
 {
     private const double InchToMillimeter = 25.4;
     private const double PositionEpsilon = 0.0001;
-    private const double ArcPointStepDegrees = 5.0;
+    private const double MinimumArcSegmentAngleDegrees = 6.0;
+    private const double TargetArcSegmentLengthMillimeters = 2.5;
+    private const int MinimumArcSegments = 8;
+    private const int MaximumArcSegments = 96;
     private const double MinimumSpikeThresholdMillimeters = 150.0;
     private const double MinimumEnvelopeMarginMillimeters = 25.0;
 
     public static async Task<GCodeDocument> ParseFileAsync(string filePath, CancellationToken cancellationToken)
     {
-        var lines = await File.ReadAllLinesAsync(filePath, cancellationToken);
-        return await Task.Run(() => ParseLines(lines, filePath, cancellationToken), cancellationToken);
+        var segments = new List<ToolpathSegment>();
+        var warnings = new List<GCodeParseWarning>();
+        var modal = new ModalState();
+
+        bool hasBounds = false;
+        double minX = 0;
+        double maxX = 0;
+        double minY = 0;
+        double maxY = 0;
+        double minZ = 0;
+        double maxZ = 0;
+        int totalLines = 0;
+
+        await using var stream = new FileStream(
+            filePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 16 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            string? line = await reader.ReadLineAsync();
+            if (line is null)
+            {
+                break;
+            }
+
+            totalLines++;
+            ProcessRawLine(
+                line,
+                totalLines,
+                ref modal,
+                segments,
+                warnings,
+                ref hasBounds,
+                ref minX,
+                ref maxX,
+                ref minY,
+                ref maxY,
+                ref minZ,
+                ref maxZ);
+        }
+
+        var filteredSegments = FilterSegments(
+            segments,
+            warnings,
+            ref hasBounds,
+            ref minX,
+            ref maxX,
+            ref minY,
+            ref maxY,
+            ref minZ,
+            ref maxZ);
+
+        return new GCodeDocument(
+            filePath,
+            filteredSegments.ToImmutableArray(),
+            warnings.ToImmutableArray(),
+            totalLines,
+            minX,
+            maxX,
+            minY,
+            maxY,
+            minZ,
+            maxZ);
     }
 
     private static GCodeDocument ParseLines(
@@ -43,23 +114,9 @@ public static class GCodeParser
         for (int index = 0; index < lines.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            int sourceLineNumber = index + 1;
-            var stripped = StripComments(lines[index]);
-            if (string.IsNullOrWhiteSpace(stripped))
-            {
-                continue;
-            }
-
-            var words = ParseWords(stripped, sourceLineNumber, warnings);
-            if (words.Count == 0)
-            {
-                continue;
-            }
-
-            ProcessLine(
-                words,
-                sourceLineNumber,
+            ProcessRawLine(
+                lines[index],
+                index + 1,
                 ref modal,
                 segments,
                 warnings,
@@ -94,6 +151,47 @@ public static class GCodeParser
             maxY,
             minZ,
             maxZ);
+    }
+
+    private static void ProcessRawLine(
+        string line,
+        int sourceLineNumber,
+        ref ModalState modal,
+        List<ToolpathSegment> segments,
+        List<GCodeParseWarning> warnings,
+        ref bool hasBounds,
+        ref double minX,
+        ref double maxX,
+        ref double minY,
+        ref double maxY,
+        ref double minZ,
+        ref double maxZ)
+    {
+        var stripped = StripComments(line);
+        if (string.IsNullOrWhiteSpace(stripped))
+        {
+            return;
+        }
+
+        var words = ParseWords(stripped, sourceLineNumber, warnings);
+        if (words.Count == 0)
+        {
+            return;
+        }
+
+        ProcessLine(
+            words,
+            sourceLineNumber,
+            ref modal,
+            segments,
+            warnings,
+            ref hasBounds,
+            ref minX,
+            ref maxX,
+            ref minY,
+            ref maxY,
+            ref minZ,
+            ref maxZ);
     }
 
     private static void ProcessLine(
@@ -379,7 +477,14 @@ public static class GCodeParser
         }
 
         double sweep = ComputeSweep(startAngle, endAngle, clockwise);
-        int steps = Math.Max(12, (int)Math.Ceiling(Math.Abs(sweep) / DegreesToRadians(ArcPointStepDegrees)));
+        double arcLength = Math.Abs(sweep) * radius;
+        double minimumAngleRadians = DegreesToRadians(MinimumArcSegmentAngleDegrees);
+        int stepsByAngle = (int)Math.Ceiling(Math.Abs(sweep) / minimumAngleRadians);
+        int stepsByLength = (int)Math.Ceiling(arcLength / TargetArcSegmentLengthMillimeters);
+        int steps = Math.Clamp(
+            Math.Max(Math.Max(stepsByAngle, stepsByLength), MinimumArcSegments),
+            MinimumArcSegments,
+            MaximumArcSegments);
 
         Point3D previous = start;
         for (int step = 1; step <= steps; step++)

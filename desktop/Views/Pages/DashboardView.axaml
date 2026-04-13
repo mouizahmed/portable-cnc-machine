@@ -6,6 +6,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             xmlns:rendering="clr-namespace:PortableCncApp.Rendering"
              x:Class="PortableCncApp.Views.Pages.DashboardView"
              x:DataType="vm:DashboardViewModel"
              mc:Ignorable="d">
@@ -208,6 +209,43 @@
                       Padding="8"
                       Height="NaN"
                       MinHeight="0">
+                <Grid ColumnDefinitions="Auto,*"
+                      ColumnSpacing="12">
+                  <TextBlock Text="Camera"
+                             Classes="Caption"
+                             FontWeight="SemiBold"
+                             VerticalAlignment="Center"/>
+                  <WrapPanel Grid.Column="1"
+                             Orientation="Horizontal"
+                             ItemSpacing="8"
+                             LineSpacing="6">
+                    <Button Content="Iso"
+                            Classes="AppButton"
+                            Command="{Binding SetCameraPresetCommand}"
+                            CommandParameter="Iso"/>
+                    <Button Content="Top"
+                            Classes="AppButton"
+                            Command="{Binding SetCameraPresetCommand}"
+                            CommandParameter="Top"/>
+                    <Button Content="Front"
+                            Classes="AppButton"
+                            Command="{Binding SetCameraPresetCommand}"
+                            CommandParameter="Front"/>
+                    <Button Content="Side"
+                            Classes="AppButton"
+                            Command="{Binding SetCameraPresetCommand}"
+                            CommandParameter="Side"/>
+                    <Button Content="Reset"
+                            Classes="AppButton"
+                            Command="{Binding ResetViewCommand}"/>
+                  </WrapPanel>
+                </Grid>
+              </Border>
+
+              <Border Classes="InsetSurface Subtle"
+                      Padding="8"
+                      Height="NaN"
+                      MinHeight="0">
                 <StackPanel Spacing="8">
                   <Grid ColumnDefinitions="Auto,*"
                         ColumnSpacing="12">
@@ -227,30 +265,50 @@
             </StackPanel>
           </Border>
 
-          <Border Grid.Row="1"
+          <Border x:Name="ViewerHost"
+                  Grid.Row="1"
                   Background="{DynamicResource ViewerBackgroundBrush}"
-                  IsEnabled="{Binding HasLoadedToolpath}"
                   CornerRadius="4"
                   BorderBrush="{DynamicResource BorderBrush}"
-                  BorderThickness="1">
-            <webControls:WebToolpathView Document="{Binding MainVm.ActiveGCodeDocument}"
-                                         CurrentLine="{Binding PreviewLine}"
-                                         PositionX="{Binding MainVm.WorkX}"
-                                         PositionY="{Binding MainVm.WorkY}"
-                                         PositionZ="{Binding MainVm.WorkZ}"
-                                         CameraPreset="{Binding CameraPreset}"
-                                         ResetViewToken="{Binding ResetViewToken}"
-                                         ShowRapids="{Binding ShowRapids}"
-                                         ShowCuts="{Binding ShowCuts}"
-                                         ShowArcs="{Binding ShowArcs}"
-                                         ShowPlunges="{Binding ShowPlunges}"
-                                         ShowCompletedPath="{Binding ShowCompletedPath}"
-                                         ShowRemainingPath="{Binding ShowRemainingPath}"
-                                         ShowStockBox="{Binding ShowStockBox}"
-                                         ShowGrid="{Binding ShowGrid}"
-                                         ShowToolpathPoints="{Binding ShowToolpathPoints}"
-                                         PreviewPlaybackMode="{Binding PreviewPlaybackMode}"
-                                         PreviewPlaybackStepDurationMs="{Binding PreviewPlaybackStepDurationMs}"/>
+                  BorderThickness="1"
+                  PointerPressed="OnViewerHostPointerPressed"
+                  PointerMoved="OnViewerHostPointerMoved"
+                  PointerReleased="OnViewerHostPointerReleased"
+                  PointerWheelChanged="OnViewerHostPointerWheelChanged"
+                  PointerCaptureLost="OnViewerHostPointerCaptureLost">
+            <Grid>
+              <rendering:NativeGlToolpathView x:Name="Viewer"
+                                              IsVisible="{Binding HasLoadedToolpath}"
+                                              Document="{Binding MainVm.ActiveGCodeDocument}"
+                                              CurrentLine="{Binding PreviewLine}"
+                                              PositionX="{Binding MainVm.WorkX}"
+                                              PositionY="{Binding MainVm.WorkY}"
+                                              PositionZ="{Binding MainVm.WorkZ}"
+                                              CameraPreset="{Binding CameraPreset}"
+                                              ResetViewToken="{Binding ResetViewToken}"
+                                              ShowRapids="{Binding ShowRapids}"
+                                              ShowCuts="{Binding ShowCuts}"
+                                              ShowArcs="{Binding ShowArcs}"
+                                              ShowPlunges="{Binding ShowPlunges}"
+                                              ShowCompletedPath="{Binding ShowCompletedPath}"
+                                              ShowRemainingPath="{Binding ShowRemainingPath}"
+                                              ShowStockBox="{Binding ShowStockBox}"
+                                              ShowGrid="{Binding ShowGrid}"
+                                              ShowToolpathPoints="{Binding ShowToolpathPoints}"
+                                              PreviewPlaybackMode="{Binding PreviewPlaybackMode}"
+                                              PreviewPlaybackStepDurationMs="{Binding PreviewPlaybackStepDurationMs}"/>
+
+              <Border IsVisible="{Binding HasNoLoadedToolpath}"
+                      Background="#14000000">
+                <TextBlock Text="Select a G-code file to build the 3D preview."
+                           Classes="FieldLabel"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"/>
+              </Border>
+            </Grid>
           </Border>
         </Grid>
       </controls:SectionCard.Body>

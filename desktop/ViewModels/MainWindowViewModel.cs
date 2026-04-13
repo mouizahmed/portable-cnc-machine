@@ -6,7 +6,6 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using PortableCncApp.Services;
 using PortableCncApp.Services.GCode;
-using PortableCncApp.Services.Web;
 
 namespace PortableCncApp.ViewModels;
 
@@ -505,7 +504,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             if (SetProperty(ref _activeGCodeDocument, value))
             {
-                ToolpathWebViewerServer.Instance.UpdateScene(value);
                 RaisePropertyChanged(nameof(HasActiveGCodeDocument));
                 RaisePropertyChanged(nameof(ActiveToolpathUnits));
                 RaisePropertyChanged(nameof(ActiveToolpathBounds));
