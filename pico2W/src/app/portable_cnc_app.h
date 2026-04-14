@@ -15,7 +15,6 @@
 #include "ui/screens/jog_screen.h"
 #include "ui/screens/main_menu_screen.h"
 #include "ui/screens/screen.h"
-#include "web/web_server.h"
 
 class PortableCncApp {
 public:
@@ -39,7 +38,6 @@ private:
     MainMenuScreen main_menu_screen_;
     JogScreen jog_screen_;
     FilesScreen files_screen_;
-    WebServer web_server_;
 
     void run_startup_sequence();
     bool poll_event(UiEvent& event);

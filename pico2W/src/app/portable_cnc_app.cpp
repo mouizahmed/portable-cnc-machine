@@ -12,8 +12,7 @@ PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_c
       frame_(display),
       main_menu_screen_(display, frame_, controller_),
       jog_screen_(display, frame_, controller_),
-      files_screen_(display, frame_, controller_),
-      web_server_(controller_, status_provider_) {
+      files_screen_(display, frame_, controller_) {
     router_.register_screen(main_menu_screen_);
     router_.register_screen(jog_screen_);
     router_.register_screen(files_screen_);
@@ -25,8 +24,6 @@ void PortableCncApp::run() {
     render_current_screen(true);
 
     while (true) {
-        web_server_.poll();
-
         if (controller_.poll_storage()) {
             render_storage_change();
         }
@@ -46,12 +43,10 @@ void PortableCncApp::run_startup_sequence() {
     calibration_app_.ensure_calibration(calibration);
     controller_.complete_calibration();
     storage_service_.initialize(job_state_machine_);
-    web_server_.init();
 
     // Resolve the initial SD mount state before the first UI paint so startup
     // doesn't flash MNT and immediately redraw to OK/ERR.
     while (storage_service_.state() == StorageState::Mounting) {
-        web_server_.poll();
         controller_.poll_storage();
         sleep_ms(UI_POLL_MS);
     }
