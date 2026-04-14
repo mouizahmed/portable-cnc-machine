@@ -73,3 +73,26 @@ bool JobStateMachine::add_file(const FileEntry& entry) {
     ++entry_count_;
     return true;
 }
+
+void JobStateMachine::set_state(JobState state, int16_t selected_index) {
+    switch (state) {
+        case JobState::NoFileSelected:
+            selected_index_ = -1;
+            state_ = state;
+            break;
+        case JobState::FileSelected:
+            if (selected_index >= 0 && selected_index < static_cast<int16_t>(entry_count_)) {
+                selected_index_ = selected_index;
+            }
+            state_ = state;
+            break;
+        case JobState::Running:
+            if (selected_index >= 0 && selected_index < static_cast<int16_t>(entry_count_)) {
+                selected_index_ = selected_index;
+            }
+            if (selected_index_ >= 0) {
+                state_ = state;
+            }
+            break;
+    }
+}

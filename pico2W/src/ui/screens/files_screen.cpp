@@ -72,7 +72,7 @@ UiEventResult FilesScreen::handle_event(const UiEvent& event) {
         return UiEventResult{};
     }
     const int16_t previous_index = model_.selected_index();
-    if (!model_.handle_event(JobEvent::SelectFile, index)) {
+    if (previous_index == index) {
         return UiEventResult{true, false, tab()};
     }
 
@@ -84,7 +84,7 @@ UiEventResult FilesScreen::handle_event(const UiEvent& event) {
     dirty_regions.add(kDetailsPanelRect);
 
     redraw_dirty(dirty_regions);
-    return UiEventResult{true, false, tab()};
+    return UiEventResult{true, false, tab(), false, false, UiCommandType::SelectFile, index};
 }
 
 void FilesScreen::draw_static_layout() const {

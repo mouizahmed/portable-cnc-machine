@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/comm/pico_uart_client.h"
 #include "app/jog/jog_state_machine.h"
 #include "app/job/job_state_machine.h"
 #include "app/machine/machine_state_machine.h"
@@ -30,6 +31,7 @@ private:
     JogStateMachine jog_state_machine_;
     JobStateMachine job_state_machine_;
     StorageService storage_service_;
+    PicoUartClient uart_client_;
     StatusProvider status_provider_;
     TouchCalibrationApp calibration_app_;
     AppFrame frame_;
@@ -40,6 +42,7 @@ private:
     void run_startup_sequence();
     bool poll_event(UiEvent& event);
     void handle_event(const UiEvent& event);
+    void handle_ui_command(const UiEventResult& result);
     void render_storage_change();
     void render_current_screen(bool full = false);
 };

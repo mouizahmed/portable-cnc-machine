@@ -64,8 +64,8 @@ Both Pico and Teensy 4.1 are 3.3V logic — direct connection, no level shifter 
 ## Full Pin Assignment Summary
 
 ```
-GP0  → Teensy UART TX
-GP1  → Teensy UART RX
+GP0  → Teensy RX1
+GP1  ← Teensy TX1
 GP2  → Display RST
 GP3  → Display DC
 GP4  → SPI0 MISO    (display + touch + SD, shared)

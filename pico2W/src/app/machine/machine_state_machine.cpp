@@ -46,3 +46,7 @@ bool MachineStateMachine::handle_event(MachineEvent event) {
 
     return false;
 }
+
+void MachineStateMachine::set_state(MachineState state) {
+    state_ = state;
+}

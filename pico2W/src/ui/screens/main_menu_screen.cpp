@@ -65,19 +65,15 @@ UiEventResult MainMenuScreen::handle_event(const UiEvent& event) {
                 }
 
                 if (machine_state_machine_.state() == MachineState::Idle) {
-                    const bool started_job = job_state_machine_.handle_event(JobEvent::StartRun);
-                    const bool started_machine = machine_state_machine_.handle_event(MachineEvent::RunRequested);
-                    return UiEventResult{true, false, tab(), started_job || started_machine, started_job || started_machine};
+                    return UiEventResult{true, false, tab(), false, false, UiCommandType::StartJob};
                 }
 
                 if (machine_state_machine_.state() == MachineState::Running) {
-                    const bool changed = machine_state_machine_.handle_event(MachineEvent::HoldRequested);
-                    return UiEventResult{true, false, tab(), changed, changed};
+                    return UiEventResult{true, false, tab(), false, false, UiCommandType::HoldJob};
                 }
 
                 if (machine_state_machine_.state() == MachineState::Hold) {
-                    const bool changed = machine_state_machine_.handle_event(MachineEvent::RunRequested);
-                    return UiEventResult{true, false, tab(), changed, changed};
+                    return UiEventResult{true, false, tab(), false, false, UiCommandType::ResumeJob};
                 }
                 return UiEventResult{true, false, tab()};
             case HomeAction::Jog:

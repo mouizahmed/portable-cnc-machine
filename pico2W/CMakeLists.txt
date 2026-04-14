@@ -33,6 +33,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 pico_sdk_init()
 
 add_executable(portable_cnc_machine
+    src/app/comm/pico_uart_client.cpp
     src/app/portable_cnc_app.cpp
     src/app/jog/jog_state_machine.cpp
     src/app/job/job_state_machine.cpp

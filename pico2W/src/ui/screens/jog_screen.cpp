@@ -142,38 +142,70 @@ UiEventResult JogScreen::handle_event(const UiEvent& event) {
         return UiEventResult{};
     }
 
-    const uint8_t previous_step = model_.step_index();
-    const uint8_t previous_feed = model_.feed_index();
     pressed_group_ = hit.group;
     pressed_index_ = hit.index;
-
-    if (!model_.handle_action(hit.action)) {
-        return UiEventResult{true, false, tab()};
-    }
 
     DirtyRectList dirty_regions;
     dirty_regions.add(button_rect(hit.group, hit.index));
     switch (hit.group) {
         case ButtonGroup::Jog:
-        case ButtonGroup::Action:
-            dirty_regions.add(position_axes_rect());
             break;
         case ButtonGroup::Step:
+        {
+            const uint8_t previous_step = model_.step_index();
+            if (!model_.handle_action(hit.action)) {
+                return UiEventResult{true, false, tab()};
+            }
             dirty_regions.add(button_rect(ButtonGroup::Step, previous_step));
             dirty_regions.add(button_rect(ButtonGroup::Step, model_.step_index()));
             dirty_regions.add(position_settings_rect());
             break;
+        }
         case ButtonGroup::Feed:
+        {
+            const uint8_t previous_feed = model_.feed_index();
+            if (!model_.handle_action(hit.action)) {
+                return UiEventResult{true, false, tab()};
+            }
             dirty_regions.add(button_rect(ButtonGroup::Feed, previous_feed));
             dirty_regions.add(button_rect(ButtonGroup::Feed, model_.feed_index()));
             dirty_regions.add(position_settings_rect());
+            break;
+        }
+        case ButtonGroup::Action:
             break;
         case ButtonGroup::None:
             break;
     }
 
     redraw_dirty(dirty_regions);
-    return UiEventResult{true, false, tab(), false};
+
+    UiCommandType command = UiCommandType::None;
+    switch (hit.action) {
+        case JogAction::MoveXNegative:
+        case JogAction::MoveXPositive:
+        case JogAction::MoveYNegative:
+        case JogAction::MoveYPositive:
+        case JogAction::MoveZNegative:
+        case JogAction::MoveZPositive:
+            command = UiCommandType::JogMove;
+            break;
+        case JogAction::HomeAll:
+            command = UiCommandType::HomeAll;
+            break;
+        case JogAction::ZeroAll:
+            command = UiCommandType::ZeroAll;
+            break;
+        case JogAction::SelectStepFine:
+        case JogAction::SelectStepMedium:
+        case JogAction::SelectStepCoarse:
+        case JogAction::SelectFeedSlow:
+        case JogAction::SelectFeedNormal:
+        case JogAction::SelectFeedFast:
+            break;
+    }
+
+    return UiEventResult{true, false, tab(), false, false, command, -1, hit.action};
 }
 
 void JogScreen::draw_static_layout() const {
