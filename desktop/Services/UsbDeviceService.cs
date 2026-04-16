@@ -19,28 +19,35 @@ public static class UsbDeviceService
         var pico  = new List<string>();
         var other = new List<string>();
 
-        try
+        if (OperatingSystem.IsWindows())
         {
-            using var searcher = new ManagementObjectSearcher(
-                "SELECT Name, DeviceID FROM Win32_PnPEntity WHERE Name LIKE '%(COM%)'");
-
-            foreach (ManagementObject obj in searcher.Get())
+            try
             {
-                var name     = obj["Name"]?.ToString() ?? "";
-                var deviceId = obj["DeviceID"]?.ToString() ?? "";
-                var match    = Regex.Match(name, @"COM\d+");
-                if (!match.Success) continue;
+                using var searcher = new ManagementObjectSearcher(
+                    "SELECT Name, DeviceID FROM Win32_PnPEntity WHERE Name LIKE '%(COM%)'");
 
-                var port = match.Value;
-                if (deviceId.Contains(RPI_VID, StringComparison.OrdinalIgnoreCase))
-                    pico.Add(port);
-                else
-                    other.Add(port);
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    var name     = obj["Name"]?.ToString() ?? "";
+                    var deviceId = obj["DeviceID"]?.ToString() ?? "";
+                    var match    = Regex.Match(name, @"COM\d+");
+                    if (!match.Success) continue;
+
+                    var port = match.Value;
+                    if (deviceId.Contains(RPI_VID, StringComparison.OrdinalIgnoreCase))
+                        pico.Add(port);
+                    else
+                        other.Add(port);
+                }
+            }
+            catch
+            {
+                // WMI unavailable — fall back to plain port enumeration
+                other.AddRange(System.IO.Ports.SerialPort.GetPortNames());
             }
         }
-        catch
+        else
         {
-            // WMI unavailable — fall back to plain port enumeration
             other.AddRange(System.IO.Ports.SerialPort.GetPortNames());
         }
 

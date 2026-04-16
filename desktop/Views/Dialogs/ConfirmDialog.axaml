@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PortableCncApp.Views.Dialogs.ConfirmDialog"
+        Width="420"
+        Height="180"
+        MinWidth="420"
+        MinHeight="180"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppBackgroundBrush}">
+
+  <Border Background="{DynamicResource PanelBackgroundBrush}" Padding="20">
+    <Grid RowDefinitions="*,Auto" RowSpacing="16">
+
+      <StackPanel Spacing="8">
+        <TextBlock x:Name="TitleText"
+                   Classes="FieldValue"
+                   FontSize="14"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"/>
+        <TextBlock x:Name="MessageText"
+                   Classes="FieldLabel"
+                   TextWrapping="Wrap"/>
+      </StackPanel>
+
+      <StackPanel Grid.Row="1"
+                  Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8">
+        <Button Content="Cancel"
+                Click="OnCancelClick"
+                Classes="AppButton"/>
+        <Button Content="Overwrite"
+                Click="OnConfirmClick"
+                Classes="AppButton Primary"/>
+      </StackPanel>
+
+    </Grid>
+  </Border>
+</Window>

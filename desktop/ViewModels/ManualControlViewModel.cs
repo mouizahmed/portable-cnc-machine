@@ -6,6 +6,10 @@ namespace PortableCncApp.ViewModels;
 
 public sealed class ManualControlViewModel : PageViewModelBase
 {
+    // ════════════════════════════════════════════════════════════════
+    // JOG SETTINGS
+    // ════════════════════════════════════════════════════════════════
+
     private double _jogStep = 1.0;
     public double JogStep
     {
@@ -42,25 +46,16 @@ public sealed class ManualControlViewModel : PageViewModelBase
         }
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // SPINDLE & OVERRIDES
+    // ════════════════════════════════════════════════════════════════
+
     private double _spindleTargetRpm = 12000;
     public double SpindleTargetRpm
     {
         get => _spindleTargetRpm;
         set => SetProperty(ref _spindleTargetRpm, ClampSpindleRpm(value));
     }
-
-    private string _customCommand = string.Empty;
-    public string CustomCommand
-    {
-        get => _customCommand;
-        set
-        {
-            if (SetProperty(ref _customCommand, value))
-                RaisePropertyChanged(nameof(CanSendCustomCommand));
-        }
-    }
-
-    public bool CanSendCustomCommand => IsMachineConnected && CustomCommand.Length > 0;
 
     private int _feedOverride = 100;
     public int FeedOverride
@@ -83,87 +78,9 @@ public sealed class ManualControlViewModel : PageViewModelBase
         set => SetProperty(ref _rapidOverride, value);
     }
 
-    public bool CanUseOverrides => IsMachineConnected;
-
-    private string _commandPreview = string.Empty;
-    public string CommandPreview
-    {
-        get => _commandPreview;
-        private set => SetProperty(ref _commandPreview, value);
-    }
-
-    public ICommand JogXPlusCommand { get; }
-    public ICommand JogXMinusCommand { get; }
-    public ICommand JogYPlusCommand { get; }
-    public ICommand JogYMinusCommand { get; }
-    public ICommand JogZPlusCommand { get; }
-    public ICommand JogZMinusCommand { get; }
-    public ICommand JogXMinusYPlusCommand { get; }
-    public ICommand JogXPlusYPlusCommand { get; }
-    public ICommand JogXMinusYMinusCommand { get; }
-    public ICommand JogXPlusYMinusCommand { get; }
-    public ICommand HomeAllCommand { get; }
-    public ICommand HomeXCommand { get; }
-    public ICommand HomeYCommand { get; }
-    public ICommand HomeZCommand { get; }
-    public ICommand ZeroAllCommand { get; }
-    public ICommand ZeroXCommand { get; }
-    public ICommand ZeroYCommand { get; }
-    public ICommand ZeroZCommand { get; }
-    public ICommand RaiseZSafeCommand { get; }
-    public ICommand GoToXYZeroCommand { get; }
-    public ICommand GoToWorkZeroCommand { get; }
-    public ICommand ParkMachineCommand { get; }
-    public ICommand SetStepCommand { get; }
-    public ICommand StartSpindleCommand { get; }
-    public ICommand StopSpindleCommand { get; }
-    public ICommand AlarmUnlockCommand { get; }
-    public ICommand SoftResetCommand { get; }
-    public ICommand ProbeZCommand { get; }
-    public ICommand JogCancelCommand { get; }
-    public ICommand SendCustomCommandCommand { get; }
-    public ICommand FeedOverridePlusCommand { get; }
-    public ICommand FeedOverrideMinusCommand { get; }
-    public ICommand FeedOverrideResetCommand { get; }
-    public ICommand SpindleOverridePlusCommand { get; }
-    public ICommand SpindleOverrideMinusCommand { get; }
-    public ICommand SpindleOverrideResetCommand { get; }
-    public ICommand RapidOverride25Command { get; }
-    public ICommand RapidOverride50Command { get; }
-    public ICommand RapidOverride100Command { get; }
-
-    public string MotionStateLabel => MainVm?.MotionStateLabel ?? "OFFLINE";
-    public IBrush MotionStateBrush => MainVm?.MotionStateBrush ?? ThemeResources.Brush("NeutralStateBrush", "#808080");
-    public string SafetyStateLabel => MainVm?.SafetyStateLabel ?? "OFFLINE";
-    public IBrush SafetyStateBrush => MainVm?.SafetyStateBrush ?? ThemeResources.Brush("NeutralStateBrush", "#808080");
-
-    public bool IsMachineConnected => MainVm?.IsConnected == true;
-    public bool CanJogControls => MainVm?.CanJog == true;
-    public bool CanHomeControls => MainVm?.CanHome == true;
-    public bool CanUseAuxControls => MainVm is { IsConnected: true } &&
-                                     MainVm.MotionState != MotionState.EStopLatched &&
-                                     MainVm.MotionState != MotionState.Fault;
-
-    public bool ShowJogLockout => !CanJogControls;
-    public bool ShowHomeLockout => !CanHomeControls;
-    public bool ShowAuxLockout => !CanUseAuxControls;
-
-    public string JogLockoutReason => GetJogLockoutReason();
-    public string HomeLockoutReason => GetHomeLockoutReason();
-    public string AuxiliaryLockoutReason => GetAuxiliaryLockoutReason();
-    public string JogModeText => ContinuousJog ? "CONTINUOUS" : "STEP";
-
-    public bool XHomed => MainVm?.XHomed == true;
-    public bool YHomed => MainVm?.YHomed == true;
-    public bool ZHomed => MainVm?.ZHomed == true;
-    public bool AllAxesHomed => MainVm?.AllAxesHomed == true;
-    public string HomingStatusText => MainVm?.HomingStatusText ?? "HOME X/Y/Z";
-
-    public bool XLimitTriggered => MainVm?.XLimitTriggered == true;
-    public bool YLimitTriggered => MainVm?.YLimitTriggered == true;
-    public bool ZLimitTriggered => MainVm?.ZLimitTriggered == true;
-    public bool LimitsTriggered => MainVm?.LimitsTriggered == true;
-    public string LimitSummaryText => MainVm?.LimitSummaryText ?? "XYZ CLEAR";
+    // ════════════════════════════════════════════════════════════════
+    // PROBE SETTINGS
+    // ════════════════════════════════════════════════════════════════
 
     private double _probeDepth = 10.0;
     public double ProbeDepth
@@ -179,61 +96,179 @@ public sealed class ManualControlViewModel : PageViewModelBase
         set => SetProperty(ref _probeFeed, Math.Clamp(value, 1, 500));
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // CUSTOM COMMAND
+    // ════════════════════════════════════════════════════════════════
+
+    private string _customCommand = string.Empty;
+    public string CustomCommand
+    {
+        get => _customCommand;
+        set
+        {
+            if (SetProperty(ref _customCommand, value))
+                RaisePropertyChanged(nameof(CanSendCustomCommand));
+        }
+    }
+
+    private string _commandPreview = string.Empty;
+    public string CommandPreview
+    {
+        get => _commandPreview;
+        private set => SetProperty(ref _commandPreview, value);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // STATE PASS-THROUGHS (delegated from MainVm)
+    // ════════════════════════════════════════════════════════════════
+
+    public string MotionStateLabel => MainVm?.MotionStateLabel ?? "OFFLINE";
+    public IBrush MotionStateBrush => MainVm?.MotionStateBrush ?? ThemeResources.Brush("NeutralStateBrush", "#808080");
+    public string SafetyStateLabel => MainVm?.SafetyStateLabel ?? "OFFLINE";
+    public IBrush SafetyStateBrush => MainVm?.SafetyStateBrush ?? ThemeResources.Brush("NeutralStateBrush", "#808080");
+
+    public bool IsMachineConnected => MainVm?.IsConnected == true;
+
+    // Homed / limit display — driven by @EVENT LIMIT; individual homed bits not yet in protocol.
+    public bool XHomed          => MainVm?.XHomed          == true;
+    public bool YHomed          => MainVm?.YHomed          == true;
+    public bool ZHomed          => MainVm?.ZHomed          == true;
+    public bool AllAxesHomed    => MainVm?.AllAxesHomed    == true;
+    public string HomingStatusText => MainVm?.HomingStatusText ?? "HOME X/Y/Z";
+
+    public bool XLimitTriggered  => MainVm?.XLimitTriggered  == true;
+    public bool YLimitTriggered  => MainVm?.YLimitTriggered  == true;
+    public bool ZLimitTriggered  => MainVm?.ZLimitTriggered  == true;
+    public bool LimitsTriggered  => MainVm?.LimitsTriggered  == true;
+    public string LimitSummaryText => MainVm?.LimitSummaryText ?? "XYZ CLEAR";
+
+    public bool SpindleOn          => MainVm?.SpindleOn      == true;
+    public string SpindleStatusText => MainVm?.SpindleStatusText ?? "OFF";
+    public double SpindleMinRpm    => MainVm?.Settings.Current.SpindleMinRpm ?? 1000;
+    public double SpindleMaxRpm    => MainVm?.Settings.Current.SpindleMaxRpm ?? 24000;
+
+    // ════════════════════════════════════════════════════════════════
+    // CAPABILITY FLAGS  (bound directly to Caps — no local re-derivation)
+    // ════════════════════════════════════════════════════════════════
+
+    /// <summary>Jog and motion controls: Caps.Motion.</summary>
+    public bool CanJogControls  => MainVm?.Caps.Motion  == true;
+    public bool CanHomeControls => MainVm?.Caps.Motion  == true;
+
+    /// <summary>Spindle controls: Caps.Spindle.</summary>
+    public bool CanUseAuxControls => MainVm?.Caps.Spindle == true;
+
+    /// <summary>Override sliders: Caps.Overrides.</summary>
+    public bool CanUseOverrides => MainVm?.Caps.Overrides == true;
+
+    /// <summary>Probe button: Caps.Probe.</summary>
+    public bool CanProbe => MainVm?.Caps.Probe == true;
+
+    /// <summary>Reset/alarm-unlock: Caps.Reset.</summary>
+    public bool CanAlarmUnlock => MainVm?.Caps.Reset == true;
+    public bool CanSoftReset   => MainVm?.Caps.Reset == true;
+
+    /// <summary>Jog cancel is always available when connected (realtime command).</summary>
     public bool CanCancelJog => MainVm?.IsConnected == true;
 
-    public bool CanAlarmUnlock => MainVm?.IsConnected == true &&
-                                  (MainVm.MotionState == MotionState.Fault ||
-                                   MainVm.MotionState == MotionState.EStopLatched);
-    public bool CanSoftReset => MainVm?.IsConnected == true;
-    public bool CanProbe => MainVm?.IsConnected == true && MainVm.MotionState == MotionState.Idle;
+    public bool CanSendCustomCommand => IsMachineConnected && CustomCommand.Length > 0;
 
-    public bool SpindleOn => MainVm?.SpindleOn == true;
-    public string SpindleStatusText => MainVm?.SpindleStatusText ?? "OFF";
-    public double SpindleMinRpm => MainVm?.Settings.Current.SpindleMinRpm ?? 1000;
-    public double SpindleMaxRpm => MainVm?.Settings.Current.SpindleMaxRpm ?? 24000;
+    public bool ShowJogLockout  => !CanJogControls;
+    public bool ShowHomeLockout => !CanHomeControls;
+    public bool ShowAuxLockout  => !CanUseAuxControls;
+
+    public string JogLockoutReason      => GetJogLockoutReason();
+    public string HomeLockoutReason     => GetHomeLockoutReason();
+    public string AuxiliaryLockoutReason => GetAuxiliaryLockoutReason();
+    public string JogModeText           => ContinuousJog ? "CONTINUOUS" : "STEP";
 
     public string ReadinessSummary
     {
         get
         {
             if (MainVm == null || !MainVm.IsConnected) return "Connect to the controller to enable manual actions.";
-            if (MainVm.MotionState == MotionState.EStopLatched) return "E-stop is latched. Clear it before using manual controls.";
-            if (MainVm.MotionState == MotionState.Fault) return "Controller alarm is active. Clear the fault before jogging.";
+            if (MainVm.MachineState == MachineOperationState.Estop)      return "E-stop is latched. Clear it before using manual controls.";
+            if (MainVm.MachineState == MachineOperationState.Fault)      return "Controller alarm is active. Clear the fault before jogging.";
+            if (MainVm.MachineState == MachineOperationState.CommsFault) return "Communications fault. Reconnect the controller.";
             if (!AllAxesHomed) return "Home the machine before relying on work zero or park moves.";
             if (LimitsTriggered) return "One or more limit inputs are active. Clear them before moving.";
             return "Manual motion and auxiliaries are ready.";
         }
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // COMMANDS
+    // ════════════════════════════════════════════════════════════════
+
+    public ICommand JogXPlusCommand        { get; }
+    public ICommand JogXMinusCommand       { get; }
+    public ICommand JogYPlusCommand        { get; }
+    public ICommand JogYMinusCommand       { get; }
+    public ICommand JogZPlusCommand        { get; }
+    public ICommand JogZMinusCommand       { get; }
+    public ICommand JogXMinusYPlusCommand  { get; }
+    public ICommand JogXPlusYPlusCommand   { get; }
+    public ICommand JogXMinusYMinusCommand { get; }
+    public ICommand JogXPlusYMinusCommand  { get; }
+    public ICommand HomeAllCommand         { get; }
+    public ICommand HomeXCommand           { get; }
+    public ICommand HomeYCommand           { get; }
+    public ICommand HomeZCommand           { get; }
+    public ICommand ZeroAllCommand         { get; }
+    public ICommand ZeroXCommand           { get; }
+    public ICommand ZeroYCommand           { get; }
+    public ICommand ZeroZCommand           { get; }
+    public ICommand RaiseZSafeCommand      { get; }
+    public ICommand GoToXYZeroCommand      { get; }
+    public ICommand GoToWorkZeroCommand    { get; }
+    public ICommand ParkMachineCommand     { get; }
+    public ICommand SetStepCommand         { get; }
+    public ICommand StartSpindleCommand    { get; }
+    public ICommand StopSpindleCommand     { get; }
+    public ICommand AlarmUnlockCommand     { get; }
+    public ICommand SoftResetCommand       { get; }
+    public ICommand ProbeZCommand          { get; }
+    public ICommand JogCancelCommand       { get; }
+    public ICommand SendCustomCommandCommand { get; }
+    public ICommand FeedOverridePlusCommand   { get; }
+    public ICommand FeedOverrideMinusCommand  { get; }
+    public ICommand FeedOverrideResetCommand  { get; }
+    public ICommand SpindleOverridePlusCommand  { get; }
+    public ICommand SpindleOverrideMinusCommand { get; }
+    public ICommand SpindleOverrideResetCommand { get; }
+    public ICommand RapidOverride25Command  { get; }
+    public ICommand RapidOverride50Command  { get; }
+    public ICommand RapidOverride100Command { get; }
+
     public ManualControlViewModel()
     {
         ThemeResources.ThemeChanged += HandleThemeChanged;
 
-        JogXPlusCommand = new RelayCommand(() => Jog("X", JogStep));
-        JogXMinusCommand = new RelayCommand(() => Jog("X", -JogStep));
-        JogYPlusCommand = new RelayCommand(() => Jog("Y", JogStep));
-        JogYMinusCommand = new RelayCommand(() => Jog("Y", -JogStep));
-        JogZPlusCommand = new RelayCommand(() => Jog("Z", JogStep));
-        JogZMinusCommand = new RelayCommand(() => Jog("Z", -JogStep));
-        JogXMinusYPlusCommand = new RelayCommand(() => JogXY(-JogStep, JogStep));
-        JogXPlusYPlusCommand = new RelayCommand(() => JogXY(JogStep, JogStep));
+        JogXPlusCommand        = new RelayCommand(() => Jog('X',  JogStep));
+        JogXMinusCommand       = new RelayCommand(() => Jog('X', -JogStep));
+        JogYPlusCommand        = new RelayCommand(() => Jog('Y',  JogStep));
+        JogYMinusCommand       = new RelayCommand(() => Jog('Y', -JogStep));
+        JogZPlusCommand        = new RelayCommand(() => Jog('Z',  JogStep));
+        JogZMinusCommand       = new RelayCommand(() => Jog('Z', -JogStep));
+        JogXMinusYPlusCommand  = new RelayCommand(() => JogXY(-JogStep,  JogStep));
+        JogXPlusYPlusCommand   = new RelayCommand(() => JogXY( JogStep,  JogStep));
         JogXMinusYMinusCommand = new RelayCommand(() => JogXY(-JogStep, -JogStep));
-        JogXPlusYMinusCommand = new RelayCommand(() => JogXY(JogStep, -JogStep));
+        JogXPlusYMinusCommand  = new RelayCommand(() => JogXY( JogStep, -JogStep));
 
         HomeAllCommand = new RelayCommand(() => Home("ALL"));
-        HomeXCommand = new RelayCommand(() => Home("X"));
-        HomeYCommand = new RelayCommand(() => Home("Y"));
-        HomeZCommand = new RelayCommand(() => Home("Z"));
+        HomeXCommand   = new RelayCommand(() => Home("X"));
+        HomeYCommand   = new RelayCommand(() => Home("Y"));
+        HomeZCommand   = new RelayCommand(() => Home("Z"));
 
         ZeroAllCommand = new RelayCommand(ZeroAll);
-        ZeroXCommand = new RelayCommand(() => Zero("X"));
-        ZeroYCommand = new RelayCommand(() => Zero("Y"));
-        ZeroZCommand = new RelayCommand(() => Zero("Z"));
+        ZeroXCommand   = new RelayCommand(() => Zero("X"));
+        ZeroYCommand   = new RelayCommand(() => Zero("Y"));
+        ZeroZCommand   = new RelayCommand(() => Zero("Z"));
 
-        RaiseZSafeCommand = new RelayCommand(RaiseZSafe);
-        GoToXYZeroCommand = new RelayCommand(GoToXYZero);
+        RaiseZSafeCommand   = new RelayCommand(RaiseZSafe);
+        GoToXYZeroCommand   = new RelayCommand(GoToXYZero);
         GoToWorkZeroCommand = new RelayCommand(GoToWorkZero);
-        ParkMachineCommand = new RelayCommand(ParkMachine);
+        ParkMachineCommand  = new RelayCommand(ParkMachine);
 
         SetStepCommand = new RelayCommand<object>(param =>
         {
@@ -244,31 +279,36 @@ public sealed class ManualControlViewModel : PageViewModelBase
         });
 
         StartSpindleCommand = new RelayCommand(StartSpindle);
-        StopSpindleCommand = new RelayCommand(StopSpindle);
-        AlarmUnlockCommand = new RelayCommand(AlarmUnlock);
-        SoftResetCommand = new RelayCommand(SoftReset);
-        ProbeZCommand = new RelayCommand(ProbeZ);
-        JogCancelCommand = new RelayCommand(JogCancel);
+        StopSpindleCommand  = new RelayCommand(StopSpindle);
+        AlarmUnlockCommand  = new RelayCommand(AlarmUnlock);
+        SoftResetCommand    = new RelayCommand(SoftReset);
+        ProbeZCommand       = new RelayCommand(ProbeZ);
+        JogCancelCommand    = new RelayCommand(JogCancel);
         SendCustomCommandCommand = new RelayCommand(SendCustom);
 
-        FeedOverridePlusCommand  = new RelayCommand(() => { FeedOverride += 10; SetCommandPreview($"Feed override: {FeedOverride}%"); });
-        FeedOverrideMinusCommand = new RelayCommand(() => { FeedOverride -= 10; SetCommandPreview($"Feed override: {FeedOverride}%"); });
-        FeedOverrideResetCommand = new RelayCommand(() => { FeedOverride  = 100; SetCommandPreview("Feed override reset: 100%"); });
-        SpindleOverridePlusCommand  = new RelayCommand(() => { SpindleOverride += 10; SetCommandPreview($"Spindle override: {SpindleOverride}%"); });
-        SpindleOverrideMinusCommand = new RelayCommand(() => { SpindleOverride -= 10; SetCommandPreview($"Spindle override: {SpindleOverride}%"); });
-        SpindleOverrideResetCommand = new RelayCommand(() => { SpindleOverride  = 100; SetCommandPreview("Spindle override reset: 100%"); });
-        RapidOverride25Command  = new RelayCommand(() => { RapidOverride = 25;  SetCommandPreview("Rapid override: 25%"); });
-        RapidOverride50Command  = new RelayCommand(() => { RapidOverride = 50;  SetCommandPreview("Rapid override: 50%"); });
-        RapidOverride100Command = new RelayCommand(() => { RapidOverride = 100; SetCommandPreview("Rapid override: 100%"); });
+        FeedOverridePlusCommand    = new RelayCommand(() => SendFeedOverride(FeedOverride + 10));
+        FeedOverrideMinusCommand   = new RelayCommand(() => SendFeedOverride(FeedOverride - 10));
+        FeedOverrideResetCommand   = new RelayCommand(() => SendFeedOverride(100));
+        SpindleOverridePlusCommand  = new RelayCommand(() => SendSpindleOverride(SpindleOverride + 10));
+        SpindleOverrideMinusCommand = new RelayCommand(() => SendSpindleOverride(SpindleOverride - 10));
+        SpindleOverrideResetCommand = new RelayCommand(() => SendSpindleOverride(100));
+        RapidOverride25Command  = new RelayCommand(() => SendRapidOverride(25));
+        RapidOverride50Command  = new RelayCommand(() => SendRapidOverride(50));
+        RapidOverride100Command = new RelayCommand(() => SendRapidOverride(100));
 
         UpdateSelectionPreview();
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // LIFECYCLE
+    // ════════════════════════════════════════════════════════════════
+
     protected override void OnMainViewModelSet()
     {
         if (MainVm == null) return;
-
-        SpindleTargetRpm = MainVm.SpindleSpeed > 0 ? MainVm.SpindleSpeed : Math.Max(12000, SpindleMinRpm);
+        SpindleTargetRpm = MainVm.SpindleSpeed > 0
+            ? MainVm.SpindleSpeed
+            : Math.Max(12000, SpindleMinRpm);
         RaiseMainStateProperties();
         UpdateSelectionPreview();
     }
@@ -278,12 +318,13 @@ public sealed class ManualControlViewModel : PageViewModelBase
         switch (propertyName)
         {
             case nameof(MainWindowViewModel.IsConnected):
-            case nameof(MainWindowViewModel.MotionState):
+            case nameof(MainWindowViewModel.MachineState):
             case nameof(MainWindowViewModel.MotionStateLabel):
             case nameof(MainWindowViewModel.MotionStateBrush):
-            case nameof(MainWindowViewModel.SafetyState):
+            case nameof(MainWindowViewModel.SafetyLevel):
             case nameof(MainWindowViewModel.SafetyStateLabel):
             case nameof(MainWindowViewModel.SafetyStateBrush):
+            case nameof(MainWindowViewModel.Caps):
             case nameof(MainWindowViewModel.CanJog):
             case nameof(MainWindowViewModel.CanHome):
             case nameof(MainWindowViewModel.XHomed):
@@ -315,6 +356,12 @@ public sealed class ManualControlViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(CanJogControls));
         RaisePropertyChanged(nameof(CanHomeControls));
         RaisePropertyChanged(nameof(CanUseAuxControls));
+        RaisePropertyChanged(nameof(CanUseOverrides));
+        RaisePropertyChanged(nameof(CanProbe));
+        RaisePropertyChanged(nameof(CanAlarmUnlock));
+        RaisePropertyChanged(nameof(CanSoftReset));
+        RaisePropertyChanged(nameof(CanCancelJog));
+        RaisePropertyChanged(nameof(CanSendCustomCommand));
         RaisePropertyChanged(nameof(ShowJogLockout));
         RaisePropertyChanged(nameof(ShowHomeLockout));
         RaisePropertyChanged(nameof(ShowAuxLockout));
@@ -336,220 +383,256 @@ public sealed class ManualControlViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(ReadinessSummary));
         RaisePropertyChanged(nameof(SpindleMinRpm));
         RaisePropertyChanged(nameof(SpindleMaxRpm));
-        RaisePropertyChanged(nameof(CanCancelJog));
-        RaisePropertyChanged(nameof(CanAlarmUnlock));
-        RaisePropertyChanged(nameof(CanSoftReset));
-        RaisePropertyChanged(nameof(CanProbe));
-        RaisePropertyChanged(nameof(CanSendCustomCommand));
-        RaisePropertyChanged(nameof(CanUseOverrides));
     }
 
-    private void Jog(string axis, double distance)
-    {
-        if (MainVm == null || !MainVm.CanJog) return;
+    // ════════════════════════════════════════════════════════════════
+    // JOG COMMANDS
+    // ════════════════════════════════════════════════════════════════
 
-        var command = $"$J=G91 G21 {axis}{distance:+0.000;-0.000} F{JogFeedRate:F0}";
-        SetCommandPreview(command);
+    private void Jog(char axis, double distance)
+    {
+        if (MainVm == null || !CanJogControls) return;
+
+        MainVm.Protocol.SendJog(axis, (float)distance, (float)JogFeedRate);
+        SetCommandPreview($"@JOG AXIS={axis} DIST={distance:+0.000;-0.000} FEED={JogFeedRate:F0}");
         MainVm.StatusMessage = $"Jog {axis} {distance:+0.000;-0.000} mm";
     }
 
     private void JogXY(double xDistance, double yDistance)
     {
-        if (MainVm == null || !MainVm.CanJog) return;
+        if (MainVm == null || !CanJogControls) return;
 
-        var command = $"$J=G91 G21 X{xDistance:+0.000;-0.000} Y{yDistance:+0.000;-0.000} F{JogFeedRate:F0}";
-        SetCommandPreview(command);
+        // Jog X then Y as two commands; diagonal jog requires firmware support.
+        // Send the dominant axis if they differ, or X first.
+        MainVm.Protocol.SendJog('X', (float)xDistance, (float)JogFeedRate);
+        MainVm.Protocol.SendJog('Y', (float)yDistance, (float)JogFeedRate);
+        SetCommandPreview($"@JOG X{xDistance:+0.000;-0.000} Y{yDistance:+0.000;-0.000} FEED={JogFeedRate:F0}");
         MainVm.StatusMessage = $"Jog X{xDistance:+0.000;-0.000} Y{yDistance:+0.000;-0.000} mm";
     }
 
-    private void Home(string axis)
+    private void JogCancel()
     {
-        if (MainVm == null || !MainVm.CanHome) return;
-
-        if (axis == "ALL")
-        {
-            MainVm.SetAllAxesHomed(true);
-            SetCommandPreview("$H");
-            MainVm.StatusMessage = "Homing all axes...";
-            return;
-        }
-
-        MainVm.SetAxisHomed(axis, true);
-        SetCommandPreview($"Home {axis} axis");
-        MainVm.StatusMessage = $"Homing {axis} axis...";
+        if (MainVm == null || !CanCancelJog) return;
+        MainVm.Protocol.SendJogCancel();
+        SetCommandPreview("@JOG_CANCEL");
+        MainVm.StatusMessage = "Jog cancelled.";
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // HOME COMMANDS
+    // ════════════════════════════════════════════════════════════════
+
+    private void Home(string axes)
+    {
+        if (MainVm == null || !CanHomeControls) return;
+
+        MainVm.Protocol.SendHome();
+        SetCommandPreview("@HOME");
+        MainVm.StatusMessage = axes == "ALL"
+            ? "Homing all axes..."
+            : $"Homing {axes} axis...";
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // ZERO COMMANDS
+    // ════════════════════════════════════════════════════════════════
 
     private void Zero(string axis)
     {
-        if (MainVm == null) return;
+        if (MainVm == null || !CanJogControls) return;
 
-        switch (axis)
-        {
-            case "X":
-                MainVm.WorkX = 0;
-                MainVm.WorkOffsetX = MainVm.MachineX;
-                break;
-            case "Y":
-                MainVm.WorkY = 0;
-                MainVm.WorkOffsetY = MainVm.MachineY;
-                break;
-            case "Z":
-                MainVm.WorkZ = 0;
-                MainVm.WorkOffsetZ = MainVm.MachineZ;
-                break;
-        }
-
-        SetCommandPreview($"G10 L20 P1 {axis}0");
+        MainVm.Protocol.SendZero(axis);
+        SetCommandPreview($"@ZERO AXIS={axis}");
         MainVm.StatusMessage = $"Work offset {axis} = 0";
     }
 
     private void ZeroAll()
     {
-        if (MainVm == null) return;
+        if (MainVm == null || !CanJogControls) return;
 
-        MainVm.WorkX = 0;
-        MainVm.WorkY = 0;
-        MainVm.WorkZ = 0;
-        MainVm.WorkOffsetX = MainVm.MachineX;
-        MainVm.WorkOffsetY = MainVm.MachineY;
-        MainVm.WorkOffsetZ = MainVm.MachineZ;
-        SetCommandPreview("G10 L20 P1 X0 Y0 Z0");
+        MainVm.Protocol.SendZero("ALL");
+        SetCommandPreview("@ZERO AXIS=ALL");
         MainVm.StatusMessage = "Work offset XYZ = 0";
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // MOVE-TO COMMANDS  (require @JOG with absolute target — not yet in protocol)
+    // ════════════════════════════════════════════════════════════════
+
     private void RaiseZSafe()
     {
-        if (MainVm == null || !MainVm.CanJog) return;
-
-        SetCommandPreview($"Raise Z +{JogStep:0.000} mm at {JogFeedRate:F0} mm/min");
-        MainVm.StatusMessage = $"Raise Z by {JogStep:+0.000;-0.000} mm";
+        if (MainVm == null || !CanJogControls) return;
+        MainVm.Protocol.SendJog('Z', (float)JogStep, (float)JogFeedRate);
+        SetCommandPreview($"@JOG AXIS=Z DIST=+{JogStep:0.000} FEED={JogFeedRate:F0}");
+        MainVm.StatusMessage = $"Raise Z by +{JogStep:0.000} mm";
     }
 
     private void GoToXYZero()
     {
-        if (MainVm == null || !MainVm.CanJog) return;
-
-        SetCommandPreview("Move to work XY zero, keep current Z");
+        if (MainVm == null || !CanJogControls) return;
+        SetCommandPreview("Move to work XY zero (not yet implemented)");
         MainVm.StatusMessage = "Move to work XY zero";
     }
 
     private void GoToWorkZero()
     {
-        if (MainVm == null || !MainVm.CanJog) return;
-
-        SetCommandPreview("Move to work XYZ zero");
+        if (MainVm == null || !CanJogControls) return;
+        SetCommandPreview("Move to work XYZ zero (not yet implemented)");
         MainVm.StatusMessage = "Move to work XYZ zero";
     }
 
     private void ParkMachine()
     {
-        if (MainVm == null || !MainVm.CanJog) return;
-
-        SetCommandPreview("Retract to safe Z, then move to park position");
+        if (MainVm == null || !CanJogControls) return;
+        SetCommandPreview("Park (not yet implemented)");
         MainVm.StatusMessage = "Move to park position";
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // SPINDLE COMMANDS
+    // ════════════════════════════════════════════════════════════════
 
     private void StartSpindle()
     {
         if (MainVm == null || !CanUseAuxControls) return;
 
-        var rpm = ClampSpindleRpm(SpindleTargetRpm);
+        var rpm = (int)ClampSpindleRpm(SpindleTargetRpm);
         SpindleTargetRpm = rpm;
-        MainVm.SpindleSpeed = rpm;
-        MainVm.SpindleOn = true;
-        SetCommandPreview($"M3 S{rpm:F0}");
-        MainVm.StatusMessage = $"Spindle start {rpm:F0} RPM";
+        MainVm.Protocol.SendSpindleOn(rpm);
+        SetCommandPreview($"@SPINDLE_ON RPM={rpm}");
+        MainVm.StatusMessage = $"Spindle start {rpm} RPM";
     }
 
     private void StopSpindle()
     {
         if (MainVm == null || !CanUseAuxControls) return;
 
-        MainVm.SpindleOn = false;
-        MainVm.SpindleSpeed = 0;
-        SetCommandPreview("M5");
+        MainVm.Protocol.SendSpindleOff();
+        SetCommandPreview("@SPINDLE_OFF");
         MainVm.StatusMessage = "Spindle stopped";
     }
 
-    private void JogCancel()
-    {
-        if (MainVm == null || !CanCancelJog) return;
+    // ════════════════════════════════════════════════════════════════
+    // OVERRIDE COMMANDS
+    // ════════════════════════════════════════════════════════════════
 
-        SetCommandPreview("\\x85 (jog cancel)");
-        MainVm.StatusMessage = "Jog cancelled.";
+    private void SendFeedOverride(int percent)
+    {
+        FeedOverride = percent;
+        MainVm?.Protocol.SendOverrideFeed(FeedOverride);
+        SetCommandPreview($"@OVERRIDE FEED={FeedOverride}");
     }
+
+    private void SendSpindleOverride(int percent)
+    {
+        SpindleOverride = percent;
+        MainVm?.Protocol.SendOverrideSpindle(SpindleOverride);
+        SetCommandPreview($"@OVERRIDE SPINDLE={SpindleOverride}");
+    }
+
+    private void SendRapidOverride(int percent)
+    {
+        RapidOverride = percent;
+        MainVm?.Protocol.SendOverrideRapid(RapidOverride);
+        SetCommandPreview($"@OVERRIDE RAPID={RapidOverride}");
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // RESET / ALARM COMMANDS
+    // ════════════════════════════════════════════════════════════════
 
     private void AlarmUnlock()
     {
         if (MainVm == null || !CanAlarmUnlock) return;
 
-        SetCommandPreview("$X");
-        MainVm.StatusMessage = "Alarm cleared — check machine position before moving.";
+        MainVm.Protocol.SendReset();
+        SetCommandPreview("@RESET");
+        MainVm.StatusMessage = "Reset sent — check machine position before moving.";
     }
 
     private void SoftReset()
     {
         if (MainVm == null || !CanSoftReset) return;
 
-        SetCommandPreview("\\x18 (Ctrl+X soft reset)");
+        MainVm.Protocol.SendReset();
+        SetCommandPreview("@RESET");
         MainVm.StatusMessage = "Soft reset sent.";
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // PROBE COMMAND
+    // ════════════════════════════════════════════════════════════════
 
     private void ProbeZ()
     {
         if (MainVm == null || !CanProbe) return;
 
-        var command = $"G38.2 Z-{ProbeDepth:0.###} F{ProbeFeed:F0}";
-        SetCommandPreview(command);
+        // Probe is not yet a first-class @-protocol command; preview only for now.
+        SetCommandPreview($"Probe Z -{ProbeDepth:0.###} mm @ {ProbeFeed:F0} mm/min (not yet implemented)");
         MainVm.StatusMessage = $"Probing Z down {ProbeDepth:0.###} mm at {ProbeFeed:F0} mm/min";
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // CUSTOM COMMAND
+    // ════════════════════════════════════════════════════════════════
+
     private void SendCustom()
     {
-        if (!CanSendCustomCommand) return;
+        if (!CanSendCustomCommand || MainVm == null) return;
 
+        // Raw passthrough via serial — useful for diagnostics / unsupported commands.
+        MainVm.Serial.SendCommand(CustomCommand);
         SetCommandPreview(CustomCommand);
-        if (MainVm != null)
-            MainVm.StatusMessage = $"Sent: {CustomCommand}";
+        MainVm.StatusMessage = $"Sent: {CustomCommand}";
         CustomCommand = string.Empty;
     }
 
-    private double ClampSpindleRpm(double value)
-        => Math.Clamp(value, SpindleMinRpm, SpindleMaxRpm);
-
-    private void SetCommandPreview(string preview)
-        => CommandPreview = preview;
-
-    private void UpdateSelectionPreview()
-    {
-        var mode = ContinuousJog ? "continuous" : "step";
-        CommandPreview = $"Jog selection: {JogStep:0.###} mm at {JogFeedRate:F0} mm/min ({mode})";
-    }
+    // ════════════════════════════════════════════════════════════════
+    // LOCKOUT REASONS
+    // ════════════════════════════════════════════════════════════════
 
     private string GetJogLockoutReason()
     {
         if (MainVm == null || !MainVm.IsConnected) return "Machine is disconnected.";
-        if (MainVm.MotionState == MotionState.EStopLatched) return "E-stop is latched.";
-        if (MainVm.MotionState == MotionState.Fault) return "Controller fault is active.";
-        if (MainVm.MotionState != MotionState.Idle) return $"Controller is busy: {MainVm.MotionStateLabel}.";
+        if (MainVm.MachineState == MachineOperationState.Estop)      return "E-stop is latched.";
+        if (MainVm.MachineState == MachineOperationState.Fault)      return "Controller fault is active.";
+        if (MainVm.MachineState == MachineOperationState.CommsFault) return "Communications fault.";
+        if (!MainVm.Caps.Motion) return $"Motion not available: {MainVm.MotionStateLabel}.";
         return "Jogging is ready.";
     }
 
     private string GetHomeLockoutReason()
     {
         if (MainVm == null || !MainVm.IsConnected) return "Machine is disconnected.";
-        if (MainVm.MotionState == MotionState.EStopLatched) return "E-stop is latched.";
-        if (MainVm.MotionState == MotionState.Fault) return "Controller fault is active.";
-        if (MainVm.MotionState != MotionState.Idle) return $"Controller is busy: {MainVm.MotionStateLabel}.";
+        if (MainVm.MachineState == MachineOperationState.Estop)      return "E-stop is latched.";
+        if (MainVm.MachineState == MachineOperationState.Fault)      return "Controller fault is active.";
+        if (MainVm.MachineState == MachineOperationState.CommsFault) return "Communications fault.";
+        if (!MainVm.Caps.Motion) return $"Motion not available: {MainVm.MotionStateLabel}.";
         return AllAxesHomed ? "Axes are already homed." : "Homing is available.";
     }
 
     private string GetAuxiliaryLockoutReason()
     {
         if (MainVm == null || !MainVm.IsConnected) return "Machine is disconnected.";
-        if (MainVm.MotionState == MotionState.EStopLatched) return "E-stop is latched.";
-        if (MainVm.MotionState == MotionState.Fault) return "Controller fault is active.";
+        if (MainVm.MachineState == MachineOperationState.Estop)      return "E-stop is latched.";
+        if (MainVm.MachineState == MachineOperationState.Fault)      return "Controller fault is active.";
+        if (!MainVm.Caps.Spindle) return $"Spindle not available: {MainVm.MotionStateLabel}.";
         return "Spindle controls are available.";
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // HELPERS
+    // ════════════════════════════════════════════════════════════════
+
+    private double ClampSpindleRpm(double value)
+        => Math.Clamp(value, SpindleMinRpm, SpindleMaxRpm);
+
+    private void SetCommandPreview(string preview) => CommandPreview = preview;
+
+    private void UpdateSelectionPreview()
+    {
+        var mode = ContinuousJog ? "continuous" : "step";
+        CommandPreview = $"Jog selection: {JogStep:0.###} mm at {JogFeedRate:F0} mm/min ({mode})";
     }
 
     private void HandleThemeChanged(object? sender, EventArgs e) => RaiseMainStateProperties();

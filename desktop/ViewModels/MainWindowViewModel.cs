@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Windows.Input;
 using Avalonia.Media;
-using Avalonia.Threading;
 using PortableCncApp.Services;
 using PortableCncApp.Services.GCode;
 
@@ -12,21 +11,24 @@ namespace PortableCncApp.ViewModels;
 public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 {
     // ════════════════════════════════════════════════════════════════
-    // SERIAL SERVICE
+    // SERVICES
     // ════════════════════════════════════════════════════════════════
 
     public SerialService Serial { get; } = new();
     public SettingsService Settings { get; } = new();
-    private DispatcherTimer? _pollTimer;
+
+    /// <summary>
+    /// Typed @-protocol wrapper around SerialService.
+    /// Child ViewModels use this for all outbound commands (Phase 3-5).
+    /// </summary>
+    public PicoProtocolService Protocol { get; }
 
     // ════════════════════════════════════════════════════════════════
-    // CONNECTION STATUS (USB CDC Serial to Pico 2W)
+    // CONNECTION STATUS
     // ════════════════════════════════════════════════════════════════
-    
+
     private ConnectionStatus _piConnectionStatus = ConnectionStatus.Disconnected;
-    /// <summary>
-    /// Connection status to the Pico 2W (Safety Supervisor) via USB CDC Serial
-    /// </summary>
+    /// <summary>Connection status for the desktop → Pico USB CDC link.</summary>
     public ConnectionStatus PiConnectionStatus
     {
         get => _piConnectionStatus;
@@ -47,9 +49,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     private ConnectionStatus _teensyConnectionStatus = ConnectionStatus.Disconnected;
-    /// <summary>
-    /// Connection status to the Teensy 4.1 (Motion Controller) via Pico relay
-    /// </summary>
+    /// <summary>Teensy link status — updated via @EVENT TEENSY_CONNECTED / TEENSY_DISCONNECTED.</summary>
     public ConnectionStatus TeensyConnectionStatus
     {
         get => _teensyConnectionStatus;
@@ -69,7 +69,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public bool IsConnected => PiConnectionStatus == ConnectionStatus.Connected && 
+    public bool IsConnected => PiConnectionStatus == ConnectionStatus.Connected &&
                                TeensyConnectionStatus == ConnectionStatus.Connected;
 
     public string ConnectionStatusText
@@ -77,29 +77,36 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         get
         {
             if (IsConnected) return "CONNECTED";
-            if (PiConnectionStatus == ConnectionStatus.Connecting || 
+            if (PiConnectionStatus == ConnectionStatus.Connecting ||
                 TeensyConnectionStatus == ConnectionStatus.Connecting)
                 return "CONNECTING...";
             return "DISCONNECTED";
         }
     }
 
-    public IBrush ConnectionStatusBrush => IsConnected 
+    public IBrush ConnectionStatusBrush => IsConnected
         ? ThemeResources.Brush("SuccessBrush", "#3BB273")
         : ThemeResources.Brush("NeutralStateBrush", "#808080");
 
     // ════════════════════════════════════════════════════════════════
-    // MOTION CONTROLLER STATE (Teensy FSM)
+    // MACHINE OPERATION STATE  (driven by @STATE from Pico)
     // ════════════════════════════════════════════════════════════════
-    
-    private MotionState _motionState = MotionState.PowerUp;
-    public MotionState MotionState
+
+    private MachineOperationState _machineState;
+    /// <summary>
+    /// Unified 13-state FSM. Set exclusively by PicoProtocolService.StateChanged.
+    /// Never written locally.
+    /// </summary>
+    public MachineOperationState MachineState
     {
-        get => _motionState;
-        set
+        get => _machineState;
+        private set
         {
-            if (SetProperty(ref _motionState, value))
+            if (SetProperty(ref _machineState, value))
             {
+#pragma warning disable CS0618
+                RaisePropertyChanged(nameof(MotionState));     // compat adapter
+#pragma warning restore CS0618
                 RaisePropertyChanged(nameof(MotionStateLabel));
                 RaisePropertyChanged(nameof(MotionStateBrush));
                 RaisePropertyChanged(nameof(CanStart));
@@ -111,43 +118,75 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public string MotionStateLabel => MotionState switch
+    public string MotionStateLabel => MachineState switch
     {
-        MotionState.PowerUp => "POWER UP",
-        MotionState.Idle => "IDLE",
-        MotionState.Homing => "HOMING",
-        MotionState.Jog => "JOG",
-        MotionState.RunProgram => "RUNNING",
-        MotionState.FeedHold => "PAUSED",
-        MotionState.Fault => "FAULT",
-        MotionState.EStopLatched => "E-STOP",
-        _ => "UNKNOWN"
+        MachineOperationState.Booting            => "BOOTING",
+        MachineOperationState.TeensyDisconnected => "TEENSY DISC.",
+        MachineOperationState.Syncing            => "SYNCING",
+        MachineOperationState.Idle               => "IDLE",
+        MachineOperationState.Homing             => "HOMING",
+        MachineOperationState.Jog                => "JOG",
+        MachineOperationState.Starting           => "STARTING",
+        MachineOperationState.Running            => "RUNNING",
+        MachineOperationState.Hold               => "PAUSED",
+        MachineOperationState.Fault              => "FAULT",
+        MachineOperationState.Estop              => "E-STOP",
+        MachineOperationState.CommsFault         => "COMMS FAULT",
+        MachineOperationState.Uploading          => "UPLOADING",
+        _                                        => "UNKNOWN"
     };
 
-    public IBrush MotionStateBrush => MotionState switch
+    public IBrush MotionStateBrush => MachineState switch
     {
-        MotionState.Idle => ThemeResources.Brush("SuccessBrush", "#3BB273"),
-        MotionState.Homing => ThemeResources.Brush("InfoBrush", "#5B9BD5"),
-        MotionState.Jog => ThemeResources.Brush("InfoBrush", "#5B9BD5"),
-        MotionState.RunProgram => ThemeResources.Brush("SuccessBrush", "#3BB273"),
-        MotionState.FeedHold => ThemeResources.Brush("WarningBrush", "#E0A100"),
-        MotionState.Fault => ThemeResources.Brush("DangerBrush", "#D83B3B"),
-        MotionState.EStopLatched => ThemeResources.Brush("DangerBrush", "#D83B3B"),
-        _ => ThemeResources.Brush("NeutralStateBrush", "#808080")
+        MachineOperationState.Idle      => ThemeResources.Brush("SuccessBrush",      "#3BB273"),
+        MachineOperationState.Homing    => ThemeResources.Brush("InfoBrush",         "#5B9BD5"),
+        MachineOperationState.Jog       => ThemeResources.Brush("InfoBrush",         "#5B9BD5"),
+        MachineOperationState.Starting  => ThemeResources.Brush("InfoBrush",         "#5B9BD5"),
+        MachineOperationState.Running   => ThemeResources.Brush("SuccessBrush",      "#3BB273"),
+        MachineOperationState.Hold      => ThemeResources.Brush("WarningBrush",      "#E0A100"),
+        MachineOperationState.Fault     => ThemeResources.Brush("DangerBrush",       "#D83B3B"),
+        MachineOperationState.Estop     => ThemeResources.Brush("DangerBrush",       "#D83B3B"),
+        MachineOperationState.Uploading => ThemeResources.Brush("InfoBrush",         "#5B9BD5"),
+        _                               => ThemeResources.Brush("NeutralStateBrush", "#808080")
     };
 
-    // ════════════════════════════════════════════════════════════════
-    // SAFETY SUPERVISOR STATE (Raspberry Pi FSM)
-    // ════════════════════════════════════════════════════════════════
-    
-    private SafetyState _safetyState = SafetyState.SafeIdle;
-    public SafetyState SafetyState
+    // ── Backward-compat adapter — remove after Phase 4 (ManualControlVm / DiagnosticsVm rework) ──
+
+    [Obsolete("Use MachineState. This adapter is kept so Phase 3-5 child VMs still compile.")]
+    public MotionState MotionState
     {
-        get => _safetyState;
-        set
+        get => MachineState switch
         {
-            if (SetProperty(ref _safetyState, value))
+            MachineOperationState.Idle     => MotionState.Idle,
+            MachineOperationState.Homing   => MotionState.Homing,
+            MachineOperationState.Jog      => MotionState.Jog,
+            MachineOperationState.Running  => MotionState.RunProgram,
+            MachineOperationState.Hold     => MotionState.FeedHold,
+            MachineOperationState.Fault    => MotionState.Fault,
+            MachineOperationState.Estop    => MotionState.EStopLatched,
+            _                              => MotionState.PowerUp
+        };
+        // No-op setter — MachineState is read-only, driven by @STATE from Pico.
+        [Obsolete("No-op. State is driven by @STATE from Pico. Remove after Phase 4.")]
+        set { }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // SAFETY LEVEL  (driven by @SAFETY from Pico)
+    // ════════════════════════════════════════════════════════════════
+
+    private SafetyLevel _safetyLevel;
+    /// <summary>Orthogonal safety supervision level. Set by PicoProtocolService.SafetyChanged.</summary>
+    public SafetyLevel SafetyLevel
+    {
+        get => _safetyLevel;
+        private set
+        {
+            if (SetProperty(ref _safetyLevel, value))
             {
+#pragma warning disable CS0618
+                RaisePropertyChanged(nameof(SafetyState));     // compat adapter
+#pragma warning restore CS0618
                 RaisePropertyChanged(nameof(SafetyStateLabel));
                 RaisePropertyChanged(nameof(SafetyStateBrush));
                 RaisePropertyChanged(nameof(HasSafetyWarning));
@@ -155,43 +194,78 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public string SafetyStateLabel => SafetyState switch
+    public string SafetyStateLabel => SafetyLevel switch
     {
-        SafetyState.SafeIdle => "SAFE",
-        SafetyState.Monitoring => "MONITORING",
-        SafetyState.Warning => "WARNING",
-        SafetyState.EStopActive => "E-STOP",
-        SafetyState.ShutdownSequence => "SHUTDOWN",
-        _ => "UNKNOWN"
+        SafetyLevel.Safe       => "SAFE",
+        SafetyLevel.Monitoring => "MONITORING",
+        SafetyLevel.Warning    => "WARNING",
+        SafetyLevel.Critical   => "CRITICAL",
+        _                      => "UNKNOWN"
     };
 
-    public IBrush SafetyStateBrush => SafetyState switch
+    public IBrush SafetyStateBrush => SafetyLevel switch
     {
-        SafetyState.SafeIdle => ThemeResources.Brush("SuccessBrush", "#3BB273"),
-        SafetyState.Monitoring => ThemeResources.Brush("SuccessBrush", "#3BB273"),
-        SafetyState.Warning => ThemeResources.Brush("WarningBrush", "#E0A100"),
-        SafetyState.EStopActive => ThemeResources.Brush("DangerBrush", "#D83B3B"),
-        SafetyState.ShutdownSequence => ThemeResources.Brush("DangerBrush", "#D83B3B"),
-        _ => ThemeResources.Brush("NeutralStateBrush", "#808080")
+        SafetyLevel.Safe       => ThemeResources.Brush("SuccessBrush",      "#3BB273"),
+        SafetyLevel.Monitoring => ThemeResources.Brush("SuccessBrush",      "#3BB273"),
+        SafetyLevel.Warning    => ThemeResources.Brush("WarningBrush",      "#E0A100"),
+        SafetyLevel.Critical   => ThemeResources.Brush("DangerBrush",       "#D83B3B"),
+        _                      => ThemeResources.Brush("NeutralStateBrush", "#808080")
     };
 
-    public bool HasSafetyWarning => SafetyState == SafetyState.Warning || 
-                                    SafetyState == SafetyState.EStopActive;
+    public bool HasSafetyWarning => SafetyLevel == SafetyLevel.Warning ||
+                                    SafetyLevel == SafetyLevel.Critical;
+
+    // ── Backward-compat adapter — remove after Phase 4 ──
+
+    [Obsolete("Use SafetyLevel. Kept so Phase 3-5 child VMs still compile.")]
+    public SafetyState SafetyState
+    {
+        get => SafetyLevel switch
+        {
+            SafetyLevel.Safe       => SafetyState.SafeIdle,
+            SafetyLevel.Monitoring => SafetyState.Monitoring,
+            SafetyLevel.Warning    => SafetyState.Warning,
+            SafetyLevel.Critical   => SafetyState.EStopActive,
+            _                      => SafetyState.SafeIdle
+        };
+        [Obsolete("No-op. Safety level is driven by @SAFETY from Pico. Remove after Phase 4.")]
+        set { }
+    }
 
     // ════════════════════════════════════════════════════════════════
-    // MACHINE / WORK COORDINATES
+    // CAPABILITY FLAGS  (driven by @CAPS from Pico)
     // ════════════════════════════════════════════════════════════════
-    
+
+    private CapsFlags _caps;
+    /// <summary>Per-action capability flags. Set by PicoProtocolService.CapsChanged.</summary>
+    public CapsFlags Caps
+    {
+        get => _caps;
+        private set
+        {
+            if (SetProperty(ref _caps, value))
+            {
+                RaisePropertyChanged(nameof(CanStart));
+                RaisePropertyChanged(nameof(CanPause));
+                RaisePropertyChanged(nameof(CanStop));
+                RaisePropertyChanged(nameof(CanHome));
+                RaisePropertyChanged(nameof(CanJog));
+            }
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // MACHINE / WORK COORDINATES  (driven by @POS from Pico)
+    // ════════════════════════════════════════════════════════════════
+
     private double _machineX;
     public double MachineX
     {
         get => _machineX;
-        set
+        private set
         {
             if (SetProperty(ref _machineX, value))
-            {
                 RaisePropertyChanged(nameof(MachineCoordinatesText));
-            }
         }
     }
 
@@ -199,12 +273,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public double MachineY
     {
         get => _machineY;
-        set
+        private set
         {
             if (SetProperty(ref _machineY, value))
-            {
                 RaisePropertyChanged(nameof(MachineCoordinatesText));
-            }
         }
     }
 
@@ -212,12 +284,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public double MachineZ
     {
         get => _machineZ;
-        set
+        private set
         {
             if (SetProperty(ref _machineZ, value))
-            {
                 RaisePropertyChanged(nameof(MachineCoordinatesText));
-            }
         }
     }
 
@@ -225,7 +295,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public double WorkX
     {
         get => _workX;
-        set
+        set   // still settable for Phase 4 compat (ManualControlVm writes WorkX = 0)
         {
             if (SetProperty(ref _workX, value))
             {
@@ -263,53 +333,23 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private double _workOffsetX;
-    public double WorkOffsetX
-    {
-        get => _workOffsetX;
-        set
-        {
-            _hasWorkOffset = true;
-            SetProperty(ref _workOffsetX, value);
-        }
-    }
+    // Phase 4: remove WorkOffset properties once ManualControlVm stops writing them.
+    public double WorkOffsetX { get; set; }
+    public double WorkOffsetY { get; set; }
+    public double WorkOffsetZ { get; set; }
 
-    private double _workOffsetY;
-    public double WorkOffsetY
-    {
-        get => _workOffsetY;
-        set
-        {
-            _hasWorkOffset = true;
-            SetProperty(ref _workOffsetY, value);
-        }
-    }
-
-    private double _workOffsetZ;
-    public double WorkOffsetZ
-    {
-        get => _workOffsetZ;
-        set
-        {
-            _hasWorkOffset = true;
-            SetProperty(ref _workOffsetZ, value);
-        }
-    }
-
-    private bool _hasWorkOffset;
-
-    // Backward-compatible aliases for existing bindings that still expect one coordinate set.
+    // Backward-compatible aliases for bindings that still expect one coordinate set.
     public double PositionX { get => WorkX; set => WorkX = value; }
     public double PositionY { get => WorkY; set => WorkY = value; }
     public double PositionZ { get => WorkZ; set => WorkZ = value; }
 
-    public string WorkCoordinatesText => $"{WorkX:F3}, {WorkY:F3}, {WorkZ:F3}";
+    public string WorkCoordinatesText    => $"{WorkX:F3}, {WorkY:F3}, {WorkZ:F3}";
     public string MachineCoordinatesText => $"{MachineX:F3}, {MachineY:F3}, {MachineZ:F3}";
 
     // ════════════════════════════════════════════════════════════════
-    // SPINDLE & FEED
+    // SPINDLE & FEED  (display only — not yet driven by protocol)
     // ════════════════════════════════════════════════════════════════
-    
+
     private double _spindleSpeed;
     public double SpindleSpeed
     {
@@ -334,6 +374,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 RaisePropertyChanged(nameof(SpindleStatusText));
         }
     }
+
     public string SpindleStatusText => SpindleOn ? $"ON ({SpindleSpeed:F0} RPM)" : "OFF";
 
     private double _feedRate;
@@ -343,23 +384,24 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         set
         {
             if (SetProperty(ref _feedRate, value))
-            {
                 RaisePropertyChanged(nameof(FeedSpindleSummary));
-            }
         }
     }
 
     private int _feedOverride = 100;
     public int FeedOverride { get => _feedOverride; set => SetProperty(ref _feedOverride, value); }
+
     public string FeedSpindleSummary => $"{FeedRate:F0} / {SpindleSpeed:F0}";
 
     // ════════════════════════════════════════════════════════════════
-    // ENVIRONMENTAL SENSORS
+    // ENVIRONMENTAL
     // ════════════════════════════════════════════════════════════════
-    
+
     private double _temperature;
     public double Temperature { get => _temperature; set => SetProperty(ref _temperature, value); }
 
+    // Homed / limit state — updated by @EVENT LIMIT.
+    // Individual homed axes are not yet in the protocol; kept for Phase 4 compat.
     private bool _xHomed;
     public bool XHomed
     {
@@ -409,7 +451,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         get
         {
             if (AllAxesHomed) return "XYZ HOMED";
-
             var missing = new List<string>(3);
             if (!XHomed) missing.Add("X");
             if (!YHomed) missing.Add("Y");
@@ -422,7 +463,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public bool XLimitTriggered
     {
         get => _xLimitTriggered;
-        set
+        private set
         {
             if (SetProperty(ref _xLimitTriggered, value))
             {
@@ -437,7 +478,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public bool YLimitTriggered
     {
         get => _yLimitTriggered;
-        set
+        private set
         {
             if (SetProperty(ref _yLimitTriggered, value))
             {
@@ -452,7 +493,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public bool ZLimitTriggered
     {
         get => _zLimitTriggered;
-        set
+        private set
         {
             if (SetProperty(ref _zLimitTriggered, value))
             {
@@ -471,7 +512,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         get
         {
             if (!LimitsTriggered) return "XYZ CLEAR";
-
             var active = new List<string>(3);
             if (XLimitTriggered) active.Add("X");
             if (YLimitTriggered) active.Add("Y");
@@ -483,18 +523,28 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // ════════════════════════════════════════════════════════════════
     // PROGRAM STATUS
     // ════════════════════════════════════════════════════════════════
-    
+
     private string? _currentFileName;
-    public string? CurrentFileName { get => _currentFileName; set => SetProperty(ref _currentFileName, value); }
+    public string? CurrentFileName
+    {
+        get => _currentFileName;
+        set
+        {
+            if (SetProperty(ref _currentFileName, value))
+            {
+                RaisePropertyChanged(nameof(CanStart));
+            }
+        }
+    }
 
     private int _currentLine;
-    public int CurrentLine { get => _currentLine; set => SetProperty(ref _currentLine, value); }
+    public int CurrentLine { get => _currentLine; private set => SetProperty(ref _currentLine, value); }
 
     private int _totalLines;
     public int TotalLines { get => _totalLines; set => SetProperty(ref _totalLines, value); }
 
     private double _progress;
-    public double Progress { get => _progress; set => SetProperty(ref _progress, value); }
+    public double Progress { get => _progress; private set => SetProperty(ref _progress, value); }
 
     private GCodeDocument? _activeGCodeDocument;
     public GCodeDocument? ActiveGCodeDocument
@@ -516,14 +566,19 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     public bool HasActiveGCodeDocument => ActiveGCodeDocument?.HasGeometry == true;
-    public string ActiveToolpathUnits => ActiveGCodeDocument?.DisplayUnitsLabel ?? "--";
+    public string ActiveToolpathUnits   => ActiveGCodeDocument?.DisplayUnitsLabel ?? "--";
+
     public string ActiveToolpathBounds => ActiveGCodeDocument == null
         ? "--"
         : $"{ActiveGCodeDocument.WidthMm:F1} x {ActiveGCodeDocument.HeightMm:F1} mm";
+
     public string ActiveToolpathDepth => ActiveGCodeDocument == null
         ? "--"
         : $"{ActiveGCodeDocument.MinZ:F2} to {ActiveGCodeDocument.MaxZ:F2} mm";
-    public string ActiveToolpathSegmentCount => ActiveGCodeDocument?.Segments.Length.ToString(CultureInfo.InvariantCulture) ?? "0";
+
+    public string ActiveToolpathSegmentCount
+        => ActiveGCodeDocument?.Segments.Length.ToString(CultureInfo.InvariantCulture) ?? "0";
+
     public string ActiveToolpathWarnings => ActiveGCodeDocument == null
         ? "Select a file to build the preview."
         : ActiveGCodeDocument.WarningCount == 0
@@ -533,7 +588,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // ════════════════════════════════════════════════════════════════
     // STATUS MESSAGES
     // ════════════════════════════════════════════════════════════════
-    
+
     private string _statusMessage = "Not connected";
     public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
 
@@ -541,29 +596,25 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public bool IsStatusError { get => _isStatusError; set => SetProperty(ref _isStatusError, value); }
 
     // ════════════════════════════════════════════════════════════════
-    // COMMAND AVAILABILITY
+    // COMMAND AVAILABILITY  (derived from Caps — no local re-derivation)
     // ════════════════════════════════════════════════════════════════
-    
-    public bool CanStart => IsConnected && 
-                           (MotionState == MotionState.Idle || MotionState == MotionState.FeedHold) &&
-                           CurrentFileName != null;
 
-    public bool CanPause => IsConnected && MotionState == MotionState.RunProgram;
+    public bool CanStart => PiConnectionStatus == ConnectionStatus.Connected &&
+                            (Caps.JobStart || Caps.JobResume) &&
+                            CurrentFileName != null;
 
-    public bool CanStop => IsConnected && 
-                          (MotionState == MotionState.RunProgram || 
-                           MotionState == MotionState.FeedHold ||
-                           MotionState == MotionState.Jog ||
-                           MotionState == MotionState.Homing);
+    public bool CanPause => PiConnectionStatus == ConnectionStatus.Connected && Caps.JobPause;
 
-    public bool CanHome => IsConnected && MotionState == MotionState.Idle;
+    public bool CanStop  => PiConnectionStatus == ConnectionStatus.Connected && Caps.JobAbort;
 
-    public bool CanJog => IsConnected && MotionState == MotionState.Idle;
+    public bool CanHome  => PiConnectionStatus == ConnectionStatus.Connected && Caps.Motion;
+
+    public bool CanJog   => PiConnectionStatus == ConnectionStatus.Connected && Caps.Motion;
 
     // ════════════════════════════════════════════════════════════════
     // NAVIGATION
     // ════════════════════════════════════════════════════════════════
-    
+
     private object? _currentPage;
     public object? CurrentPage
     {
@@ -581,48 +632,63 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // ════════════════════════════════════════════════════════════════
     // COMMANDS
     // ════════════════════════════════════════════════════════════════
-    
-    public ICommand GoDashboardCommand { get; }
-    public ICommand GoManualControlCommand { get; }
-    public ICommand GoFilesCommand { get; }
-    public ICommand GoConnectCommand { get; }
-    public ICommand GoSettingsCommand { get; }
-    public ICommand GoDiagnosticsCommand { get; }
 
-    public ICommand StartCommand { get; }
-    public ICommand PauseCommand { get; }
-    public ICommand StopCommand { get; }
-    public ICommand HomeCommand { get; }
-    public ICommand EStopCommand { get; }
+    public ICommand GoDashboardCommand    { get; }
+    public ICommand GoManualControlCommand { get; }
+    public ICommand GoFilesCommand        { get; }
+    public ICommand GoConnectCommand      { get; }
+    public ICommand GoSettingsCommand     { get; }
+    public ICommand GoDiagnosticsCommand  { get; }
+
+    public ICommand StartCommand  { get; }
+    public ICommand PauseCommand  { get; }
+    public ICommand StopCommand   { get; }
+    public ICommand HomeCommand   { get; }
+    public ICommand EStopCommand  { get; }
 
     // ════════════════════════════════════════════════════════════════
     // PAGE VIEW MODELS
     // ════════════════════════════════════════════════════════════════
-    
-    public DashboardViewModel DashboardVm { get; }
-    public ManualControlViewModel ManualControlVm { get; }
-    public FilesViewModel FilesVm { get; }
-    public ConnectViewModel ConnectVm { get; }
-    public SettingsViewModel SettingsVm { get; }
-    public DiagnosticsViewModel DiagnosticsVm { get; }
+
+    public DashboardViewModel      DashboardVm     { get; }
+    public ManualControlViewModel  ManualControlVm { get; }
+    public FilesViewModel          FilesVm         { get; }
+    public ConnectViewModel        ConnectVm       { get; }
+    public SettingsViewModel       SettingsVm      { get; }
+    public DiagnosticsViewModel    DiagnosticsVm   { get; }
 
     // ════════════════════════════════════════════════════════════════
     // CONSTRUCTOR
     // ════════════════════════════════════════════════════════════════
-    
+
     public MainWindowViewModel()
     {
         ThemeResources.ThemeChanged += HandleThemeChanged;
 
-        // Create page ViewModels
-        DashboardVm = new DashboardViewModel();
-        ManualControlVm = new ManualControlViewModel();
-        FilesVm = new FilesViewModel();
-        ConnectVm = new ConnectViewModel();
-        SettingsVm = new SettingsViewModel();
-        DiagnosticsVm = new DiagnosticsViewModel();
+        Protocol = new PicoProtocolService(Serial);
 
-        // Wire up page ViewModels to main
+        // Subscribe to protocol events — these are the only writers for machine state.
+        Protocol.StateChanged    += s => MachineState = s;
+        Protocol.CapsChanged     += c => Caps = c;
+        Protocol.SafetyChanged   += l => SafetyLevel = l;
+        Protocol.PositionChanged += OnPositionChanged;
+        Protocol.EventReceived   += HandleProtocolEvent;
+        Protocol.ErrorReceived   += msg => { StatusMessage = $"Error: {msg}"; IsStatusError = true; };
+        Protocol.WaitReceived    += reason => StatusMessage = string.IsNullOrEmpty(reason)
+            ? "Pico busy — please wait"
+            : $"Pico busy: {reason}";
+
+        // Handle serial-layer disconnect (cable pulled, port error, etc.)
+        Serial.ErrorOccurred += _ => OnDeviceLost();
+
+        // Page ViewModels
+        DashboardVm    = new DashboardViewModel();
+        ManualControlVm = new ManualControlViewModel();
+        FilesVm        = new FilesViewModel();
+        ConnectVm      = new ConnectViewModel();
+        SettingsVm     = new SettingsViewModel();
+        DiagnosticsVm  = new DiagnosticsViewModel();
+
         DashboardVm.SetMainViewModel(this);
         ManualControlVm.SetMainViewModel(this);
         FilesVm.SetMainViewModel(this);
@@ -630,397 +696,195 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         SettingsVm.SetMainViewModel(this);
         DiagnosticsVm.SetMainViewModel(this);
 
-        // Navigation commands
-        GoDashboardCommand = new RelayCommand(() => NavigateTo(DashboardVm, "Dashboard"));
+        // Navigation
+        GoDashboardCommand     = new RelayCommand(() => NavigateTo(DashboardVm,    "Dashboard"));
         GoManualControlCommand = new RelayCommand(() => NavigateTo(ManualControlVm, "ManualControl"));
-        GoFilesCommand = new RelayCommand(() => NavigateTo(FilesVm, "Files"));
-        GoConnectCommand = new RelayCommand(() => NavigateTo(ConnectVm, "Connect"));
-        GoSettingsCommand = new RelayCommand(() => NavigateTo(SettingsVm, "Settings"));
-        GoDiagnosticsCommand = new RelayCommand(() => NavigateTo(DiagnosticsVm, "Diagnostics"));
+        GoFilesCommand         = new RelayCommand(() => NavigateTo(FilesVm,        "Files"));
+        GoConnectCommand       = new RelayCommand(() => NavigateTo(ConnectVm,      "Connect"));
+        GoSettingsCommand      = new RelayCommand(() => NavigateTo(SettingsVm,     "Settings"));
+        GoDiagnosticsCommand   = new RelayCommand(() => NavigateTo(DiagnosticsVm,  "Diagnostics"));
 
-        // Machine control commands
+        // Machine control
         StartCommand = new RelayCommand(ExecuteStart);
         PauseCommand = new RelayCommand(ExecutePause);
-        StopCommand = new RelayCommand(ExecuteStop);
-        HomeCommand = new RelayCommand(ExecuteHome);
+        StopCommand  = new RelayCommand(ExecuteStop);
+        HomeCommand  = new RelayCommand(ExecuteHome);
         EStopCommand = new RelayCommand(ExecuteEStop);
 
-        // Load persisted settings, apply to child VMs, attempt auto-connect
         Settings.Load();
         SettingsVm.ApplyFrom(Settings.Current);
         ConnectVm.TryAutoConnect();
 
-        // Wire up serial service events
-        Serial.LineReceived += OnGrblLine;
-        Serial.ErrorOccurred += _ => OnDeviceLost();
-
-        // Set initial page
         CurrentPage = DashboardVm;
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // MACHINE CONTROL COMMANDS
+    // ════════════════════════════════════════════════════════════════
+
+    private void ExecuteStart()
+    {
+        if (Caps.JobResume)
+            Protocol.SendJobResume();
+        else if (Caps.JobStart)
+            Protocol.SendJobStart();
+    }
+
+    private void ExecutePause() => Protocol.SendJobPause();
+
+    private void ExecuteStop()  => Protocol.SendJobAbort();
+
+    private void ExecuteHome()  => Protocol.SendHome();
+
+    private void ExecuteEStop() => Protocol.SendEstop();
+
+    // ════════════════════════════════════════════════════════════════
+    // PROTOCOL EVENT ROUTING
+    // ════════════════════════════════════════════════════════════════
+
+    private void OnPositionChanged(PicoPos pos)
+    {
+        MachineX = pos.MX;
+        MachineY = pos.MY;
+        MachineZ = pos.MZ;
+        WorkX    = pos.WX;
+        WorkY    = pos.WY;
+        WorkZ    = pos.WZ;
+    }
+
+    private void HandleProtocolEvent(string name, IReadOnlyDictionary<string, string> kv)
+    {
+        switch (name)
+        {
+            case "JOB_PROGRESS":
+                if (kv.TryGetValue("LINE",  out var lineStr)  && int.TryParse(lineStr,  out var line))  CurrentLine = line;
+                if (kv.TryGetValue("TOTAL", out var totalStr) && int.TryParse(totalStr, out var total)) TotalLines  = total;
+                Progress = TotalLines > 0 ? (double)CurrentLine / TotalLines : 0;
+                break;
+
+            case "JOB_COMPLETE":
+                StatusMessage = $"Job complete: {CurrentFileName}";
+                IsStatusError = false;
+                break;
+
+            case "JOB_ERROR":
+                StatusMessage = kv.TryGetValue("REASON", out var reason)
+                    ? $"Job error: {reason}"
+                    : "Job error";
+                IsStatusError = true;
+                break;
+
+            case "SD_MOUNTED":
+                StatusMessage = "Storage ready";
+                IsStatusError = false;
+                break;
+
+            case "SD_REMOVED":
+                StatusMessage = "Storage unavailable";
+                break;
+
+            case "TEENSY_CONNECTED":
+                TeensyConnectionStatus = ConnectionStatus.Connected;
+                StatusMessage          = "Teensy motion controller online";
+                IsStatusError          = false;
+                break;
+
+            case "TEENSY_DISCONNECTED":
+                TeensyConnectionStatus = ConnectionStatus.Disconnected;
+                StatusMessage          = "Teensy motion controller disconnected";
+                break;
+
+            case "ESTOP_ACTIVE":
+                StatusMessage = "EMERGENCY STOP ACTIVE";
+                IsStatusError = true;
+                break;
+
+            case "ESTOP_CLEARED":
+                StatusMessage = "E-stop cleared";
+                IsStatusError = false;
+                break;
+
+            case "STATE_CHANGED":
+                // @STATE always accompanies this event and is the authoritative state update.
+                break;
+
+            case "LIMIT":
+                if (kv.TryGetValue("AXIS", out var axis))
+                    UpdateLimitAxes(axis);
+                break;
+        }
+    }
+
+    private void UpdateLimitAxes(string axes)
+    {
+        var upper = axes.ToUpperInvariant();
+        XLimitTriggered = upper.Contains('X');
+        YLimitTriggered = upper.Contains('Y');
+        ZLimitTriggered = upper.Contains('Z');
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // DEVICE LOST
+    // ════════════════════════════════════════════════════════════════
+
+    private void OnDeviceLost()
+    {
+        Serial.Disconnect();
+
+        PiConnectionStatus     = ConnectionStatus.Error;
+        TeensyConnectionStatus = ConnectionStatus.Disconnected;
+        MachineState           = MachineOperationState.CommsFault;
+        SafetyLevel            = SafetyLevel.Safe;
+        SpindleOn              = false;
+        SpindleSpeed           = 0;
+        StatusMessage          = "Device disconnected";
+        IsStatusError          = true;
+        XHomed = YHomed = ZHomed = false;
+        XLimitTriggered = YLimitTriggered = ZLimitTriggered = false;
+
+        ConnectVm.ResetDeviceInfo();
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // BACKWARD-COMPAT STUBS  (remove after the indicated phase)
+    // ════════════════════════════════════════════════════════════════
+
+    /// <summary>No-op. Remove after Phase 3 (ConnectViewModel rework).</summary>
+    [Obsolete("Phase 3: ConnectViewModel will use Protocol.SendPing/SendInfo directly.")]
+    public void StartPolling() { }
+
+    /// <summary>No-op. Remove after Phase 3.</summary>
+    [Obsolete("Phase 3: Remove after ConnectViewModel rework.")]
+    public void StopPolling() { }
+
+    /// <summary>No-op. Remove after Phase 4 (ManualControlViewModel rework).</summary>
+    [Obsolete("Phase 4: ManualControlViewModel will call Protocol.SendHome() directly.")]
+    public void SetAllAxesHomed(bool homed) { }
+
+    /// <summary>No-op. Remove after Phase 4.</summary>
+    [Obsolete("Phase 4: Remove after ManualControlViewModel rework.")]
+    public void SetAxisHomed(string axis, bool homed) { }
+
+    /// <summary>No-op. Remove after Phase 4.</summary>
+    [Obsolete("Phase 4: Remove after ManualControlViewModel rework.")]
+    public void ClearLimitStates() { }
+
+    // ════════════════════════════════════════════════════════════════
+    // MISC
+    // ════════════════════════════════════════════════════════════════
 
     private void NavigateTo(object page, string pageName)
     {
         if (ReferenceEquals(page, SettingsVm))
             SettingsVm.PrepareForDisplay();
 
-        CurrentPage = page;
+        CurrentPage     = page;
         CurrentPageName = pageName;
     }
 
-    public void NotifySettingsChanged()
-        => RaisePropertyChanged(nameof(Settings));
+    public void NotifySettingsChanged() => RaisePropertyChanged(nameof(Settings));
 
-    private void ExecuteStart()
-    {
-        if (MotionState == MotionState.FeedHold)
-        {
-            MotionState = MotionState.RunProgram;
-            StatusMessage = "Resuming program...";
-        }
-        else if (MotionState == MotionState.Idle)
-        {
-            MotionState = MotionState.RunProgram;
-            SafetyState = SafetyState.Monitoring;
-            StatusMessage = $"Running {CurrentFileName}...";
-        }
-    }
-
-    private void ExecutePause()
-    {
-        if (MotionState == MotionState.RunProgram)
-        {
-            MotionState = MotionState.FeedHold;
-            StatusMessage = "Program paused (Feed Hold)";
-        }
-    }
-
-    private void ExecuteStop()
-    {
-        MotionState = MotionState.Idle;
-        SafetyState = SafetyState.SafeIdle;
-        Progress = 0;
-        CurrentLine = 0;
-        StatusMessage = "Program stopped";
-    }
-
-    private void ExecuteHome()
-    {
-        if (MotionState == MotionState.Idle)
-        {
-            MotionState = MotionState.Homing;
-            StatusMessage = "Homing all axes...";
-            SetAllAxesHomed(true);
-            // TODO: Actual homing logic
-        }
-    }
-
-    private void ExecuteEStop()
-    {
-        MotionState = MotionState.EStopLatched;
-        SafetyState = SafetyState.EStopActive;
-        SpindleOn = false;
-        SpindleSpeed = 0;
-        SetAllAxesHomed(false);
-        ClearLimitStates();
-        StatusMessage = "EMERGENCY STOP ACTIVATED";
-        IsStatusError = true;
-    }
-
-    public void SetAllAxesHomed(bool homed)
-    {
-        XHomed = homed;
-        YHomed = homed;
-        ZHomed = homed;
-    }
-
-    public void SetAxisHomed(string axis, bool homed)
-    {
-        switch (axis.ToUpperInvariant())
-        {
-            case "X":
-                XHomed = homed;
-                break;
-            case "Y":
-                YHomed = homed;
-                break;
-            case "Z":
-                ZHomed = homed;
-                break;
-        }
-    }
-
-    public void ClearLimitStates()
-    {
-        XLimitTriggered = false;
-        YLimitTriggered = false;
-        ZLimitTriggered = false;
-    }
-
-    private void ApplyPinState(string pins)
-    {
-        var upperPins = pins.ToUpperInvariant();
-        XLimitTriggered = upperPins.Contains('X');
-        YLimitTriggered = upperPins.Contains('Y');
-        ZLimitTriggered = upperPins.Contains('Z');
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    // GRBL STATUS POLLING
-    // ════════════════════════════════════════════════════════════════
-
-    private DateTime _lastResponseTime = DateTime.MaxValue;
-    private static readonly TimeSpan DisconnectTimeout = TimeSpan.FromSeconds(3);
-
-    public void StartPolling()
-    {
-        _lastResponseTime = DateTime.UtcNow;
-        _pollTimer?.Stop();
-        _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-        _pollTimer.Tick += (_, _) =>
-        {
-            if (DateTime.UtcNow - _lastResponseTime > DisconnectTimeout)
-            {
-                OnDeviceLost();
-                return;
-            }
-            Serial.SendRealtime((byte)'?');
-        };
-        _pollTimer.Start();
-    }
-
-    public void StopPolling()
-    {
-        _pollTimer?.Stop();
-        _pollTimer = null;
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    // GRBL RESPONSE PARSING
-    // ════════════════════════════════════════════════════════════════
-
-    private void OnDeviceLost()
-    {
-        StopPolling();
-        Serial.Disconnect();
-
-        PiConnectionStatus     = ConnectionStatus.Error;
-        TeensyConnectionStatus = ConnectionStatus.Disconnected;
-        MotionState            = MotionState.PowerUp;
-        SafetyState            = SafetyState.SafeIdle;
-        SpindleOn              = false;
-        SpindleSpeed           = 0;
-        StatusMessage          = "Device disconnected";
-        IsStatusError          = true;
-        SetAllAxesHomed(false);
-        ClearLimitStates();
-
-        ConnectVm.ResetDeviceInfo();
-    }
-
-    private void OnGrblLine(string line)
-    {
-        _lastResponseTime = DateTime.UtcNow;
-        if (line.StartsWith('<') && line.EndsWith('>'))
-        {
-            ParseStatusReport(line[1..^1]);
-            if (TeensyConnectionStatus != ConnectionStatus.Connected)
-                TeensyConnectionStatus = ConnectionStatus.Connected;
-        }
-        else if (line.StartsWith("Grbl "))
-        {
-            if (TeensyConnectionStatus != ConnectionStatus.Connected)
-                TeensyConnectionStatus = ConnectionStatus.Connected;
-        }
-        else if (line == "ok")
-        {
-            if (TeensyConnectionStatus != ConnectionStatus.Connected)
-                TeensyConnectionStatus = ConnectionStatus.Connected;
-        }
-        else if (line.StartsWith("[PICO:"))
-        {
-            // e.g. "[PICO:0.1.0]"
-            ConnectVm.PicoFirmware = line[6..^1];
-        }
-        else if (line.StartsWith("[SN:"))
-        {
-            // e.g. "[SN:e6614c311b8a2c23]"
-            ConnectVm.PicoSerialNumber = line[4..^1];
-        }
-        else if (line.StartsWith("[VER:"))
-        {
-            // e.g. "[VER:1.1h.20190825:]"
-            var inner = line[5..^1].TrimEnd(':');
-            ConnectVm.TeensyFirmware = inner;
-        }
-        else if (line.StartsWith("error:"))
-        {
-            StatusMessage = $"GRBL error {line[6..]}";
-            IsStatusError = true;
-        }
-        else if (line.StartsWith("ALARM:"))
-        {
-            MotionState = MotionState.Fault;
-            SpindleOn = false;
-            SpindleSpeed = 0;
-            SetAllAxesHomed(false);
-            StatusMessage = $"GRBL alarm {line[6..]}";
-            IsStatusError = true;
-        }
-    }
-
-    private void ParseStatusReport(string report)
-    {
-        // Format: State|MPos:x,y,z|WPos:x,y,z|WCO:x,y,z|FS:feed,spindle|...
-        var parts = report.Split('|');
-        if (parts.Length == 0) return;
-
-        // State (may be "Hold:0", "Hold:1" etc.)
-        var stateStr = parts[0];
-        var colonIdx = stateStr.IndexOf(':');
-        if (colonIdx >= 0) stateStr = stateStr[..colonIdx];
-
-        var newState = stateStr switch
-        {
-            "Idle"  => MotionState.Idle,
-            "Run"   => MotionState.RunProgram,
-            "Hold"  => MotionState.FeedHold,
-            "Jog"   => MotionState.Jog,
-            "Alarm" => MotionState.Fault,
-            "Home"  => MotionState.Homing,
-            _       => MotionState
-        };
-        if (MotionState != newState) MotionState = newState;
-
-        double? machineX = null;
-        double? machineY = null;
-        double? machineZ = null;
-        double? workX = null;
-        double? workY = null;
-        double? workZ = null;
-        double? workOffsetX = null;
-        double? workOffsetY = null;
-        double? workOffsetZ = null;
-        var sawPinState = false;
-
-        for (int i = 1; i < parts.Length; i++)
-        {
-            var sep = parts[i].IndexOf(':');
-            if (sep < 0) continue;
-            var key = parts[i][..sep];
-            var val = parts[i][(sep + 1)..];
-
-            switch (key)
-            {
-                case "MPos":
-                    if (TryParseCoordinateTriplet(val, out var parsedMachineX, out var parsedMachineY, out var parsedMachineZ))
-                    {
-                        machineX = parsedMachineX;
-                        machineY = parsedMachineY;
-                        machineZ = parsedMachineZ;
-                    }
-                    break;
-                case "WPos":
-                    if (TryParseCoordinateTriplet(val, out var parsedWorkX, out var parsedWorkY, out var parsedWorkZ))
-                    {
-                        workX = parsedWorkX;
-                        workY = parsedWorkY;
-                        workZ = parsedWorkZ;
-                    }
-                    break;
-                case "WCO":
-                    if (TryParseCoordinateTriplet(val, out var parsedOffsetX, out var parsedOffsetY, out var parsedOffsetZ))
-                    {
-                        workOffsetX = parsedOffsetX;
-                        workOffsetY = parsedOffsetY;
-                        workOffsetZ = parsedOffsetZ;
-                        _hasWorkOffset = true;
-                    }
-                    break;
-                case "FS":
-                {
-                    var fs = val.Split(',');
-                    if (fs.Length >= 2)
-                    {
-                        if (double.TryParse(fs[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var f)) FeedRate = f;
-                        if (double.TryParse(fs[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var s))
-                        {
-                            SpindleSpeed = s;
-                            SpindleOn = s > 0;
-                        }
-                    }
-                    break;
-                }
-                case "F":
-                    if (double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out var feed)) FeedRate = feed;
-                    break;
-                case "Pn":
-                    sawPinState = true;
-                    ApplyPinState(val);
-                    break;
-            }
-        }
-
-        if (!sawPinState)
-            ClearLimitStates();
-
-        if (workOffsetX.HasValue && workOffsetY.HasValue && workOffsetZ.HasValue)
-        {
-            WorkOffsetX = workOffsetX.Value;
-            WorkOffsetY = workOffsetY.Value;
-            WorkOffsetZ = workOffsetZ.Value;
-        }
-
-        if (!workX.HasValue && !workY.HasValue && !workZ.HasValue &&
-            machineX.HasValue && machineY.HasValue && machineZ.HasValue &&
-            _hasWorkOffset)
-        {
-            workX = machineX.Value - WorkOffsetX;
-            workY = machineY.Value - WorkOffsetY;
-            workZ = machineZ.Value - WorkOffsetZ;
-        }
-
-        if (!machineX.HasValue && !machineY.HasValue && !machineZ.HasValue &&
-            workX.HasValue && workY.HasValue && workZ.HasValue &&
-            _hasWorkOffset)
-        {
-            machineX = workX.Value + WorkOffsetX;
-            machineY = workY.Value + WorkOffsetY;
-            machineZ = workZ.Value + WorkOffsetZ;
-        }
-
-        if (machineX.HasValue && machineY.HasValue && machineZ.HasValue)
-        {
-            MachineX = machineX.Value;
-            MachineY = machineY.Value;
-            MachineZ = machineZ.Value;
-        }
-
-        if (workX.HasValue && workY.HasValue && workZ.HasValue)
-        {
-            WorkX = workX.Value;
-            WorkY = workY.Value;
-            WorkZ = workZ.Value;
-        }
-    }
-
-    private static bool TryParseCoordinateTriplet(string value, out double x, out double y, out double z)
-    {
-        x = 0;
-        y = 0;
-        z = 0;
-
-        var coords = value.Split(',');
-        return coords.Length >= 3
-            && double.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out x)
-            && double.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out y)
-            && double.TryParse(coords[2], NumberStyles.Float, CultureInfo.InvariantCulture, out z);
-    }
-
-    public void Dispose()
-    {
-        StopPolling();
-        Serial.Dispose();
-    }
+    public void Dispose() => Serial.Dispose();
 
     private void HandleThemeChanged(object? sender, EventArgs e)
     {
@@ -1028,5 +892,4 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(MotionStateBrush));
         RaisePropertyChanged(nameof(SafetyStateBrush));
     }
-
 }

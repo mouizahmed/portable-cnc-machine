@@ -4,67 +4,196 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using PortableCncApp.Services;
 using PortableCncApp.Services.GCode;
 
 namespace PortableCncApp.ViewModels;
 
 public sealed class FilesViewModel : PageViewModelBase
 {
-    private const int PreviewMaxLines = 200;
+    private const int PreviewMaxLines  = 200;
+    private const int UploadChunkSize  = 192;   // raw bytes per chunk → 256 base64 chars
 
+    // ── Preview fields ────────────────────────────────────────────────────────
     private CancellationTokenSource? _parseCancellation;
-    private bool _toolpathHasGeometry;
-    private bool _toolpathHasError;
-    private GCodeFileInfo? _selectedFile;
-    private int _previewLineCount;
-    private bool _isParsingToolpath;
-    private string _toolpathStatusMessage = "Select a file to build the toolpath preview.";
+    private bool   _toolpathHasGeometry;
+    private bool   _toolpathHasError;
+    private int    _previewLineCount;
+    private bool   _isParsingToolpath;
+    private string _toolpathStatusMessage = "Use 'Preview local file' to inspect a file.";
     private string _toolpathWarningSummary = "";
-    private string _globalWarningSummary = "";
+    private string _globalWarningSummary   = "";
+    private bool   _isLocalPreviewFile;
+    private string? _localPreviewPath;
+
+    // ── SD-list fields ────────────────────────────────────────────────────────
+    private readonly List<GCodeFileInfo> _pendingFileList = new();
+    private GCodeFileInfo? _selectedFile;
+    private long    _sdFreeBytes = -1;
+
+    // ── Delete tracking ───────────────────────────────────────────────────────
+    private readonly Dictionary<string, GCodeFileInfo> _pendingDeletes = new();
+
+    // ── Upload fields ─────────────────────────────────────────────────────────
+    private bool   _isUploading;
+    private double _uploadProgress;
+    private string _uploadStatusText = "";
+    private string? _uploadFileExistsName;
+    private CancellationTokenSource?        _uploadCancellation;
+    private Channel<UploadAck>?             _uploadChannel;
+    private TaskCompletionSource<bool>?     _overwriteTcs;
+
+    // Upload ACK discriminated union
+    private enum UploadAckType { Ready, ChunkOk, Complete, Aborted, Failed, FileExists }
+    private record UploadAck(UploadAckType Type, int Seq = 0, string Name = "",
+                              long Size = 0, string Reason = "");
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Constructor
+    // ─────────────────────────────────────────────────────────────────────────
 
     public FilesViewModel()
     {
         ThemeResources.ThemeChanged += HandleThemeChanged;
+        Files.CollectionChanged += (_, _) => RaisePropertyChanged(nameof(HasNoFiles));
 
-        BrowseCommand = new RelayCommand(BrowseForFile);
-        LoadSelectedCommand = new RelayCommand(LoadSelectedFile, () => HasSelectedFile);
-        RefreshCommand = new RelayCommand(RefreshFileList);
-        RemoveCommand = new RelayCommand(RemoveSelectedFile, () => HasSelectedFile);
+        UploadCommand             = new RelayCommand(StartUpload,            CanUpload);
+        CancelUploadCommand       = new RelayCommand(CancelUpload,           () => IsUploading);
+        PreviewLocalCommand       = new RelayCommand(PreviewLocalFile,       () => !IsUploading);
+        UploadLocalPreviewCommand = new RelayCommand(StartUploadLocalPreview, CanUploadLocalPreview);
+        RefreshCommand            = new RelayCommand(RefreshFileList,        () => !IsUploading);
+        DeleteCommand             = new RelayCommand<GCodeFileInfo>(DeleteFile);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Events
+    // ─────────────────────────────────────────────────────────────────────────
 
     public event EventHandler<ParseErrorDialogRequest>? ParseErrorDialogRequested;
 
-    public ObservableCollection<GCodeFileInfo> Files { get; } = new();
+    /// <summary>
+    /// Raised when the Pico reports FILE_EXISTS during upload.
+    /// View shows confirm dialog; call ConfirmOverwrite() or CancelOverwrite() in response.
+    /// </summary>
+    public event EventHandler<string>? UploadFileExistsRequested;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Collections
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public ObservableCollection<GCodeFileInfo>    Files            { get; } = new();
     public ObservableCollection<GCodeWarningInfo> ToolpathWarnings { get; } = new();
-    public ObservableCollection<GCodePreviewLine> PreviewLines { get; } = new();
+    public ObservableCollection<GCodePreviewLine> PreviewLines     { get; } = new();
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SD card
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public long SdFreeBytes
+    {
+        get => _sdFreeBytes;
+        private set
+        {
+            if (SetProperty(ref _sdFreeBytes, value))
+                RaisePropertyChanged(nameof(SdFreeSummary));
+        }
+    }
+
+    public string SdFreeSummary => _sdFreeBytes < 0 ? "" : $"{FormatSize(_sdFreeBytes)} free";
 
     public GCodeFileInfo? SelectedFile
     {
         get => _selectedFile;
         set
         {
-            if (SetProperty(ref _selectedFile, value))
+            if (!SetProperty(ref _selectedFile, value)) return;
+
+            RaisePropertyChanged(nameof(HasSelectedFile));
+            RaiseCanExecuteAll();
+
+            if (value == null) return;
+
+            // Auto-send FileSelect to Pico when an SD file is clicked
+            if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
+                MainVm.Protocol.SendFileSelect(value.Name);
+
+            if (MainVm != null)
             {
-                RaisePropertyChanged(nameof(HasSelectedFile));
-                RaisePropertyChanged(nameof(FilePreviewTitle));
-                RaisePropertyChanged(nameof(SelectedFilePathSummary));
-                RaisePropertyChanged(nameof(SelectedFileLineSummary));
-                RaisePropertyChanged(nameof(PreviewViewportSummary));
-                RaisePropertyChanged(nameof(ToolpathStateLabel));
-                RaisePropertyChanged(nameof(ToolpathStateBrush));
-                ((RelayCommand)LoadSelectedCommand).RaiseCanExecuteChanged();
-                ((RelayCommand)RemoveCommand).RaiseCanExecuteChanged();
-                LoadFilePreview();
+                MainVm.CurrentFileName = value.Name;
+                MainVm.StatusMessage   = $"Selected: {value.Name}";
             }
         }
     }
 
     public bool HasSelectedFile => SelectedFile != null;
+    public bool HasNoFiles      => Files.Count == 0;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Upload state
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public bool IsUploading
+    {
+        get => _isUploading;
+        private set
+        {
+            if (SetProperty(ref _isUploading, value))
+                RaiseCanExecuteAll();
+        }
+    }
+
+    public double UploadProgress
+    {
+        get => _uploadProgress;
+        private set => SetProperty(ref _uploadProgress, value);
+    }
+
+    public string UploadStatusText
+    {
+        get => _uploadStatusText;
+        private set => SetProperty(ref _uploadStatusText, value);
+    }
+
+    public string? UploadFileExistsName
+    {
+        get => _uploadFileExistsName;
+        private set => SetProperty(ref _uploadFileExistsName, value);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Local preview state
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public bool IsLocalPreviewFile
+    {
+        get => _isLocalPreviewFile;
+        private set
+        {
+            if (SetProperty(ref _isLocalPreviewFile, value))
+            {
+                RaisePropertyChanged(nameof(ShowLocalPreviewBanner));
+                RaisePropertyChanged(nameof(FilePreviewTitle));
+                RaisePropertyChanged(nameof(PreviewEmptyMessage));
+                RaisePropertyChanged(nameof(ToolpathStateLabel));
+                RaiseCanExecuteAll();
+            }
+        }
+    }
+
+    /// <summary>True when a local file is loaded for preview and the machine is connected (upload is possible).</summary>
+    public bool ShowLocalPreviewBanner
+        => IsLocalPreviewFile && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Toolpath / preview display properties
+    // ─────────────────────────────────────────────────────────────────────────
 
     public int PreviewLineCount
     {
@@ -104,24 +233,20 @@ public sealed class FilesViewModel : PageViewModelBase
         set
         {
             if (SetProperty(ref _toolpathWarningSummary, value))
-            {
                 RaisePropertyChanged(nameof(WarningDetail));
-            }
         }
     }
 
-    public string FilePreviewTitle => SelectedFile?.Name ?? "No file selected";
+    public string FilePreviewTitle
+        => IsLocalPreviewFile && _localPreviewPath != null
+            ? $"{Path.GetFileName(_localPreviewPath)} (local)"
+            : "No local preview loaded";
 
     public bool HasPreviewContent => PreviewLines.Count > 0;
+    public bool IsPreviewEmpty    => !HasPreviewContent;
 
-    public bool IsPreviewEmpty => !HasPreviewContent;
-
-    public string PreviewEmptyMessage => SelectedFile == null
-        ? "Select a file to inspect."
-        : "No source lines to display.";
-
-    public string SelectedFilePathSummary
-        => SelectedFile?.FullPath ?? string.Empty;
+    public string PreviewEmptyMessage
+        => IsLocalPreviewFile ? "No source lines to display." : "Use 'Preview local file' to inspect a file.";
 
     public string SelectedFileLineSummary
         => PreviewLineCount > 0 ? $"{PreviewLineCount} total lines" : "--";
@@ -130,19 +255,11 @@ public sealed class FilesViewModel : PageViewModelBase
     {
         get
         {
-            if (SelectedFile == null)
-            {
-                return "Choose a file from the library to inspect its source.";
-            }
-
-            if (PreviewLineCount <= 0)
-            {
-                return "Source preview unavailable.";
-            }
-
+            if (!IsLocalPreviewFile) return "Load a local file to inspect its source.";
+            if (PreviewLineCount <= 0) return "Source preview unavailable.";
             return PreviewLineCount > PreviewMaxLines
                 ? $"Showing first {PreviewMaxLines} of {PreviewLineCount} lines"
-                : $"{PreviewLineCount} line{(PreviewLineCount == 1 ? string.Empty : "s")} shown";
+                : $"{PreviewLineCount} line{(PreviewLineCount == 1 ? "" : "s")} shown";
         }
     }
 
@@ -150,223 +267,210 @@ public sealed class FilesViewModel : PageViewModelBase
     {
         get
         {
-            if (SelectedFile == null)
-            {
-                return "NO FILE";
-            }
-
-            if (IsParsingToolpath)
-            {
-                return "PARSING";
-            }
-
-            if (_toolpathHasError)
-            {
-                return "ERROR";
-            }
-
+            if (!IsLocalPreviewFile && MainVm?.ActiveGCodeDocument == null) return "NO FILE";
+            if (IsParsingToolpath)  return "PARSING";
+            if (_toolpathHasError)  return "ERROR";
             return _toolpathHasGeometry ? "READY" : "NO PATH";
         }
     }
 
     public IBrush ToolpathStateBrush => ToolpathStateLabel switch
     {
-        "READY" => ThemeResources.Brush("SuccessBrush", "#3BB273"),
-        "PARSING" => ThemeResources.Brush("InfoBrush", "#5B9BD5"),
-        "ERROR" => ThemeResources.Brush("DangerBrush", "#D83B3B"),
-        "NO PATH" => ThemeResources.Brush("WarningBrush", "#E0A100"),
-        _ => ThemeResources.Brush("NeutralStateBrush", "#808080")
+        "READY"   => ThemeResources.Brush("SuccessBrush",      "#3BB273"),
+        "PARSING" => ThemeResources.Brush("InfoBrush",         "#5B9BD5"),
+        "ERROR"   => ThemeResources.Brush("DangerBrush",       "#D83B3B"),
+        "NO PATH" => ThemeResources.Brush("WarningBrush",      "#E0A100"),
+        _         => ThemeResources.Brush("NeutralStateBrush", "#808080")
     };
 
     public string WarningDetail
     {
         get
         {
-            if (ToolpathWarnings.Count == 0)
-            {
-                return "No parse warnings.";
-            }
-
-            var highlightedCount = ToolpathWarnings.Count(warning => warning.LineNumber > 0 && warning.IsVisibleInPreview);
-            var hiddenCount = ToolpathWarnings.Count(warning => warning.LineNumber > 0 && !warning.IsVisibleInPreview);
-            var globalCount = ToolpathWarnings.Count(warning => warning.LineNumber <= 0);
-
+            if (ToolpathWarnings.Count == 0) return "No parse warnings.";
+            var highlighted = ToolpathWarnings.Count(w => w.LineNumber > 0 && w.IsVisibleInPreview);
+            var hidden      = ToolpathWarnings.Count(w => w.LineNumber > 0 && !w.IsVisibleInPreview);
+            var global      = ToolpathWarnings.Count(w => w.LineNumber <= 0);
             var parts = new List<string> { ToolpathWarningSummary };
-            if (highlightedCount > 0)
-            {
-                parts.Add("Click warning icons in the source preview to inspect them.");
-            }
-
-            if (hiddenCount > 0)
-            {
-                parts.Add($"{hiddenCount} warning{(hiddenCount == 1 ? string.Empty : "s")} fall outside the visible preview.");
-            }
-
-            if (globalCount > 0)
-            {
-                parts.Add($"{globalCount} warning{(globalCount == 1 ? string.Empty : "s")} are file-wide.");
-            }
-
+            if (highlighted > 0) parts.Add("Click warning icons in the source preview to inspect them.");
+            if (hidden > 0)      parts.Add($"{hidden} warning{(hidden == 1 ? "" : "s")} fall outside the visible preview.");
+            if (global > 0)      parts.Add($"{global} warning{(global == 1 ? "" : "s")} are file-wide.");
             return string.Join(" ", parts);
         }
     }
 
-    public bool HasGlobalWarnings => !string.IsNullOrWhiteSpace(GlobalWarningSummary);
-
+    public bool   HasGlobalWarnings => !string.IsNullOrWhiteSpace(GlobalWarningSummary);
     public string GlobalWarningSummary
     {
         get => _globalWarningSummary;
         private set => SetProperty(ref _globalWarningSummary, value);
     }
 
-    public ICommand BrowseCommand { get; }
-    public ICommand LoadSelectedCommand { get; }
-    public ICommand RefreshCommand { get; }
-    public ICommand RemoveCommand { get; }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Commands
+    // ─────────────────────────────────────────────────────────────────────────
 
-    private async void BrowseForFile()
+    public ICommand UploadCommand             { get; }
+    public ICommand CancelUploadCommand       { get; }
+    public ICommand PreviewLocalCommand       { get; }
+    public ICommand UploadLocalPreviewCommand { get; }
+    public ICommand RefreshCommand            { get; }
+    public ICommand DeleteCommand             { get; }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Lifecycle
+    // ─────────────────────────────────────────────────────────────────────────
+
+    protected override void OnMainViewModelSet()
     {
-        var lifetime = Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
-        var window = lifetime?.MainWindow;
-        if (window == null)
-        {
-            return;
-        }
+        if (MainVm == null) return;
 
-        var picked = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Select G-code file",
-            AllowMultiple = true,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("G-code")
-                {
-                    Patterns = new[] { "*.gcode", "*.nc", "*.ngc", "*.cnc", "*.tap" }
-                },
-                new FilePickerFileType("All files") { Patterns = new[] { "*.*" } }
-            }
-        });
+        // File list
+        MainVm.Protocol.FileListEntryReceived += HandleFileListEntry;
+        MainVm.Protocol.FileListEndReceived   += HandleFileListEnd;
+        MainVm.Protocol.EventReceived         += HandleProtocolEvent;
 
-        GCodeFileInfo? lastAdded = null;
-        foreach (var file in picked)
-        {
-            var path = file.Path.LocalPath;
-            if (Files.Any(f => f.FullPath == path))
-            {
-                continue;
-            }
+        // Upload ACKs — all routed into the channel so DoUploadAsync can await them
+        MainVm.Protocol.UploadReadyReceived      += name         => RouteUpload(new UploadAck(UploadAckType.Ready,      Name: name));
+        MainVm.Protocol.ChunkAckReceived         += seq          => RouteUpload(new UploadAck(UploadAckType.ChunkOk,    Seq: seq));
+        MainVm.Protocol.UploadCompleteReceived   += (name, size) => RouteUpload(new UploadAck(UploadAckType.Complete,  Name: name, Size: size));
+        MainVm.Protocol.UploadAbortedReceived    += ()           => RouteUpload(new UploadAck(UploadAckType.Aborted));
+        MainVm.Protocol.UploadFailedReceived     += reason       => RouteUpload(new UploadAck(UploadAckType.Failed,    Reason: reason));
+        MainVm.Protocol.UploadFileExistsReceived += name         => RouteUpload(new UploadAck(UploadAckType.FileExists, Name: name));
 
-            var info = new FileInfo(path);
-            lastAdded = new GCodeFileInfo
-            {
-                Name = info.Name,
-                FullPath = path,
-                Size = FormatSize(info.Length),
-                Modified = info.LastWriteTime.ToString("yyyy-MM-dd")
-            };
-            Files.Add(lastAdded);
-        }
-
-        if (lastAdded != null)
-        {
-            SelectedFile = lastAdded;
-        }
+        // File operation confirmations
+        MainVm.Protocol.FileDeleteConfirmed += HandleFileDeleteConfirmed;
     }
 
-    private void LoadSelectedFile()
+    protected override void OnMainViewModelPropertyChanged(string? propertyName)
     {
-        if (SelectedFile == null || MainVm == null)
-        {
-            return;
-        }
+        if (propertyName != nameof(MainWindowViewModel.PiConnectionStatus)) return;
 
-        MainVm.CurrentFileName = SelectedFile.Name;
-        MainVm.TotalLines = MainVm.ActiveGCodeDocument?.TotalLines ?? PreviewLineCount;
-        MainVm.CurrentLine = 0;
-        MainVm.Progress = 0;
-        MainVm.StatusMessage = $"Loaded: {SelectedFile.Name} ({PreviewLineCount} lines)";
-        MainVm.DashboardVm.PreviewLine = 0;
-        MainVm.DashboardVm.ScrubberValue = 0;
+        var status = MainVm?.PiConnectionStatus;
+
+        if (status == ConnectionStatus.Connected)
+            RequestFileList();
+        else if (IsUploading)
+            _uploadCancellation?.Cancel(); // USB disconnect mid-upload — no abort command, just cancel
+
+        RaisePropertyChanged(nameof(ShowLocalPreviewBanner));
+        RaiseCanExecuteAll();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // File list (SD card)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void RequestFileList()
+    {
+        _pendingFileList.Clear();
+        MainVm?.Protocol.SendFileList();
+    }
+
+    private void HandleFileListEntry(string name, long sizeBytes)
+    {
+        _pendingFileList.Add(new GCodeFileInfo
+        {
+            Name     = name,
+            FullPath = string.Empty,
+            Size     = FormatSize(sizeBytes),
+            Modified = string.Empty
+        });
+    }
+
+    private void HandleFileListEnd(int count, long freeBytes)
+    {
+        Files.Clear();
+        SelectedFile = null;
+        foreach (var entry in _pendingFileList)
+            Files.Add(entry);
+        _pendingFileList.Clear();
+        SdFreeBytes = freeBytes;
+        // Toolpath preview is independent — do not reset it here.
+    }
+
+    private void HandleProtocolEvent(string name, IReadOnlyDictionary<string, string> _)
+    {
+        switch (name)
+        {
+            case "SD_MOUNTED":
+                RequestFileList();
+                break;
+
+            case "SD_REMOVED":
+                Files.Clear();
+                SelectedFile = null;
+                SdFreeBytes  = -1;
+                break;
+        }
     }
 
     private void RefreshFileList()
     {
-        var existing = Files.ToList();
-        Files.Clear();
-        SelectedFile = null;
-
-        foreach (var file in existing)
-        {
-            if (!File.Exists(file.FullPath))
-            {
-                continue;
-            }
-
-            var info = new FileInfo(file.FullPath);
-            Files.Add(new GCodeFileInfo
-            {
-                Name = info.Name,
-                FullPath = file.FullPath,
-                Size = FormatSize(info.Length),
-                Modified = info.LastWriteTime.ToString("yyyy-MM-dd")
-            });
-        }
-
-        ResetPreviewState();
+        if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
+            RequestFileList();
     }
 
-    private void RemoveSelectedFile()
+    private void DeleteFile(GCodeFileInfo? file)
     {
-        if (SelectedFile == null)
+        if (file == null || MainVm == null) return;
+        _pendingDeletes[file.Name] = file;
+        if (SelectedFile == file)
+            SelectedFile = null;
+        MainVm.Protocol.SendFileDelete(file.Name);
+    }
+
+    private void HandleFileDeleteConfirmed(string name)
+    {
+        if (_pendingDeletes.TryGetValue(name, out var file))
         {
+            _pendingDeletes.Remove(name);
+            Files.Remove(file);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Local preview
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private async void PreviewLocalFile()
+    {
+        var path = await PickGCodeFileAsync();
+        if (path == null) return;
+        await BeginLocalPreviewAsync(path);
+    }
+
+    private async Task BeginLocalPreviewAsync(string filePath)
+    {
+        _localPreviewPath  = filePath;
+        IsLocalPreviewFile = true;
+        ResetPreviewState(keepLocalPreviewFlag: true);
+
+        if (!File.Exists(filePath))
+        {
+            IsLocalPreviewFile = false;
+            _localPreviewPath  = null;
             return;
         }
 
-        Files.Remove(SelectedFile);
-        SelectedFile = null;
-        ResetPreviewState();
-    }
-
-    private void LoadFilePreview()
-    {
-        ResetPreviewState();
-
-        if (SelectedFile == null || !File.Exists(SelectedFile.FullPath))
-        {
-            return;
-        }
-
+        // Source preview
         try
         {
             int total = 0;
-
-            foreach (var line in File.ReadLines(SelectedFile.FullPath))
+            foreach (var line in File.ReadLines(filePath))
             {
                 total++;
                 if (total <= PreviewMaxLines)
-                {
-                    PreviewLines.Add(new GCodePreviewLine
-                    {
-                        LineNumber = total,
-                        Text = line
-                    });
-                }
+                    PreviewLines.Add(new GCodePreviewLine { LineNumber = total, Text = line });
             }
-
             PreviewLineCount = total;
-
             if (total > PreviewMaxLines)
-            {
                 PreviewLines.Add(new GCodePreviewLine
                 {
                     LineNumber = 0,
-                    Text = $"; ... ({total - PreviewMaxLines} more lines not shown)",
+                    Text       = $"; ... ({total - PreviewMaxLines} more lines not shown)",
                     IsMetaLine = true
                 });
-            }
-
-            RaisePropertyChanged(nameof(HasPreviewContent));
-            RaisePropertyChanged(nameof(IsPreviewEmpty));
         }
         catch (Exception ex)
         {
@@ -374,92 +478,300 @@ public sealed class FilesViewModel : PageViewModelBase
             PreviewLines.Add(new GCodePreviewLine
             {
                 LineNumber = 0,
-                Text = $"; Error reading file: {ex.Message}",
+                Text       = $"; Error reading file: {ex.Message}",
                 IsMetaLine = true
             });
-            PreviewLineCount = 0;
-            RaisePropertyChanged(nameof(HasPreviewContent));
-            RaisePropertyChanged(nameof(IsPreviewEmpty));
+            PreviewLineCount   = 0;
+            IsLocalPreviewFile = false;
+            _localPreviewPath  = null;
             UpdateToolpathState(hasGeometry: false, hasError: true);
             ToolpathStatusMessage = "Source preview could not be loaded.";
-            ToolpathWarningSummary = "Preview failed before toolpath parsing could start.";
-            if (MainVm != null)
-            {
-                MainVm.ActiveGCodeDocument = null;
-            }
-
-            RaiseParseErrorDialog(
-                "File Read Error",
-                $"Unable to read '{SelectedFile.Name}'.",
-                $"{SelectedFile.FullPath}\n\n{ex}");
+            if (MainVm != null) MainVm.ActiveGCodeDocument = null;
+            RaiseParseErrorDialog("File Read Error", $"Unable to read '{Path.GetFileName(filePath)}'.", $"{filePath}\n\n{ex}");
+            RaisePropertyChanged(nameof(HasPreviewContent));
+            RaisePropertyChanged(nameof(IsPreviewEmpty));
             return;
         }
 
-        BeginToolpathParse();
+        RaisePropertyChanged(nameof(HasPreviewContent));
+        RaisePropertyChanged(nameof(IsPreviewEmpty));
+        RaisePropertyChanged(nameof(FilePreviewTitle));
+
+        // Toolpath parse
+        await BeginToolpathParseAsync(filePath);
     }
 
-    private async void BeginToolpathParse()
+    private async Task<string?> PickGCodeFileAsync()
     {
-        if (SelectedFile == null || !File.Exists(SelectedFile.FullPath))
+        var lifetime = Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
+        var window   = lifetime?.MainWindow;
+        if (window == null) return null;
+
+        var picked = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            return;
-        }
+            Title = "Select G-code file",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("G-code") { Patterns = new[] { "*.gcode", "*.nc", "*.ngc", "*.cnc", "*.tap" } },
+                new FilePickerFileType("All files") { Patterns = new[] { "*.*" } }
+            }
+        });
 
-        CancelPendingParse();
+        return picked.Count > 0 ? picked[0].Path.LocalPath : null;
+    }
 
-        var selectedPath = SelectedFile.FullPath;
-        var cancellation = new CancellationTokenSource();
-        _parseCancellation = cancellation;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Upload
+    // ─────────────────────────────────────────────────────────────────────────
 
-        IsParsingToolpath = true;
-        UpdateToolpathState(hasGeometry: false, hasError: false);
-        ClearWarnings();
-        ToolpathStatusMessage = "Parsing toolpath geometry...";
-        ToolpathWarningSummary = "";
+    private bool CanUpload()
+        => !IsUploading && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
+
+    private bool CanUploadLocalPreview()
+        => IsLocalPreviewFile && !IsUploading && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
+
+    private async void StartUpload()
+    {
+        var path = await PickGCodeFileAsync();
+        if (path == null) return;
+
+        // Parse locally for preview (runs alongside upload prep)
+        await BeginLocalPreviewAsync(path);
+        await DoUploadAsync(path, overwrite: false);
+    }
+
+    private async void StartUploadLocalPreview()
+    {
+        if (!IsLocalPreviewFile || _localPreviewPath == null) return;
+        await DoUploadAsync(_localPreviewPath, overwrite: false);
+    }
+
+    private void CancelUpload() => _uploadCancellation?.Cancel();
+
+    /// <summary>Called by the view after the user confirms overwriting an existing file.</summary>
+    public void ConfirmOverwrite() => _overwriteTcs?.TrySetResult(true);
+
+    /// <summary>Called by the view after the user declines overwriting an existing file.</summary>
+    public void CancelOverwrite()  => _overwriteTcs?.TrySetResult(false);
+
+    private void RouteUpload(UploadAck ack) => _uploadChannel?.Writer.TryWrite(ack);
+
+    private async Task DoUploadAsync(string filePath, bool overwrite)
+    {
+        if (IsUploading || MainVm?.PiConnectionStatus != ConnectionStatus.Connected) return;
+
+        _uploadCancellation = new CancellationTokenSource();
+        var ct = _uploadCancellation.Token;
+
+        _uploadChannel = Channel.CreateBounded<UploadAck>(new BoundedChannelOptions(16)
+        {
+            SingleReader = true,
+            FullMode     = BoundedChannelFullMode.DropOldest
+        });
+
+        var name = Path.GetFileName(filePath);
+        IsUploading      = true;
+        UploadProgress   = 0;
+        UploadStatusText = $"Reading {name}…";
 
         try
         {
-            var document = await GCodeParser.ParseFileAsync(selectedPath, cancellation.Token);
-            if (cancellation.IsCancellationRequested || SelectedFile?.FullPath != selectedPath)
+            var bytes = await File.ReadAllBytesAsync(filePath, ct);
+            var crc   = ComputeCrc32(bytes);
+
+            // ── Phase 1: initiate ──────────────────────────────────────────
+            UploadStatusText = $"Connecting: {name}";
+            MainVm!.Protocol.SendFileUpload(name, bytes.Length, overwrite);
+
+            var initAck = await ReadAckAsync(TimeSpan.FromSeconds(3), ct);
+
+            if (initAck.Type == UploadAckType.FileExists)
             {
-                return;
+                // Surface overwrite confirm dialog to the user
+                UploadFileExistsName = initAck.Name;
+                UploadFileExistsRequested?.Invoke(this, initAck.Name);
+                _overwriteTcs = new TaskCompletionSource<bool>();
+
+                bool confirmed = await _overwriteTcs.Task.WaitAsync(TimeSpan.FromSeconds(60), ct);
+                UploadFileExistsName = null;
+                _overwriteTcs        = null;
+
+                if (!confirmed)
+                {
+                    UploadStatusText = "Upload cancelled.";
+                    return;
+                }
+
+                // Resend with overwrite flag
+                MainVm!.Protocol.SendFileUpload(name, bytes.Length, overwrite: true);
+                initAck = await ReadAckAsync(TimeSpan.FromSeconds(3), ct);
             }
 
-            MainVm?.ActiveGCodeDocument = document;
+            if (initAck.Type == UploadAckType.Failed)
+                throw new InvalidOperationException(initAck.Reason);
+            if (initAck.Type != UploadAckType.Ready)
+                throw new InvalidOperationException("Upload not accepted by Pico");
+
+            // ── Phase 2: chunks ────────────────────────────────────────────
+            int totalChunks = (bytes.Length + UploadChunkSize - 1) / UploadChunkSize;
+
+            for (int seq = 0; seq < totalChunks; seq++)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                int offset = seq * UploadChunkSize;
+                int length = Math.Min(UploadChunkSize, bytes.Length - offset);
+                var base64 = Convert.ToBase64String(bytes, offset, length);
+
+                int retries = 0;
+                while (true)
+                {
+                    MainVm!.Protocol.SendChunk(seq, base64);
+
+                    UploadAck chunkAck;
+                    try
+                    {
+                        chunkAck = await ReadAckAsync(TimeSpan.FromSeconds(5), ct);
+                    }
+                    catch (TimeoutException)
+                    {
+                        if (++retries >= 3)
+                            throw new IOException($"Chunk {seq} timed out after 3 retries.");
+                        UploadStatusText = $"Chunk {seq} timeout — retry {retries}/3…";
+                        continue;
+                    }
+
+                    if (chunkAck.Type == UploadAckType.ChunkOk && chunkAck.Seq == seq)
+                        break;
+
+                    // Unrecoverable SD errors — abort immediately
+                    if (chunkAck.Type == UploadAckType.Failed &&
+                        (chunkAck.Reason.Contains("SD_WRITE_FAIL") ||
+                         chunkAck.Reason.Contains("UPLOAD_SD_REMOVED") ||
+                         chunkAck.Reason.Contains("UNKNOWN")))
+                        throw new IOException($"SD write failed at chunk {seq}: {chunkAck.Reason}");
+
+                    if (++retries >= 3)
+                        throw new IOException($"Chunk {seq} failed after 3 retries.");
+                }
+
+                UploadProgress   = (double)(seq + 1) / totalChunks;
+                UploadStatusText = $"Uploading {name}: {(int)(UploadProgress * 100)}%";
+            }
+
+            // ── Phase 3: finalise ──────────────────────────────────────────
+            UploadStatusText = "Verifying…";
+            MainVm!.Protocol.SendFileUploadEnd($"{crc:x8}");
+
+            var finalAck = await ReadAckAsync(TimeSpan.FromSeconds(5), ct);
+            if (finalAck.Type != UploadAckType.Complete)
+                throw new IOException($"Upload verification failed: {finalAck.Reason}");
+
+            // Success
+            UploadProgress        = 1.0;
+            UploadStatusText      = $"Uploaded: {name}";
+            IsLocalPreviewFile    = false;           // file is now on SD
+            MainVm!.StatusMessage = $"Uploaded: {name}";
+            MainVm.IsStatusError  = false;
+            RequestFileList();
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancel or USB disconnect
+            if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
+                MainVm.Protocol.SendFileUploadAbort();
+            UploadStatusText = "Upload cancelled.";
+        }
+        catch (Exception ex)
+        {
+            if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
+                MainVm.Protocol.SendFileUploadAbort();
+            UploadStatusText = $"Upload failed: {ex.Message}";
             if (MainVm != null)
             {
-                MainVm.TotalLines = document.TotalLines;
+                MainVm.StatusMessage = UploadStatusText;
+                MainVm.IsStatusError = true;
+            }
+        }
+        finally
+        {
+            _uploadChannel?.Writer.TryComplete();
+            _uploadChannel = null;
+            _uploadCancellation?.Dispose();
+            _uploadCancellation = null;
+            _overwriteTcs?.TrySetResult(false);
+            _overwriteTcs  = null;
+            IsUploading    = false;
+            UploadProgress = 0;
+        }
+    }
+
+    private async Task<UploadAck> ReadAckAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        linked.CancelAfter(timeout);
+        try
+        {
+            return await _uploadChannel!.Reader.ReadAsync(linked.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException("Pico did not respond within the timeout period.");
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Toolpath parsing
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private async Task BeginToolpathParseAsync(string filePath)
+    {
+        CancelPendingParse();
+
+        var cancellation = new CancellationTokenSource();
+        _parseCancellation = cancellation;
+
+        IsParsingToolpath     = true;
+        ToolpathStatusMessage = "Parsing toolpath geometry…";
+        ToolpathWarningSummary = "";
+        UpdateToolpathState(hasGeometry: false, hasError: false);
+        ClearWarnings();
+
+        try
+        {
+            var document = await GCodeParser.ParseFileAsync(filePath, cancellation.Token);
+            if (cancellation.IsCancellationRequested || _localPreviewPath != filePath) return;
+
+            if (MainVm != null)
+            {
+                MainVm.ActiveGCodeDocument = document;
+                MainVm.TotalLines          = document.TotalLines;
             }
 
             UpdateToolpathState(hasGeometry: document.HasGeometry, hasError: false);
             UpdateWarnings(document.Warnings);
             ToolpathStatusMessage = document.HasGeometry
                 ? $"Toolpath ready: {document.Segments.Length} segments"
-                : "No motion geometry was found in the selected file.";
+                : "No motion geometry found.";
             ToolpathWarningSummary = document.WarningCount == 0
                 ? "No parse warnings."
-                : $"{document.WarningCount} parse warning{(document.WarningCount == 1 ? string.Empty : "s")}.";
+                : $"{document.WarningCount} parse warning{(document.WarningCount == 1 ? "" : "s")}.";
         }
-        catch (OperationCanceledException)
-        {
-        }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            if (SelectedFile?.FullPath == selectedPath)
+            if (_localPreviewPath == filePath)
             {
                 UpdateToolpathState(hasGeometry: false, hasError: true);
                 ClearWarnings();
-                ToolpathStatusMessage = "Toolpath parse failed.";
+                ToolpathStatusMessage  = "Toolpath parse failed.";
                 ToolpathWarningSummary = "The parser could not build a preview for this file.";
-                if (MainVm != null)
-                {
-                    MainVm.ActiveGCodeDocument = null;
-                }
-
+                if (MainVm != null) MainVm.ActiveGCodeDocument = null;
                 RaiseParseErrorDialog(
                     "Toolpath Parse Error",
-                    $"Unable to parse '{SelectedFile.Name}'.",
-                    $"{SelectedFile.FullPath}\n\n{ex}");
+                    $"Unable to parse '{Path.GetFileName(filePath)}'.",
+                    $"{filePath}\n\n{ex}");
             }
         }
         finally
@@ -467,54 +779,51 @@ public sealed class FilesViewModel : PageViewModelBase
             if (_parseCancellation == cancellation)
             {
                 _parseCancellation = null;
-                IsParsingToolpath = false;
+                IsParsingToolpath  = false;
             }
-
             cancellation.Dispose();
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Warnings
+    // ─────────────────────────────────────────────────────────────────────────
+
     private void UpdateWarnings(IEnumerable<GCodeParseWarning> warnings)
     {
         ToolpathWarnings.Clear();
-        foreach (var warning in warnings)
+        foreach (var w in warnings)
         {
             ToolpathWarnings.Add(new GCodeWarningInfo
             {
-                LineNumber = warning.LineNumber,
-                ScopeLabel = warning.LineNumber > 0 ? $"Line {warning.LineNumber}" : "Global",
-                Message = warning.Message,
-                IsVisibleInPreview = warning.LineNumber > 0 && warning.LineNumber <= PreviewMaxLines
+                LineNumber         = w.LineNumber,
+                ScopeLabel         = w.LineNumber > 0 ? $"Line {w.LineNumber}" : "Global",
+                Message            = w.Message,
+                IsVisibleInPreview = w.LineNumber > 0 && w.LineNumber <= PreviewMaxLines
             });
         }
 
-        var warningLookup = ToolpathWarnings
-            .Where(warning => warning.LineNumber > 0)
-            .GroupBy(warning => warning.LineNumber)
-            .ToDictionary(
-                group => group.Key,
-                group => string.Join("\n", group.Select(warning => $"- {warning.Message}")));
+        var lookup = ToolpathWarnings
+            .Where(w => w.LineNumber > 0)
+            .GroupBy(w => w.LineNumber)
+            .ToDictionary(g => g.Key, g => string.Join("\n", g.Select(w => $"- {w.Message}")));
 
-        foreach (var previewLine in PreviewLines.Where(line => line.LineNumber > 0))
+        foreach (var line in PreviewLines.Where(l => l.LineNumber > 0))
         {
-            if (warningLookup.TryGetValue(previewLine.LineNumber, out var tooltip))
+            if (lookup.TryGetValue(line.LineNumber, out var tip))
             {
-                previewLine.HasWarning = true;
-                previewLine.WarningTooltip = tooltip;
+                line.HasWarning     = true;
+                line.WarningTooltip = tip;
             }
             else
             {
-                previewLine.HasWarning = false;
-                previewLine.WarningTooltip = string.Empty;
+                line.HasWarning     = false;
+                line.WarningTooltip = string.Empty;
             }
         }
 
-        GlobalWarningSummary = string.Join(
-            "\n",
-            ToolpathWarnings
-                .Where(warning => warning.LineNumber <= 0)
-                .Select(warning => warning.Message));
-
+        GlobalWarningSummary = string.Join("\n",
+            ToolpathWarnings.Where(w => w.LineNumber <= 0).Select(w => w.Message));
         RaisePropertyChanged(nameof(HasGlobalWarnings));
         RaisePropertyChanged(nameof(WarningDetail));
     }
@@ -522,18 +831,17 @@ public sealed class FilesViewModel : PageViewModelBase
     private void ClearWarnings()
     {
         ToolpathWarnings.Clear();
-        foreach (var previewLine in PreviewLines)
-        {
-            previewLine.HasWarning = false;
-            previewLine.WarningTooltip = string.Empty;
-        }
-
+        foreach (var l in PreviewLines) { l.HasWarning = false; l.WarningTooltip = string.Empty; }
         GlobalWarningSummary = "";
         RaisePropertyChanged(nameof(HasGlobalWarnings));
         RaisePropertyChanged(nameof(WarningDetail));
     }
 
-    private void ResetPreviewState()
+    // ─────────────────────────────────────────────────────────────────────────
+    // Reset
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void ResetPreviewState(bool keepLocalPreviewFlag = false)
     {
         PreviewLines.Clear();
         PreviewLineCount = 0;
@@ -542,93 +850,112 @@ public sealed class FilesViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(PreviewEmptyMessage));
         UpdateToolpathState(hasGeometry: false, hasError: false);
         ClearWarnings();
-        ToolpathStatusMessage = "Select a file to build the toolpath preview.";
+        ToolpathStatusMessage  = "Use 'Preview local file' to inspect a file.";
         ToolpathWarningSummary = "";
         CancelPendingParse();
+
+        if (!keepLocalPreviewFlag)
+        {
+            IsLocalPreviewFile = false;
+            _localPreviewPath  = null;
+        }
+
         if (MainVm != null)
         {
-            MainVm.ActiveGCodeDocument = null;
-            MainVm.DashboardVm.PreviewLine = 0;
+            MainVm.ActiveGCodeDocument       = null;
+            MainVm.DashboardVm.PreviewLine   = 0;
             MainVm.DashboardVm.ScrubberValue = 0;
         }
     }
 
     private void CancelPendingParse()
     {
-        if (_parseCancellation == null)
-        {
-            return;
-        }
-
+        if (_parseCancellation == null) return;
         _parseCancellation.Cancel();
         _parseCancellation.Dispose();
         _parseCancellation = null;
-        IsParsingToolpath = false;
+        IsParsingToolpath  = false;
     }
 
     private void UpdateToolpathState(bool hasGeometry, bool hasError)
     {
         _toolpathHasGeometry = hasGeometry;
-        _toolpathHasError = hasError;
+        _toolpathHasError    = hasError;
         RaisePropertyChanged(nameof(ToolpathStateLabel));
         RaisePropertyChanged(nameof(ToolpathStateBrush));
     }
 
-    private void RaiseParseErrorDialog(string title, string summary, string details)
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void RaiseCanExecuteAll()
     {
-        ParseErrorDialogRequested?.Invoke(this, new ParseErrorDialogRequest(title, summary, details));
+        ((RelayCommand)UploadCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)CancelUploadCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)PreviewLocalCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)UploadLocalPreviewCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)RefreshCommand).RaiseCanExecuteChanged();
     }
+
+    private void RaiseParseErrorDialog(string title, string summary, string details)
+        => ParseErrorDialogRequested?.Invoke(this, new ParseErrorDialogRequest(title, summary, details));
 
     private static string FormatSize(long bytes)
     {
-        if (bytes < 1024)
-        {
-            return $"{bytes} B";
-        }
-
-        if (bytes < 1024 * 1024)
-        {
-            return $"{bytes / 1024.0:F1} KB";
-        }
-
+        if (bytes < 1024)           return $"{bytes} B";
+        if (bytes < 1024 * 1024)    return $"{bytes / 1024.0:F1} KB";
         return $"{bytes / (1024.0 * 1024):F1} MB";
+    }
+
+    /// <summary>CRC-32 (ISO 3309 / zlib polynomial) of raw bytes.</summary>
+    private static uint ComputeCrc32(byte[] data)
+    {
+        uint crc = 0xFFFFFFFF;
+        foreach (byte b in data)
+        {
+            crc ^= b;
+            for (int i = 0; i < 8; i++)
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+        }
+        return ~crc;
     }
 
     private void HandleThemeChanged(object? sender, EventArgs e)
     {
         RaisePropertyChanged(nameof(ToolpathStateBrush));
-
-        foreach (var previewLine in PreviewLines)
-        {
-            previewLine.RefreshThemeDependentBindings();
-        }
+        foreach (var l in PreviewLines) l.RefreshThemeDependentBindings();
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Data models
+// ─────────────────────────────────────────────────────────────────────────────
+
 public sealed class GCodeFileInfo
 {
-    public string Name { get; set; } = "";
+    public string Name     { get; set; } = "";
     public string FullPath { get; set; } = "";
-    public string Size { get; set; } = "";
+    public string Size     { get; set; } = "";
     public string Modified { get; set; } = "";
 }
 
 public sealed class GCodeWarningInfo
 {
-    public int LineNumber { get; set; }
-    public string ScopeLabel { get; set; } = "";
-    public string Message { get; set; } = "";
-    public bool IsVisibleInPreview { get; set; }
+    public int    LineNumber         { get; set; }
+    public string ScopeLabel        { get; set; } = "";
+    public string Message           { get; set; } = "";
+    public bool   IsVisibleInPreview { get; set; }
 }
 
 public sealed class GCodePreviewLine : ViewModelBase
 {
-    private bool _hasWarning;
+    private bool   _hasWarning;
     private string _warningTooltip = "";
 
-    public int LineNumber { get; set; }
-    public string Text { get; set; } = "";
-    public bool IsMetaLine { get; set; }
+    public int    LineNumber  { get; set; }
+    public string Text        { get; set; } = "";
+    public bool   IsMetaLine  { get; set; }
 
     public string LineNumberText => LineNumber > 0 ? LineNumber.ToString() : "";
 
@@ -644,22 +971,19 @@ public sealed class GCodePreviewLine : ViewModelBase
         set => SetProperty(ref _warningTooltip, value);
     }
 
-    public void RefreshThemeDependentBindings()
-    {
-        RaisePropertyChanged(nameof(HasWarning));
-    }
+    public void RefreshThemeDependentBindings() => RaisePropertyChanged(nameof(HasWarning));
 }
 
 public sealed class ParseErrorDialogRequest : EventArgs
 {
     public ParseErrorDialogRequest(string title, string summary, string details)
     {
-        Title = title;
+        Title   = title;
         Summary = summary;
         Details = details;
     }
 
-    public string Title { get; }
+    public string Title   { get; }
     public string Summary { get; }
     public string Details { get; }
 }

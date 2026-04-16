@@ -1,39 +1,73 @@
 namespace PortableCncApp.ViewModels;
 
 /// <summary>
-/// Motion Controller (Teensy 4.1) FSM States
+/// Unified machine operation state as reported by the Pico (@STATE).
+/// Mirrors the 13-state MachineStateMachine defined in STATE_MACHINE.md.
 /// </summary>
-public enum MotionState
+public enum MachineOperationState
 {
-    PowerUp,        // S0: System powering up
-    Idle,           // S1: Ready, waiting for commands
-    Homing,         // S2: Executing homing sequence
-    Jog,            // S3: Manual jog in progress
-    RunProgram,     // S4: Executing G-code program
-    FeedHold,       // S5: Program paused (feed hold)
-    Fault,          // S6: Fault condition (limit hit, driver fault)
-    EStopLatched    // S7: Emergency stop activated
+    Booting,
+    TeensyDisconnected,
+    Syncing,
+    Idle,
+    Homing,
+    Jog,
+    Starting,
+    Running,
+    Hold,
+    Fault,
+    Estop,
+    CommsFault,
+    Uploading   // SD card file upload in progress — all action caps suppressed
 }
 
 /// <summary>
-/// Safety Supervisor (Raspberry Pi) FSM States
+/// Safety supervision level as reported by the Pico (@SAFETY).
+/// Orthogonal to operation state.
 /// </summary>
-public enum SafetyState
+public enum SafetyLevel
 {
-    SafeIdle,           // P0: System safe and idle
-    Monitoring,         // P1: Actively monitoring during operation
-    Warning,            // P2: Soft alarm (temp approaching limit, vibration high)
-    EStopActive,        // P3: Emergency stop is active
-    ShutdownSequence    // P4: Performing shutdown sequence
+    Safe,
+    Monitoring,
+    Warning,
+    Critical
 }
 
 /// <summary>
-/// Connection status to hardware
+/// Per-action capability flags as reported by the Pico (@CAPS).
+/// The desktop binds these directly to UI controls — no local rule re-derivation.
 /// </summary>
+public record struct CapsFlags(
+    bool Motion,
+    bool Probe,
+    bool Spindle,
+    bool FileSelect,
+    bool JobStart,
+    bool JobPause,
+    bool JobResume,
+    bool JobAbort,
+    bool Overrides,
+    bool Reset);
+
+/// <summary>Connection status for the desktop → Pico USB CDC link.</summary>
 public enum ConnectionStatus
 {
     Disconnected,
     Connecting,
     Connected,
     Error
+}
+
+// ── Temporary compatibility stubs — remove when MainWindowViewModel is reworked ──
+
+[Obsolete("Replace with MachineOperationState. Remove after Phase 2 MainWindowViewModel rework.")]
+public enum MotionState
+{
+    PowerUp, Idle, Homing, Jog, RunProgram, FeedHold, Fault, EStopLatched
+}
+
+[Obsolete("Replace with SafetyLevel. Remove after Phase 2 MainWindowViewModel rework.")]
+public enum SafetyState
+{
+    SafeIdle, Monitoring, Warning, EStopActive, ShutdownSequence
 }

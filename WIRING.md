@@ -1,6 +1,8 @@
-# Portable CNC Machine - Pico 2W Wiring Reference
+# Portable CNC Machine - Wiring Reference
 
-This document reflects the current `pico2W` firmware wiring assumptions.
+This document includes the `pico2W` firmware assumptions and a **Teensy 4.1 schematic pinout** (planning). Align `teensy4.1` `my_machine_map.h` with any hardware you build.
+
+On Teensy 4.1 symbols, **physical pin** is the red index (1–67). **Arduino digital pin** is the leading number on the silk (e.g. `23_A9…` → **D23**).
 
 ## Power
 
@@ -53,11 +55,11 @@ Note: the current Pico firmware does not use a card-detect pin.
 
 These pins are documented as the intended Pico-to-Teensy UART link, but the current Pico firmware does not initialize or use UART yet.
 
-| Signal | Pico GPIO | Pico Pin | Teensy Pin | Notes |
+| Signal | Pico GPIO | Pico Pin | Teensy physical pin | Teensy silk (Serial1) |
 |---|---|---|---|---|
-| TX -> Teensy RX | GP0 | 1 | 1 (RX1) | Reserved for Pico -> Teensy |
-| RX <- Teensy TX | GP1 | 2 | 0 (TX1) | Reserved for Teensy -> Pico |
-| Shared GND | GND | 38 | GND | Required |
+| TX → Teensy RX | GP0 | 1 | 2 | `0_RX1…` (D0) |
+| RX ← Teensy TX | GP1 | 2 | 3 | `1_TX1…` (D1) |
+| Shared GND | GND | 38 | any GND | e.g. 1, 34, 47 |
 
 Both Pico and Teensy 4.1 are 3.3 V logic, so no level shifter should be needed for a direct UART connection.
 
@@ -108,3 +110,74 @@ The firmware changes SPI speed per device transaction on the shared `SPI0` bus:
 | SD Card normal | 12 MHz |
 
 Each device has its own CS pin. Only one device is active at a time.
+
+---
+
+## Teensy 4.1 — schematic pinout (planning)
+
+Use one row per net; step/dir/enable go to driver **PUL / DIR / ENA** plus common GND. **UART:** Pico TX (GP0) → Teensy D0 (RX); Pico RX (GP1) ← Teensy D1 (TX).
+
+### Pico UART (Serial1)
+
+| Physical pin | Silk / function | Net / use |
+|---|---|---|
+| 2 | `0_RX1…` (D0) | From **Pico TX** (GP0) |
+| 3 | `1_TX1…` (D1) | To **Pico RX** (GP1) |
+
+### Limits / home (example: D2–D4)
+
+| Physical pin | Silk | Net |
+|---|---|---|
+| 4 | `2_OUT2` (D2) | X_HOME |
+| 5 | `3_LRCLK2` (D3) | Y_HOME |
+| 6 | `4_BCLK2` (D4) | Z_HOME |
+
+### Probe and E-stop (example: D5, D6)
+
+| Physical pin | Silk | Net |
+|---|---|---|
+| 7 | `5_IN2` (D5) | Z_PROBE |
+| 8 | `6_OUT1D` (D6) | ESTOP_N (if wired to Teensy) |
+
+### Encoders (example: D7–D12)
+
+| Physical pin | Silk | Net |
+|---|---|---|
+| 9 | `7_RX2_OUT1A` (D7) | X_ENC_A |
+| 10 | `8_TX2_IN1` (D8) | X_ENC_B |
+| 11 | `9_OUT1C` (D9) | Y_ENC_A |
+| 12 | `10_CS_MQSR` (D10) | Y_ENC_B |
+| 13 | `11_MOSI_CTX1` (D11) | Z_ENC_A |
+| 14 | `12_MISO_MQSL` (D12) | Z_ENC_B |
+
+### Stepper drivers (example: D15–D23)
+
+These **physical pin** numbers match the Teensy 4.1 symbol (red indices on the outer edge). On the **right** row, each `N_A*` label sits one pin **higher** than a naive count from the bottom (e.g. `23_A9…` is pin **45**, not 44).
+
+| Physical pin | Silk | Net |
+|---|---|---|
+| 45 | `23_A9_CRX1_MCLK1` (D23) | X_STEP |
+| 44 | `22_A8_CTX1` (D22) | X_DIR |
+| 43 | `21_A7_RX5_BCLK1` (D21) | X_EN |
+| 42 | `20_A6_TX5_LRCLK1` (D20) | Y_STEP |
+| 41 | `19_A5_SCL` (D19) | Y_DIR |
+| 40 | `18_A4_SDA` (D18) | Y_EN |
+| 39 | `17_A3_TX4_SDA1` (D17) | Z_STEP |
+| 38 | `16_A2_RX4_SCL1` (D16) | Z_DIR |
+| 37 | `15_A1_RX3_SPDIF_IN` (D15) | Z_EN |
+
+### Spindle and Z brake (example)
+
+`14_A0…` (Arduino **D14**) is on **physical pin 36**. The next pin up the row (**35**) is `13_SCK_LED` (**D13**), not D14.
+
+| Physical pin | Silk | Net |
+|---|---|---|
+| 36 | `14_A0_TX3_SPDIF_OUT` (D14) | SPINDLE_PWM |
+| 33 | `41_A17` (D41) | Z_BRAKE_EN |
+
+### Power / ground
+
+| Physical pin | Label | Net |
+|---|---|---|
+| 48 | VIN | +5 V (or your regulated bus) |
+| 47, 34 | GND | GND |

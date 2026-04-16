@@ -8,7 +8,7 @@ namespace PortableCncApp.Views.Pages;
 public partial class FilesView : UserControl
 {
     private FilesViewModel? _viewModel;
-    private bool _isShowingParseErrorDialog;
+    private bool _isShowingDialog;
 
     public FilesView()
     {
@@ -21,39 +21,50 @@ public partial class FilesView : UserControl
         if (_viewModel != null)
         {
             _viewModel.ParseErrorDialogRequested -= OnParseErrorDialogRequested;
+            _viewModel.UploadFileExistsRequested -= OnUploadFileExistsRequested;
         }
 
         _viewModel = DataContext as FilesViewModel;
+
         if (_viewModel != null)
         {
             _viewModel.ParseErrorDialogRequested += OnParseErrorDialogRequested;
+            _viewModel.UploadFileExistsRequested += OnUploadFileExistsRequested;
         }
     }
 
     private async void OnParseErrorDialogRequested(object? sender, ParseErrorDialogRequest request)
     {
-        if (_isShowingParseErrorDialog)
-        {
-            return;
-        }
-
-        _isShowingParseErrorDialog = true;
+        if (_isShowingDialog) return;
+        _isShowingDialog = true;
         try
         {
-            var owner = TopLevel.GetTopLevel(this) as Window;
+            var owner  = TopLevel.GetTopLevel(this) as Window;
             var dialog = new ParseErrorDialog(request.Title, request.Summary, request.Details);
-            if (owner != null)
-            {
-                await dialog.ShowDialog(owner);
-            }
-            else
-            {
-                dialog.Show();
-            }
+            if (owner != null) await dialog.ShowDialog(owner);
+            else               dialog.Show();
         }
-        finally
+        finally { _isShowingDialog = false; }
+    }
+
+    private async void OnUploadFileExistsRequested(object? sender, string filename)
+    {
+        if (_isShowingDialog || _viewModel == null) return;
+        _isShowingDialog = true;
+        try
         {
-            _isShowingParseErrorDialog = false;
+            var owner  = TopLevel.GetTopLevel(this) as Window;
+            var dialog = new ConfirmDialog(
+                "File Already Exists",
+                $"'{filename}' already exists on the device.\nDo you want to overwrite it?");
+
+            bool? result = owner != null
+                ? await dialog.ShowDialog<bool?>(owner)
+                : null;
+
+            if (result == true) _viewModel.ConfirmOverwrite();
+            else                _viewModel.CancelOverwrite();
         }
+        finally { _isShowingDialog = false; }
     }
 }

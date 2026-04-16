@@ -111,11 +111,10 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
     {
         if (MainVm == null) return;
 
-        if (MainVm.MotionState == MotionState.Fault)
+        if (MainVm.MachineState == MachineOperationState.Fault)
         {
-            MainVm.MotionState = MotionState.Idle;
-            MainVm.StatusMessage = "Fault cleared";
-            AddLog("INFO", "Fault reset - machine now idle");
+            MainVm.Protocol.SendReset();
+            AddLog("INFO", "Reset sent - waiting for machine to return to idle");
         }
     }
 
@@ -123,13 +122,10 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
     {
         if (MainVm == null) return;
 
-        if (MainVm.MotionState == MotionState.EStopLatched)
+        if (MainVm.MachineState == MachineOperationState.Estop)
         {
-            MainVm.MotionState = MotionState.Idle;
-            MainVm.SafetyState = SafetyState.SafeIdle;
-            MainVm.StatusMessage = "E-stop cleared - machine unlocked";
-            MainVm.IsStatusError = false;
-            AddLog("INFO", "E-stop cleared - machine unlocked");
+            MainVm.Protocol.SendReset();
+            AddLog("INFO", "Reset sent - waiting for E-stop to clear");
         }
     }
 

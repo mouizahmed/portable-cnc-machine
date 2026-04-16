@@ -1,7 +1,9 @@
+using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Media;
+using PortableCncApp.Services;
 
 namespace PortableCncApp.ViewModels;
 
@@ -85,7 +87,7 @@ public sealed class ConnectViewModel : PageViewModelBase
 
             if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected &&
                 MainVm.TeensyConnectionStatus == ConnectionStatus.Connected)
-                return "Both controllers are responding and the polling loop is active.";
+                return "Both controllers are online and reporting state.";
 
             if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
                 return "The Pico link is healthy. Waiting for the motion controller to report in.";
@@ -102,9 +104,9 @@ public sealed class ConnectViewModel : PageViewModelBase
 
     public string PicoStageText => MainVm?.PiConnectionStatus switch
     {
-        ConnectionStatus.Connected => "Pico responded over USB serial.",
-        ConnectionStatus.Connecting => "Probing the Pico for a response.",
-        ConnectionStatus.Error => "No Pico response on the selected port.",
+        ConnectionStatus.Connected  => "Pico responded to @PING and @INFO.",
+        ConnectionStatus.Connecting => "Probing the Pico with @PING...",
+        ConnectionStatus.Error      => "No Pico response on the selected port.",
         _ => SelectedPort is null
             ? "Waiting for a port selection."
             : "Ready to probe the Pico."
@@ -116,24 +118,24 @@ public sealed class ConnectViewModel : PageViewModelBase
         ConnectionStatus.Connecting => "Waiting for the motion controller.",
         ConnectionStatus.Error => "Motion controller reported a connection error.",
         _ => MainVm?.PiConnectionStatus == ConnectionStatus.Connected
-            ? "Waiting for the Teensy to identify itself."
+            ? "Waiting for Teensy to connect via @EVENT."
             : "Teensy handshake starts after the Pico link is up."
     };
 
     public string PicoLinkSummary => MainVm?.PiConnectionStatus switch
     {
-        ConnectionStatus.Connected => "Online",
+        ConnectionStatus.Connected  => "Online",
         ConnectionStatus.Connecting => "Linking",
-        ConnectionStatus.Error => "Fault",
-        _ => "Idle"
+        ConnectionStatus.Error      => "Fault",
+        _                           => "Idle"
     };
 
     public string TeensyLinkSummary => MainVm?.TeensyConnectionStatus switch
     {
-        ConnectionStatus.Connected => "Online",
+        ConnectionStatus.Connected  => "Online",
         ConnectionStatus.Connecting => "Linking",
-        ConnectionStatus.Error => "Fault",
-        _ => "Idle"
+        ConnectionStatus.Error      => "Fault",
+        _                           => "Idle"
     };
 
     public IBrush PortStageBackground => SelectedPort is null
@@ -142,9 +144,9 @@ public sealed class ConnectViewModel : PageViewModelBase
 
     public IBrush PicoStageBackground => MainVm?.PiConnectionStatus switch
     {
-        ConnectionStatus.Connected => ThemeResources.Brush("StageSuccessBackgroundBrush", "#1F3A2A"),
+        ConnectionStatus.Connected  => ThemeResources.Brush("StageSuccessBackgroundBrush", "#1F3A2A"),
         ConnectionStatus.Connecting => ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B"),
-        ConnectionStatus.Error => ThemeResources.Brush("StageDangerBackgroundBrush", "#4A1616"),
+        ConnectionStatus.Error      => ThemeResources.Brush("StageDangerBackgroundBrush",  "#4A1616"),
         _ => SelectedPort is null
             ? ThemeResources.Brush("StageNeutralBackgroundBrush", "#252525")
             : ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B")
@@ -152,11 +154,11 @@ public sealed class ConnectViewModel : PageViewModelBase
 
     public IBrush TeensyStageBackground => MainVm?.TeensyConnectionStatus switch
     {
-        ConnectionStatus.Connected => ThemeResources.Brush("StageSuccessBackgroundBrush", "#1F3A2A"),
+        ConnectionStatus.Connected  => ThemeResources.Brush("StageSuccessBackgroundBrush", "#1F3A2A"),
         ConnectionStatus.Connecting => ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B"),
-        ConnectionStatus.Error => ThemeResources.Brush("StageDangerBackgroundBrush", "#4A1616"),
+        ConnectionStatus.Error      => ThemeResources.Brush("StageDangerBackgroundBrush",  "#4A1616"),
         _ => MainVm?.PiConnectionStatus == ConnectionStatus.Error
-            ? ThemeResources.Brush("StageDangerBackgroundBrush", "#4A1616")
+            ? ThemeResources.Brush("StageDangerBackgroundBrush",  "#4A1616")
             : MainVm?.PiConnectionStatus == ConnectionStatus.Connected
                 ? ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B")
                 : ThemeResources.Brush("StageNeutralBackgroundBrush", "#252525")
@@ -168,28 +170,28 @@ public sealed class ConnectViewModel : PageViewModelBase
 
     public IBrush PicoStageBorderBrush => MainVm?.PiConnectionStatus switch
     {
-        ConnectionStatus.Connected => ThemeResources.Brush("SuccessBrush", "#3BB273"),
-        ConnectionStatus.Connecting => ThemeResources.Brush("WarningBrush", "#E0A100"),
-        ConnectionStatus.Error => ThemeResources.Brush("DangerBrush", "#D83B3B"),
+        ConnectionStatus.Connected  => ThemeResources.Brush("SuccessBrush",            "#3BB273"),
+        ConnectionStatus.Connecting => ThemeResources.Brush("WarningBrush",            "#E0A100"),
+        ConnectionStatus.Error      => ThemeResources.Brush("DangerBrush",             "#D83B3B"),
         _ => SelectedPort is null
             ? ThemeResources.Brush("StageNeutralBorderBrush", "#333333")
-            : ThemeResources.Brush("WarningBrush", "#E0A100")
+            : ThemeResources.Brush("WarningBrush",            "#E0A100")
     };
 
     public IBrush TeensyStageBorderBrush => MainVm?.TeensyConnectionStatus switch
     {
-        ConnectionStatus.Connected => ThemeResources.Brush("SuccessBrush", "#3BB273"),
-        ConnectionStatus.Connecting => ThemeResources.Brush("WarningBrush", "#E0A100"),
-        ConnectionStatus.Error => ThemeResources.Brush("DangerBrush", "#D83B3B"),
+        ConnectionStatus.Connected  => ThemeResources.Brush("SuccessBrush",            "#3BB273"),
+        ConnectionStatus.Connecting => ThemeResources.Brush("WarningBrush",            "#E0A100"),
+        ConnectionStatus.Error      => ThemeResources.Brush("DangerBrush",             "#D83B3B"),
         _ => MainVm?.PiConnectionStatus == ConnectionStatus.Error
-            ? ThemeResources.Brush("DangerBrush", "#D83B3B")
+            ? ThemeResources.Brush("DangerBrush",             "#D83B3B")
             : MainVm?.PiConnectionStatus == ConnectionStatus.Connected
-                ? ThemeResources.Brush("WarningBrush", "#E0A100")
+                ? ThemeResources.Brush("WarningBrush",            "#E0A100")
                 : ThemeResources.Brush("StageNeutralBorderBrush", "#333333")
     };
 
     // ════════════════════════════════════════════════════════════════
-    // DEVICE INFO (populated from device responses)
+    // DEVICE INFO  (populated from @INFO response)
     // ════════════════════════════════════════════════════════════════
 
     private string _picoFirmware = "-";
@@ -199,6 +201,14 @@ public sealed class ConnectViewModel : PageViewModelBase
         set => SetProperty(ref _picoFirmware, value);
     }
 
+    private string _picoBoard = "-";
+    public string PicoBoard
+    {
+        get => _picoBoard;
+        set => SetProperty(ref _picoBoard, value);
+    }
+
+    // Kept for UI compat — not populated by current protocol; remove or wire when Teensy reports version.
     private string _teensyFirmware = "-";
     public string TeensyFirmware
     {
@@ -206,20 +216,16 @@ public sealed class ConnectViewModel : PageViewModelBase
         set => SetProperty(ref _teensyFirmware, value);
     }
 
-    private string _picoSerialNumber = "-";
-    public string PicoSerialNumber
-    {
-        get => _picoSerialNumber;
-        set => SetProperty(ref _picoSerialNumber, value);
-    }
+    // Kept for UI compat — old [SN:] field; maps to PicoBoard from @INFO.
+    public string PicoSerialNumber => PicoBoard;
 
     // ════════════════════════════════════════════════════════════════
     // COMMANDS
     // ════════════════════════════════════════════════════════════════
 
     private readonly RelayCommand _connectCommand;
-    public ICommand ConnectCommand => _connectCommand;
-    public ICommand DisconnectCommand { get; }
+    public ICommand ConnectCommand    => _connectCommand;
+    public ICommand DisconnectCommand  { get; }
     public ICommand RefreshPortsCommand { get; }
     public ICommand TestConnectionCommand { get; }
 
@@ -227,9 +233,9 @@ public sealed class ConnectViewModel : PageViewModelBase
     {
         ThemeResources.ThemeChanged += HandleThemeChanged;
 
-        _connectCommand = new RelayCommand(Connect, () => SelectedPort != null && !IsConnecting);
-        DisconnectCommand = new RelayCommand(Disconnect);
-        RefreshPortsCommand = new RelayCommand(RefreshPorts);
+        _connectCommand       = new RelayCommand(Connect, () => SelectedPort != null && !IsConnecting);
+        DisconnectCommand     = new RelayCommand(Disconnect);
+        RefreshPortsCommand   = new RelayCommand(RefreshPorts);
         TestConnectionCommand = new RelayCommand(TestConnection);
 
         RefreshPorts();
@@ -249,15 +255,17 @@ public sealed class ConnectViewModel : PageViewModelBase
         }
     }
 
-    /// <summary>Called by MainWindowViewModel after settings are loaded to trigger auto-connect.</summary>
+    // ════════════════════════════════════════════════════════════════
+    // CONNECTION LOGIC
+    // ════════════════════════════════════════════════════════════════
+
+    /// <summary>Called by MainWindowViewModel after settings load to attempt auto-connect.</summary>
     public async void TryAutoConnect()
     {
         if (MainVm == null) return;
 
         var settings = MainVm.Settings.Current;
         if (!settings.AutoConnect || string.IsNullOrEmpty(settings.LastPort)) return;
-
-        // Only attempt if the saved port is actually available
         if (!AvailablePorts.Contains(settings.LastPort)) return;
 
         SelectedPort = settings.LastPort;
@@ -274,8 +282,8 @@ public sealed class ConnectViewModel : PageViewModelBase
         MainVm.PiConnectionStatus = ConnectionStatus.Connecting;
         MainVm.StatusMessage = $"Opening {SelectedPort}...";
 
-        var success = MainVm.Serial.Connect(SelectedPort);
-        if (!success)
+        // Step 1: Open serial port
+        if (!MainVm.Serial.Connect(SelectedPort))
         {
             MainVm.PiConnectionStatus = ConnectionStatus.Error;
             MainVm.StatusMessage = $"Failed to open {SelectedPort}";
@@ -283,22 +291,24 @@ public sealed class ConnectViewModel : PageViewModelBase
             return;
         }
 
-        // Port is open — probe every 200 ms for up to 3 s to handle USB CDC stabilisation
-        MainVm.StatusMessage = $"Waiting for device on {SelectedPort}...";
+        // Step 2: @PING — wait up to 3 s for PONG (handles USB CDC stabilisation delay)
+        MainVm.StatusMessage = $"Waiting for Pico on {SelectedPort} (@PING)...";
 
-        bool responded = false;
-        void OnLine(string line) { if (line.StartsWith("[PICO:")) responded = true; }
-        MainVm.Serial.LineReceived += OnLine;
+        var pongTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnPong() => pongTcs.TrySetResult(true);
+        MainVm.Protocol.PongReceived += OnPong;
 
-        for (int i = 0; i < 15 && !responded; i++)
+        // Send @PING every 500 ms during the 3 s window so we don't miss the device waking up.
+        var pongTask = pongTcs.Task;
+        for (int i = 0; i < 6 && !pongTask.IsCompleted; i++)
         {
-            MainVm.Serial.SendRealtime((byte)'?');
-            await Task.Delay(200);
+            MainVm.Protocol.SendPing();
+            await Task.WhenAny(pongTask, Task.Delay(500));
         }
 
-        MainVm.Serial.LineReceived -= OnLine;
+        MainVm.Protocol.PongReceived -= OnPong;
 
-        if (!responded)
+        if (!pongTask.IsCompleted)
         {
             MainVm.Serial.Disconnect();
             MainVm.PiConnectionStatus = ConnectionStatus.Error;
@@ -307,37 +317,54 @@ public sealed class ConnectViewModel : PageViewModelBase
             return;
         }
 
-        // Save the port that worked
+        // Step 3: @INFO — wait up to 2 s for device info
+        MainVm.StatusMessage = "Querying Pico info (@INFO)...";
+
+        var infoTcs = new TaskCompletionSource<PicoInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnInfo(PicoInfo info) => infoTcs.TrySetResult(info);
+        MainVm.Protocol.InfoReceived += OnInfo;
+        MainVm.Protocol.SendInfo();
+        var infoCompleted = await Task.WhenAny(infoTcs.Task, Task.Delay(2000)) == infoTcs.Task;
+        MainVm.Protocol.InfoReceived -= OnInfo;
+
+        if (infoCompleted)
+        {
+            // Step 4: Populate device info from @INFO response
+            var picoInfo = await infoTcs.Task;
+            PicoFirmware = picoInfo.Firmware;
+            PicoBoard    = picoInfo.Board;
+
+            if (picoInfo.TeensyConnected)
+                MainVm.TeensyConnectionStatus = ConnectionStatus.Connected;
+        }
+
+        // Step 5: Mark Pico connected — Teensy status will come via @EVENT if not already set
         MainVm.Settings.Current.LastPort = SelectedPort;
         MainVm.Settings.Save();
 
         MainVm.PiConnectionStatus = ConnectionStatus.Connected;
-        MainVm.StatusMessage = $"Connected on {SelectedPort} — waiting for Teensy...";
-
-        MainVm.Serial.SendCommand("$I");
-        MainVm.StartPolling();
+        MainVm.StatusMessage = infoCompleted
+            ? $"Connected on {SelectedPort} — firmware {PicoFirmware}"
+            : $"Connected on {SelectedPort} — @INFO timed out, waiting for state...";
 
         IsConnecting = false;
     }
 
     public void ResetDeviceInfo()
     {
-        PicoFirmware     = "-";
-        TeensyFirmware   = "-";
-        PicoSerialNumber = "-";
+        PicoFirmware   = "-";
+        PicoBoard      = "-";
+        TeensyFirmware = "-";
     }
 
     private void Disconnect()
     {
         if (MainVm == null) return;
 
-        MainVm.StopPolling();
         MainVm.Serial.Disconnect();
 
         MainVm.PiConnectionStatus     = ConnectionStatus.Disconnected;
         MainVm.TeensyConnectionStatus = ConnectionStatus.Disconnected;
-        MainVm.MotionState            = MotionState.PowerUp;
-        MainVm.SafetyState            = SafetyState.SafeIdle;
         MainVm.StatusMessage          = "Disconnected";
 
         ResetDeviceInfo();
@@ -366,8 +393,8 @@ public sealed class ConnectViewModel : PageViewModelBase
     private void TestConnection()
     {
         if (MainVm == null) return;
-        MainVm.Serial.SendRealtime((byte)'?');
-        MainVm.StatusMessage = "Status query sent";
+        MainVm.Protocol.SendPing();
+        MainVm.StatusMessage = "@PING sent";
     }
 
     private void RaiseConnectionStateProperties()
