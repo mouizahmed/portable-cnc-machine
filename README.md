@@ -8,7 +8,18 @@
 
 A modular, portable 3-axis CNC vertical milling machine prototype designed for remote First Nations communities in Canada. Built to fit on a pickup truck bed, operate fully offline, and be maintained with basic hand tools — reducing dependence on distant suppliers for critical replacement parts.
 
-The Pico firmware now lives in `[pico2W](./pico2W)` as a Pico SDK C++ project with a simplified touchscreen UI.
+## Team
+
+| Name | Student ID |
+|------|------------|
+| Mouiz Ahmed | 218105536 |
+| Farzin Aliverdi Mamaghani | 217849068 |
+| Vladislav Fedotov | 218130435 |
+| Quoc Tri (Lloyd) Lam | 219012434 |
+| Anastasia Vitkovskiy | 218644609 |
+| Cameron Waters | 218127605 |
+
+**Submission Date:** April 19, 2026
 
 ## Hardware Overview
 
