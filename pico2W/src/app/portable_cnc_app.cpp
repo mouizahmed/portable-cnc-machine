@@ -6,13 +6,21 @@
 PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_card, CalibrationStorage& storage)
     : touch_(touch),
       storage_service_(sd_card),
-      controller_(machine_state_machine_, jog_state_machine_, job_state_machine_, storage_service_),
-      status_provider_(machine_state_machine_, jog_state_machine_, job_state_machine_, storage_service_),
+      controller_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
+      status_provider_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
       calibration_app_(display, touch, storage),
       frame_(display),
       main_menu_screen_(display, frame_, controller_),
       jog_screen_(display, frame_, controller_),
-      files_screen_(display, frame_, controller_) {
+      files_screen_(display, frame_, controller_),
+      upload_screen_(display),
+      desktop_protocol_(usb_transport_,
+                        machine_fsm_,
+                        job_state_machine_,
+                        loaded_job_storage_,
+                        storage_service_,
+                        sd_card) {
+    files_screen_.bind_protocol(desktop_protocol_);
     router_.register_screen(main_menu_screen_);
     router_.register_screen(jog_screen_);
     router_.register_screen(files_screen_);
@@ -21,11 +29,48 @@ PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_c
 
 void PortableCncApp::run() {
     run_startup_sequence();
+    sd_was_mounted_ = storage_service_.is_mounted();
+    desktop_protocol_.consume_state_changed();
     render_current_screen(true);
 
     while (true) {
-        if (controller_.poll_storage()) {
+        const bool upload_active_now = desktop_protocol_.upload_active();
+        const bool upload_just_ended = upload_was_active_ && !upload_active_now;
+        if (!upload_active_now && !upload_just_ended && controller_.poll_storage()) {
             render_storage_change();
+        }
+        upload_was_active_ = upload_active_now;
+
+        const bool sd_mounted_now = storage_service_.is_mounted();
+        if (sd_mounted_now && !sd_was_mounted_) {
+            sd_was_mounted_ = true;
+            desktop_protocol_.on_sd_mounted();
+            desktop_protocol_.restore_persisted_job();
+        } else if (!sd_mounted_now && sd_was_mounted_) {
+            sd_was_mounted_ = false;
+            desktop_protocol_.on_sd_removed();
+        }
+
+        desktop_protocol_.poll();
+
+        const bool upload_ended_this_tick =
+            upload_active_now && !desktop_protocol_.upload_active();
+
+        if (upload_active_now && !upload_ended_this_tick) {
+            upload_screen_.render_progress(
+                desktop_protocol_.upload_bytes_written(),
+                desktop_protocol_.upload_expected_size());
+        }
+
+        bool needs_render = desktop_protocol_.consume_state_changed();
+        if (desktop_protocol_.consume_file_list_changed()) {
+            controller_.refresh_job_files();
+            if (router_.current().tab() == NavTab::Files) {
+                needs_render = true;
+            }
+        }
+        if (needs_render) {
+            render_current_screen(upload_ended_this_tick);
         }
 
         UiEvent event{};
@@ -44,11 +89,17 @@ void PortableCncApp::run_startup_sequence() {
     controller_.complete_calibration();
     storage_service_.initialize(job_state_machine_);
 
-    // Resolve the initial SD mount state before the first UI paint so startup
-    // doesn't flash MNT and immediately redraw to OK/ERR.
     while (storage_service_.state() == StorageState::Mounting) {
         controller_.poll_storage();
         sleep_ms(UI_POLL_MS);
+    }
+
+    machine_fsm_.handle_event(MachineEvent::BootTimeout);
+    if (storage_service_.is_mounted()) {
+        desktop_protocol_.on_sd_mounted();
+        desktop_protocol_.restore_persisted_job();
+    } else {
+        desktop_protocol_.emit_state_update();
     }
 }
 
@@ -80,6 +131,15 @@ bool PortableCncApp::poll_event(UiEvent& event) {
 }
 
 void PortableCncApp::handle_event(const UiEvent& event) {
+    if (controller_.machine_state() == MachineOperationState::Uploading) {
+        if (event.type == UiEventType::TouchPressed &&
+            upload_screen_.hit_test_abort(event.touch)) {
+            desktop_protocol_.abort_upload();
+            render_current_screen(true);
+        }
+        return;
+    }
+
     UiEventResult result = frame_.handle_event(event);
     if (!result.handled) {
         result = router_.current().handle_event(event);
@@ -99,6 +159,9 @@ void PortableCncApp::handle_event(const UiEvent& event) {
 
     if (router_.can_navigate_to(result.navigation_target) &&
         router_.navigate_to(result.navigation_target)) {
+        if (result.navigation_target == NavTab::Files) {
+            controller_.refresh_job_files();
+        }
         render_current_screen(false);
     }
 }
@@ -118,6 +181,14 @@ void PortableCncApp::render_storage_change() {
 }
 
 void PortableCncApp::render_current_screen(bool full) {
+    if (controller_.machine_state() == MachineOperationState::Uploading) {
+        upload_screen_.render(
+            desktop_protocol_.upload_bytes_written(),
+            desktop_protocol_.upload_expected_size(),
+            desktop_protocol_.upload_name());
+        return;
+    }
+
     if (full) {
         router_.current().render(status_provider_.current());
         return;

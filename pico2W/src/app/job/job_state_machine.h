@@ -7,9 +7,9 @@
 #include "core/state_types.h"
 
 enum class JobEvent : uint8_t {
-    SelectFile,
+    LoadFile,
     StartRun,
-    ClearSelection,
+    ClearLoadedFile,
 };
 
 struct FileEntry {
@@ -28,10 +28,10 @@ public:
     const FileEntry& entry(std::size_t index) const;
 
     JobState state() const;
-    bool has_selection() const;
-    int16_t selected_index() const;
-    const FileEntry* selected_entry() const;
-    bool handle_event(JobEvent event, int16_t selected_index = -1);
+    bool has_loaded_job() const;
+    int16_t loaded_index() const;
+    const FileEntry* loaded_entry() const;
+    bool handle_event(JobEvent event, int16_t loaded_index = -1);
     bool can_run() const;
     void clear_files();
     bool add_file(const FileEntry& entry);
@@ -39,6 +39,6 @@ public:
 private:
     std::array<FileEntry, kMaxFiles> entries_{};
     std::size_t entry_count_ = 0;
-    int16_t selected_index_ = -1;
-    JobState state_ = JobState::NoFileSelected;
+    int16_t loaded_index_ = -1;
+    JobState state_ = JobState::NoJobLoaded;
 };

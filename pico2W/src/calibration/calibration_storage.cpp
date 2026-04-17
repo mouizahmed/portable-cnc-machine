@@ -7,6 +7,9 @@
 #include "hardware/flash.h"
 #include "hardware/regs/addressmap.h"
 #include "hardware/sync.h"
+#include "pico/assert.h"
+
+extern "C" char __flash_binary_end;
 
 namespace {
 constexpr uint32_t kCalibrationMagic = 0x43414C31;
@@ -66,9 +69,17 @@ TouchCalibration from_persisted(const PersistedCalibration& stored) {
         stored.invert_y != 0,
     };
 }
+
+void assert_storage_region_reserved() {
+    const uintptr_t flash_binary_end =
+        reinterpret_cast<uintptr_t>(&__flash_binary_end) - XIP_BASE;
+    hard_assert(flash_binary_end <= kFlashOffset);
+}
 }  // namespace
 
 bool CalibrationStorage::load(TouchCalibration& calibration) const {
+    assert_storage_region_reserved();
+
     const auto* stored = reinterpret_cast<const PersistedCalibration*>(XIP_BASE + kFlashOffset);
     if (stored->magic != kCalibrationMagic || stored->version != kCalibrationVersion || stored->valid != 1) {
         return false;
@@ -82,6 +93,8 @@ bool CalibrationStorage::load(TouchCalibration& calibration) const {
 }
 
 bool CalibrationStorage::save(const TouchCalibration& calibration) const {
+    assert_storage_region_reserved();
+
     const PersistedCalibration stored = to_persisted(calibration);
 
     std::memset(flash_sector_buffer, 0xFF, sizeof(flash_sector_buffer));

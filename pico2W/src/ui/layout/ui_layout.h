@@ -59,13 +59,21 @@ inline constexpr UiRect kFilesDetailsPanelRect{
     static_cast<int16_t>(LCD_WIDTH - kFilesListPanelRect.w),
     kContentHeight,
 };
-inline constexpr int16_t kFilesRunButtonWidth = 70;
-inline constexpr int16_t kFilesRunButtonHeight = 28;
-inline constexpr UiRect kFilesRunButtonRect{
-    static_cast<int16_t>(kFilesDetailsPanelRect.x + (kFilesDetailsPanelRect.w - kFilesRunButtonWidth) / 2),
-    static_cast<int16_t>(kFilesDetailsPanelRect.y + kFilesDetailsPanelRect.h - kFilesRunButtonHeight - kPanelBodyInsetY),
-    kFilesRunButtonWidth,
-    kFilesRunButtonHeight,
+inline constexpr int16_t kFilesActionButtonWidth = 96;
+inline constexpr int16_t kFilesActionButtonHeight = 28;
+inline constexpr UiRect kFilesActionButtonRect{
+    static_cast<int16_t>(kFilesDetailsPanelRect.x + (kFilesDetailsPanelRect.w - kFilesActionButtonWidth) / 2),
+    static_cast<int16_t>(kFilesDetailsPanelRect.y + kFilesDetailsPanelRect.h - kFilesActionButtonHeight - kPanelBodyInsetY),
+    kFilesActionButtonWidth,
+    kFilesActionButtonHeight,
+};
+inline constexpr int16_t kFilesRefreshButtonWidth = 90;
+inline constexpr int16_t kFilesRefreshButtonHeight = 28;
+inline constexpr UiRect kFilesRefreshButtonRect{
+    static_cast<int16_t>(kFilesListPanelRect.x + (kFilesListPanelRect.w - kFilesRefreshButtonWidth) / 2),
+    static_cast<int16_t>(kFilesListPanelRect.y + kFilesListPanelRect.h - kFilesRefreshButtonHeight - kPanelBodyInsetY),
+    kFilesRefreshButtonWidth,
+    kFilesRefreshButtonHeight,
 };
 inline constexpr int16_t kFilesRowHeight = 30;
 inline constexpr int16_t kFilesRowInsetX = kPanelBodyInsetX;

@@ -1,45 +1,57 @@
 #include "app/status/status_provider.h"
 
 namespace {
-const char* machine_state_text(MachineState state) {
+const char* machine_state_text(MachineOperationState state) {
     switch (state) {
-        case MachineState::Booting:
+        case MachineOperationState::Booting:
             return "BOOT";
-        case MachineState::Calibrating:
-            return "CAL";
-        case MachineState::Idle:
+        case MachineOperationState::Syncing:
+            return "SYNC";
+        case MachineOperationState::TeensyDisconnected:
+            return "NO MCU";
+        case MachineOperationState::Idle:
             return "IDLE";
-        case MachineState::Running:
+        case MachineOperationState::Homing:
+            return "HOME";
+        case MachineOperationState::Jog:
+            return "JOG";
+        case MachineOperationState::Starting:
+            return "START";
+        case MachineOperationState::Running:
             return "RUN";
-        case MachineState::Hold:
+        case MachineOperationState::Hold:
             return "HOLD";
-        case MachineState::Alarm:
-            return "ALARM";
-        case MachineState::Estop:
+        case MachineOperationState::Fault:
+            return "FAULT";
+        case MachineOperationState::Estop:
             return "ESTOP";
+        case MachineOperationState::CommsFault:
+            return "COMMS ERR";
+        case MachineOperationState::Uploading:
+            return "UPLOAD";
     }
 
     return "--";
 }
-}  // namespace
+}
 
-StatusProvider::StatusProvider(const MachineStateMachine& machine_state_machine,
+StatusProvider::StatusProvider(const MachineFsm& machine_fsm,
                                const JogStateMachine& jog_state_machine,
                                const JobStateMachine& job_state_machine,
                                const StorageService& storage_service)
-    : machine_state_machine_(machine_state_machine),
+    : machine_fsm_(machine_fsm),
       jog_state_machine_(jog_state_machine),
       job_state_machine_(job_state_machine),
       storage_service_(storage_service) {}
 
 StatusSnapshot StatusProvider::current() const {
-    const FileEntry* selected_file = job_state_machine_.selected_entry();
+    const FileEntry* loaded_file = job_state_machine_.loaded_entry();
     jog_state_machine_.format_xyz(xyz_text_, sizeof(xyz_text_));
     return StatusSnapshot{
-        machine_state_text(machine_state_machine_.state()),
+        machine_state_text(machine_fsm_.state()),
         storage_service_.status_text(),
         "--",
-        selected_file != nullptr ? selected_file->tool_text : "--",
+        loaded_file != nullptr ? loaded_file->tool_text : "--",
         xyz_text_,
         "12:34",
     };

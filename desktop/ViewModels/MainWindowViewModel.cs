@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Windows.Input;
 using Avalonia.Media;
+using Avalonia.Threading;
 using PortableCncApp.Services;
 using PortableCncApp.Services.GCode;
 
@@ -10,6 +11,9 @@ namespace PortableCncApp.ViewModels;
 
 public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 {
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(3);
+
     // ════════════════════════════════════════════════════════════════
     // SERVICES
     // ════════════════════════════════════════════════════════════════
@@ -22,6 +26,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     /// Child ViewModels use this for all outbound commands (Phase 3-5).
     /// </summary>
     public PicoProtocolService Protocol { get; }
+    private readonly DispatcherTimer _heartbeatTimer;
+    private DateTime _lastPongUtc = DateTime.MinValue;
+    private DateTime _lastPingUtc = DateTime.MinValue;
+    private bool _heartbeatFaulted;
 
     // ════════════════════════════════════════════════════════════════
     // CONNECTION STATUS
@@ -36,6 +44,19 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             if (SetProperty(ref _piConnectionStatus, value))
             {
+                if (value == ConnectionStatus.Connected)
+                {
+                    _heartbeatFaulted = false;
+                    _lastPingUtc = DateTime.MinValue;
+                    if (_lastPongUtc == DateTime.MinValue)
+                        _lastPongUtc = DateTime.UtcNow;
+                }
+                else if (value != ConnectionStatus.Connecting)
+                {
+                    _lastPingUtc = DateTime.MinValue;
+                    _lastPongUtc = DateTime.MinValue;
+                }
+
                 RaisePropertyChanged(nameof(ConnectionStatusText));
                 RaisePropertyChanged(nameof(ConnectionStatusBrush));
                 RaisePropertyChanged(nameof(IsConnected));
@@ -666,12 +687,19 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         ThemeResources.ThemeChanged += HandleThemeChanged;
 
         Protocol = new PicoProtocolService(Serial);
+        _heartbeatTimer = new DispatcherTimer
+        {
+            Interval = HeartbeatInterval
+        };
+        _heartbeatTimer.Tick += (_, _) => CheckHeartbeat();
 
         // Subscribe to protocol events — these are the only writers for machine state.
         Protocol.StateChanged    += s => MachineState = s;
         Protocol.CapsChanged     += c => Caps = c;
         Protocol.SafetyChanged   += l => SafetyLevel = l;
         Protocol.PositionChanged += OnPositionChanged;
+        Protocol.JobChanged      += HandleJobChanged;
+        Protocol.PongReceived    += HandlePongReceived;
         Protocol.EventReceived   += HandleProtocolEvent;
         Protocol.ErrorReceived   += msg => { StatusMessage = $"Error: {msg}"; IsStatusError = true; };
         Protocol.WaitReceived    += reason => StatusMessage = string.IsNullOrEmpty(reason)
@@ -716,6 +744,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         ConnectVm.TryAutoConnect();
 
         CurrentPage = DashboardVm;
+        _heartbeatTimer.Start();
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -750,6 +779,55 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         WorkX    = pos.WX;
         WorkY    = pos.WY;
         WorkZ    = pos.WZ;
+    }
+
+    private void HandleJobChanged(string? name)
+    {
+        var previousName = CurrentFileName;
+        CurrentFileName = name;
+        if (name == null)
+        {
+            CurrentLine = 0;
+            Progress = 0;
+            if (!string.IsNullOrWhiteSpace(previousName))
+            {
+                StatusMessage = "Job unloaded";
+                IsStatusError = false;
+            }
+            return;
+        }
+
+        StatusMessage = $"Loaded: {name}";
+        IsStatusError = false;
+    }
+
+    private void HandlePongReceived()
+    {
+        _lastPongUtc = DateTime.UtcNow;
+        _heartbeatFaulted = false;
+    }
+
+    private void CheckHeartbeat()
+    {
+        if (PiConnectionStatus != ConnectionStatus.Connected || _heartbeatFaulted)
+            return;
+
+        var now = DateTime.UtcNow;
+        var hasOutstandingPing = _lastPingUtc != DateTime.MinValue && _lastPingUtc > _lastPongUtc;
+
+        if (hasOutstandingPing && now - _lastPingUtc >= HeartbeatTimeout)
+        {
+            _heartbeatFaulted = true;
+            OnDeviceLost();
+            return;
+        }
+
+        if (!hasOutstandingPing &&
+            (_lastPingUtc == DateTime.MinValue || now - _lastPingUtc >= HeartbeatInterval))
+        {
+            _lastPingUtc = now;
+            Protocol.SendPing();
+        }
     }
 
     private void HandleProtocolEvent(string name, IReadOnlyDictionary<string, string> kv)
@@ -829,6 +907,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void OnDeviceLost()
     {
+        if (_heartbeatFaulted == false)
+            _heartbeatFaulted = true;
+
         Serial.Disconnect();
 
         PiConnectionStatus     = ConnectionStatus.Error;
@@ -837,8 +918,15 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         SafetyLevel            = SafetyLevel.Safe;
         SpindleOn              = false;
         SpindleSpeed           = 0;
+        CurrentFileName        = null;
+        CurrentLine            = 0;
+        TotalLines             = 0;
+        Progress               = 0;
+        ActiveGCodeDocument    = null;
         StatusMessage          = "Device disconnected";
         IsStatusError          = true;
+        _lastPingUtc           = DateTime.MinValue;
+        _lastPongUtc           = DateTime.MinValue;
         XHomed = YHomed = ZHomed = false;
         XLimitTriggered = YLimitTriggered = ZLimitTriggered = false;
 
@@ -884,7 +972,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void NotifySettingsChanged() => RaisePropertyChanged(nameof(Settings));
 
-    public void Dispose() => Serial.Dispose();
+    public void Dispose()
+    {
+        _heartbeatTimer.Stop();
+        Serial.Dispose();
+    }
 
     private void HandleThemeChanged(object? sender, EventArgs e)
     {

@@ -39,6 +39,8 @@ public sealed class SerialService : IDisposable
             };
 
             _port.DataReceived += OnDataReceived;
+            _port.ErrorReceived += OnSerialErrorReceived;
+            _port.PinChanged += OnSerialPinChanged;
             _port.Open();
 
             return true;
@@ -122,11 +124,24 @@ public sealed class SerialService : IDisposable
         if (_port != null)
         {
             _port.DataReceived -= OnDataReceived;
+            _port.ErrorReceived -= OnSerialErrorReceived;
+            _port.PinChanged -= OnSerialPinChanged;
             try { _port.Close(); } catch { }
             _port.Dispose();
             _port = null;
         }
         _lineBuffer.Clear();
+    }
+
+    private void OnSerialErrorReceived(object sender, SerialErrorReceivedEventArgs e)
+    {
+        Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke($"Serial error: {e.EventType}"));
+    }
+
+    private void OnSerialPinChanged(object sender, SerialPinChangedEventArgs e)
+    {
+        if (e.EventType is SerialPinChange.Break or SerialPinChange.CDChanged)
+            Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke($"Serial pin change: {e.EventType}"));
     }
 
     public void Dispose() => CleanupPort();

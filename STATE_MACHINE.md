@@ -611,8 +611,8 @@ The desktop binds these directly to UI controls — no local logic or state deri
 | `MOTION`      | `IDLE`                                                                | Jog, home, zero axes                  |
 | `PROBE`       | `IDLE` ∧ `all_axes_homed_`                                           | Z-probe / tool length                 |
 | `SPINDLE`     | `IDLE` or `RUNNING` or `HOLD`                                        | Spindle on/off                        |
-| `FILE_SELECT` | `IDLE` ∧ `sd_mounted_`                                               | File selection                        |
-| `JOB_START`   | `IDLE` ∧ `job_selected_` ∧ `teensy_connected_` ∧ `sd_mounted_` ∧ `all_axes_homed_` | Start job              |
+| `FILE_LOAD`   | `IDLE` ∧ `sd_mounted_`                                               | Load or replace active job file       |
+| `JOB_START`   | `IDLE` ∧ `job_loaded_` ∧ `teensy_connected_` ∧ `sd_mounted_` ∧ `all_axes_homed_` | Start job              |
 | `JOB_PAUSE`   | `RUNNING`                                                             | Pause job                             |
 | `JOB_RESUME`  | `HOLD` ∧ `hold_complete_`                                            | Resume (only after deceleration done) |
 | `JOB_ABORT`   | `RUNNING` or `HOLD` or `STARTING`                                    | Abort job                             |
@@ -632,8 +632,8 @@ Caps MachineStateMachine::compute_caps() const {
         .motion      = state_ == IDLE,
         .probe       = state_ == IDLE && all_axes_homed_,
         .spindle     = state_ == IDLE || state_ == RUNNING || state_ == HOLD,
-        .file_select = state_ == IDLE && sd_mounted_,
-        .job_start   = state_ == IDLE && job_selected_ && teensy_connected_ && sd_mounted_ && all_axes_homed_,
+        .file_load   = state_ == IDLE && sd_mounted_,
+        .job_start   = state_ == IDLE && job_loaded_ && teensy_connected_ && sd_mounted_ && all_axes_homed_,
         .job_pause   = state_ == RUNNING,
         .job_resume  = state_ == HOLD && hold_complete_,
         .job_abort   = state_ == RUNNING || state_ == HOLD || state_ == STARTING,
@@ -650,7 +650,7 @@ Caps MachineStateMachine::compute_caps() const {
 Every operation state transition emits:
 ```
 @STATE <state>
-@CAPS MOTION=<0|1> PROBE=<0|1> SPINDLE=<0|1> FILE_SELECT=<0|1> JOB_START=<0|1> JOB_PAUSE=<0|1> JOB_RESUME=<0|1> JOB_ABORT=<0|1> OVERRIDES=<0|1> RESET=<0|1>
+@CAPS MOTION=<0|1> PROBE=<0|1> SPINDLE=<0|1> FILE_LOAD=<0|1> JOB_START=<0|1> JOB_PAUSE=<0|1> JOB_RESUME=<0|1> JOB_ABORT=<0|1> OVERRIDES=<0|1> RESET=<0|1>
 ```
 
 Safety level changes emit:
@@ -793,8 +793,14 @@ Accept `$H`, `$X`, `$J=...` and route to `system_execute_line()`.
 
 ### StorageState
 Managed by `StorageService`. Independent of machine operation. Notifies state machine
-on storage mount/unmount so `FILE_SELECT` and `JOB_START` caps stay accurate.
+on storage mount/unmount so `FILE_LOAD` and `JOB_START` caps stay accurate.
 
+### UI Preview Selection
+Desktop and TFT preview selection are separate UI state. They are not represented in
+`MachineFsm` and are not sent over the protocol. The Pico only owns the currently loaded
+job file.
+The loaded job is persisted by filename in Pico flash and may be restored after boot or
+SD remount if that filename still exists in the refreshed file list.
 ### Jog UI Preferences
 Step size and feed rate selection are purely UI state on the touch screen.
 Not part of the state machine. Not reported over the protocol.

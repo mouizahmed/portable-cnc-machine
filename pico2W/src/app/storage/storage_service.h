@@ -12,10 +12,12 @@ public:
 
     void initialize(JobStateMachine& jobs);
     bool poll(JobStateMachine& jobs);
+    bool force_remount(JobStateMachine& jobs);
     bool is_mounted() const;
     StorageState state() const;
     const char* status_text() const;
     bool refresh_job_files(JobStateMachine& jobs);
+    uint64_t free_bytes() const;
 
 private:
     SdSpiCard& sd_card_;

@@ -81,11 +81,23 @@ public sealed class PicoProtocolService
     /// </summary>
     public event Action<string>? UploadFailedReceived;
 
+    /// <summary>Fired when @OK FILE_DOWNLOAD_READY is received. Args: name, size in bytes.</summary>
+    public event Action<string, long>? DownloadReadyReceived;
+
+    /// <summary>Fired when @CHUNK SEQ=n DATA=... is received during a file download.</summary>
+    public event Action<int, string>? DownloadChunkReceived;
+
+    /// <summary>Fired when @OK FILE_DOWNLOAD_END is received. Args: name, crc32 hex.</summary>
+    public event Action<string, string>? DownloadCompleteReceived;
+
+    /// <summary>Fired when the Pico rejects or aborts a file download.</summary>
+    public event Action<string>? DownloadFailedReceived;
+
     /// <summary>Fired when @WAIT is received — Pico is busy, caller should retry shortly. Arg is optional reason.</summary>
     public event Action<string>? WaitReceived;
 
-    /// <summary>Fired when @OK FILE_SELECT NAME=<filename> is received.</summary>
-    public event Action<string>? FileSelectConfirmed;
+    /// <summary>Fired when a @JOB NAME=<filename|NONE> snapshot is received.</summary>
+    public event Action<string?>? JobChanged;
 
     /// <summary>Fired when @OK FILE_DELETE NAME=<filename> is received.</summary>
     public event Action<string>? FileDeleteConfirmed;
@@ -119,9 +131,12 @@ public sealed class PicoProtocolService
     /// <param name="axes">One of: X, Y, Z, ALL</param>
     public void SendZero(string axes) => Send($"@ZERO AXIS={axes}");
 
-    public void SendFileList()               => Send("@FILE_LIST");
-    public void SendFileSelect(string name)  => Send($"@FILE_SELECT NAME={name}");
-    public void SendFileDelete(string name)  => Send($"@FILE_DELETE NAME={name}");
+    public void SendFileList()              => Send("@FILE_LIST");
+    public void SendFileLoad(string name)   => Send($"@FILE_LOAD NAME={name}");
+    public void SendFileUnload()            => Send("@FILE_UNLOAD");
+    public void SendFileDelete(string name) => Send($"@FILE_DELETE NAME={name}");
+    public void SendFileDownload(string name) => Send($"@FILE_DOWNLOAD NAME={name}");
+    public void SendDownloadAck(int seq)      => Send($"@ACK SEQ={seq}");
 
     /// <param name="overwrite">Set true if user confirmed overwrite of an existing file.</param>
     public void SendFileUpload(string name, long sizeBytes, bool overwrite = false)
@@ -180,6 +195,8 @@ public sealed class PicoProtocolService
             case "@POS":    ParsePos(parts);       break;
             case "@OK":     ParseOk(parts);        break;
             case "@INFO":   ParseInfo(parts);      break;
+            case "@JOB":    ParseJob(parts);       break;
+            case "@CHUNK":  ParseChunk(parts);     break;
             case "@ERROR":  ParseError(parts);     break;
             case "@FILE":   ParseFileEntry(parts); break;
             case "@WAIT":   ParseWait(parts);      break;
@@ -205,7 +222,7 @@ public sealed class PicoProtocolService
             Motion:     GetBool(kv, "MOTION"),
             Probe:      GetBool(kv, "PROBE"),
             Spindle:    GetBool(kv, "SPINDLE"),
-            FileSelect: GetBool(kv, "FILE_SELECT"),
+            FileLoad:   GetBool(kv, "FILE_LOAD"),
             JobStart:   GetBool(kv, "JOB_START"),
             JobPause:   GetBool(kv, "JOB_PAUSE"),
             JobResume:  GetBool(kv, "JOB_RESUME"),
@@ -277,8 +294,15 @@ public sealed class PicoProtocolService
                 UploadAbortedReceived?.Invoke();
                 break;
 
-            case "FILE_SELECT":
-                FileSelectConfirmed?.Invoke(kv.GetValueOrDefault("NAME", ""));
+            case "FILE_DOWNLOAD_READY":
+                long.TryParse(kv.GetValueOrDefault("SIZE", "0"), out var downloadSize);
+                DownloadReadyReceived?.Invoke(kv.GetValueOrDefault("NAME", ""), downloadSize);
+                break;
+
+            case "FILE_DOWNLOAD_END":
+                DownloadCompleteReceived?.Invoke(
+                    kv.GetValueOrDefault("NAME", ""),
+                    kv.GetValueOrDefault("CRC", ""));
                 break;
 
             case "FILE_DELETE":
@@ -304,6 +328,20 @@ public sealed class PicoProtocolService
             Board:           kv.GetValueOrDefault("BOARD",    "?"),
             TeensyConnected: kv.GetValueOrDefault("TEENSY",   "") == "CONNECTED");
         InfoReceived?.Invoke(info);
+    }
+
+    private void ParseJob(string[] parts)
+    {
+        var kv = ParseKeyValues(parts, startIndex: 1);
+        var name = kv.GetValueOrDefault("NAME", "NONE");
+        JobChanged?.Invoke(string.Equals(name, "NONE", StringComparison.OrdinalIgnoreCase) ? null : name);
+    }
+
+    private void ParseChunk(string[] parts)
+    {
+        var kv = ParseKeyValues(parts, startIndex: 1);
+        int.TryParse(kv.GetValueOrDefault("SEQ", "-1"), out var seq);
+        DownloadChunkReceived?.Invoke(seq, kv.GetValueOrDefault("DATA", ""));
     }
 
     private void ParseError(string[] parts)
@@ -346,12 +384,22 @@ public sealed class PicoProtocolService
             case "SD_NOT_MOUNTED":
                 UploadFailedReceived?.Invoke("SD card not present");
                 return;
+
+            case "SD_READ_FAIL":
+                DownloadFailedReceived?.Invoke(parts[1]);
+                return;
         }
 
         // Check for upload-fatal errors that can arrive mid-stream.
         if (parts[1] is "SD_WRITE_FAIL" or "UPLOAD_BUSY" or "INVALID_STATE")
         {
             UploadFailedReceived?.Invoke(parts[1]);
+            return;
+        }
+
+        if (parts[1] is "FILE_NOT_FOUND")
+        {
+            DownloadFailedReceived?.Invoke(parts[1]);
             return;
         }
 

@@ -36,6 +36,13 @@ void set_pin(unsigned int pin, bool level) {
 SdSpiCard::SdSpiCard(spi_inst_t* spi) : spi_(spi) {}
 
 void SdSpiCard::init() {
+    spi_init(spi_, SD_SPI_INIT_BAUD);
+    spi_set_format(spi_, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+
+    gpio_set_function(PIN_SD_SPI_SCK, GPIO_FUNC_SPI);
+    gpio_set_function(PIN_SD_SPI_MOSI, GPIO_FUNC_SPI);
+    gpio_set_function(PIN_SD_SPI_MISO, GPIO_FUNC_SPI);
+
     gpio_init(PIN_SD_CS);
     gpio_set_dir(PIN_SD_CS, GPIO_OUT);
     set_pin(PIN_SD_CS, true);
@@ -170,8 +177,6 @@ uint32_t SdSpiCard::sector_count() const {
 }
 
 void SdSpiCard::begin_bus(uint32_t baudrate) {
-    set_pin(PIN_LCD_CS, true);
-    set_pin(PIN_TOUCH_CS, true);
     spi_set_baudrate(spi_, baudrate);
     spi_set_format(spi_, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
     set_pin(PIN_SD_CS, false);

@@ -12,42 +12,43 @@ JobState JobStateMachine::state() const {
     return state_;
 }
 
-bool JobStateMachine::has_selection() const {
-    return selected_index_ >= 0;
+bool JobStateMachine::has_loaded_job() const {
+    return loaded_index_ >= 0;
 }
 
-int16_t JobStateMachine::selected_index() const {
-    return selected_index_;
+int16_t JobStateMachine::loaded_index() const {
+    return loaded_index_;
 }
 
-const FileEntry* JobStateMachine::selected_entry() const {
-    if (!has_selection()) {
+const FileEntry* JobStateMachine::loaded_entry() const {
+    if (!has_loaded_job()) {
         return nullptr;
     }
-    return &entries_[static_cast<std::size_t>(selected_index_)];
+    return &entries_[static_cast<std::size_t>(loaded_index_)];
 }
 
-bool JobStateMachine::handle_event(JobEvent event, int16_t selected_index) {
+bool JobStateMachine::handle_event(JobEvent event, int16_t loaded_index) {
     switch (event) {
-        case JobEvent::SelectFile:
-            if (selected_index < 0 || selected_index >= static_cast<int16_t>(entry_count_) || selected_index_ == selected_index) {
+        case JobEvent::LoadFile:
+            if (loaded_index < 0 || loaded_index >= static_cast<int16_t>(entry_count_) ||
+                loaded_index_ == loaded_index) {
                 return false;
             }
-            selected_index_ = selected_index;
-            state_ = JobState::FileSelected;
+            loaded_index_ = loaded_index;
+            state_ = JobState::JobLoaded;
             return true;
         case JobEvent::StartRun:
-            if (state_ != JobState::FileSelected) {
+            if (state_ != JobState::JobLoaded) {
                 return false;
             }
             state_ = JobState::Running;
             return true;
-        case JobEvent::ClearSelection:
-            if (selected_index_ < 0 && state_ == JobState::NoFileSelected) {
+        case JobEvent::ClearLoadedFile:
+            if (loaded_index_ < 0 && state_ == JobState::NoJobLoaded) {
                 return false;
             }
-            selected_index_ = -1;
-            state_ = JobState::NoFileSelected;
+            loaded_index_ = -1;
+            state_ = JobState::NoJobLoaded;
             return true;
     }
 
@@ -55,13 +56,13 @@ bool JobStateMachine::handle_event(JobEvent event, int16_t selected_index) {
 }
 
 bool JobStateMachine::can_run() const {
-    return state_ == JobState::FileSelected;
+    return state_ == JobState::JobLoaded;
 }
 
 void JobStateMachine::clear_files() {
     entry_count_ = 0;
-    selected_index_ = -1;
-    state_ = JobState::NoFileSelected;
+    loaded_index_ = -1;
+    state_ = JobState::NoJobLoaded;
 }
 
 bool JobStateMachine::add_file(const FileEntry& entry) {

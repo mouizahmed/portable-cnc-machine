@@ -41,7 +41,7 @@ public record struct CapsFlags(
     bool Motion,
     bool Probe,
     bool Spindle,
-    bool FileSelect,
+    bool FileLoad,
     bool JobStart,
     bool JobPause,
     bool JobResume,

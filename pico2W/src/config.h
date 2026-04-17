@@ -11,7 +11,10 @@ constexpr unsigned int PIN_SPI_MOSI = 7;
 constexpr unsigned int PIN_LCD_BL = 8;
 constexpr unsigned int PIN_TOUCH_CS = 9;
 constexpr unsigned int PIN_TOUCH_IRQ = 10;
-constexpr unsigned int PIN_SD_CS = 11;
+constexpr unsigned int PIN_SD_SPI_MISO = 12;
+constexpr unsigned int PIN_SD_CS = 13;
+constexpr unsigned int PIN_SD_SPI_SCK = 14;
+constexpr unsigned int PIN_SD_SPI_MOSI = 27;
 constexpr unsigned int PIN_ESTOP = 15;
 
 constexpr unsigned int LCD_WIDTH = 480;

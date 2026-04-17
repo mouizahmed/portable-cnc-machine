@@ -65,7 +65,7 @@ two codebases), the Pico explicitly sends a `@CAPS` line alongside every `@STATE
 change.
 
 ```
-@CAPS MOTION=<0|1> PROBE=<0|1> SPINDLE=<0|1> FILE_SELECT=<0|1> JOB_START=<0|1> JOB_PAUSE=<0|1> JOB_RESUME=<0|1> JOB_ABORT=<0|1> OVERRIDES=<0|1> RESET=<0|1>
+@CAPS MOTION=<0|1> PROBE=<0|1> SPINDLE=<0|1> FILE_LOAD=<0|1> JOB_START=<0|1> JOB_PAUSE=<0|1> JOB_RESUME=<0|1> JOB_ABORT=<0|1> OVERRIDES=<0|1> RESET=<0|1>
 ```
 
 | Flag          | Value | Condition (computed by Pico)                                              |
@@ -73,8 +73,8 @@ change.
 | `MOTION`      | 0/1   | state == IDLE                                                             |
 | `PROBE`       | 0/1   | state == IDLE && all_axes_homed                                           |
 | `SPINDLE`     | 0/1   | state == IDLE \|\| RUNNING \|\| HOLD                                      |
-| `FILE_SELECT` | 0/1   | state == IDLE && sd_mounted                                               |
-| `JOB_START`   | 0/1   | state == IDLE && job_selected && teensy_connected && all_axes_homed       |
+| `FILE_LOAD`   | 0/1   | state == IDLE && sd_mounted                                               |
+| `JOB_START`   | 0/1   | state == IDLE && job_loaded && teensy_connected && all_axes_homed         |
 | `JOB_PAUSE`   | 0/1   | state == RUNNING                                                          |
 | `JOB_RESUME`  | 0/1   | state == HOLD && hold_complete                                            |
 | `JOB_ABORT`   | 0/1   | state == RUNNING \|\| HOLD \|\| STARTING                                  |
@@ -90,37 +90,37 @@ state, job loaded state, SD state, homing state. The desktop never needs to know
 **Example — IDLE, file loaded, all axes homed, SD mounted:**
 ```
 @STATE IDLE
-@CAPS MOTION=1 PROBE=1 SPINDLE=1 FILE_SELECT=1 JOB_START=1 JOB_PAUSE=0 JOB_RESUME=0 JOB_ABORT=0 OVERRIDES=0 RESET=0
+@CAPS MOTION=1 PROBE=1 SPINDLE=1 FILE_LOAD=1 JOB_START=1 JOB_PAUSE=0 JOB_RESUME=0 JOB_ABORT=0 OVERRIDES=0 RESET=0
 ```
 
 **Example — job running:**
 ```
 @STATE RUNNING
-@CAPS MOTION=0 PROBE=0 SPINDLE=1 FILE_SELECT=0 JOB_START=0 JOB_PAUSE=1 JOB_RESUME=0 JOB_ABORT=1 OVERRIDES=1 RESET=0
+@CAPS MOTION=0 PROBE=0 SPINDLE=1 FILE_LOAD=0 JOB_START=0 JOB_PAUSE=1 JOB_RESUME=0 JOB_ABORT=1 OVERRIDES=1 RESET=0
 ```
 
 **Example — job in hold (deceleration complete):**
 ```
 @STATE HOLD
-@CAPS MOTION=0 PROBE=0 SPINDLE=1 FILE_SELECT=0 JOB_START=0 JOB_PAUSE=0 JOB_RESUME=1 JOB_ABORT=1 OVERRIDES=1 RESET=0
+@CAPS MOTION=0 PROBE=0 SPINDLE=1 FILE_LOAD=0 JOB_START=0 JOB_PAUSE=0 JOB_RESUME=1 JOB_ABORT=1 OVERRIDES=1 RESET=0
 ```
 
 **Example — Teensy disconnected:**
 ```
 @STATE TEENSY_DISCONNECTED
-@CAPS MOTION=0 PROBE=0 SPINDLE=0 FILE_SELECT=0 JOB_START=0 JOB_PAUSE=0 JOB_RESUME=0 JOB_ABORT=0 OVERRIDES=0 RESET=0
+@CAPS MOTION=0 PROBE=0 SPINDLE=0 FILE_LOAD=0 JOB_START=0 JOB_PAUSE=0 JOB_RESUME=0 JOB_ABORT=0 OVERRIDES=0 RESET=0
 ```
 
 **Example — FAULT (GRBL alarm), E-stop not active:**
 ```
 @STATE FAULT
-@CAPS MOTION=0 PROBE=0 SPINDLE=0 FILE_SELECT=0 JOB_START=0 JOB_PAUSE=0 JOB_RESUME=0 JOB_ABORT=0 OVERRIDES=0 RESET=1
+@CAPS MOTION=0 PROBE=0 SPINDLE=0 FILE_LOAD=0 JOB_START=0 JOB_PAUSE=0 JOB_RESUME=0 JOB_ABORT=0 OVERRIDES=0 RESET=1
 ```
 
 **Example — SD card file upload in progress:**
 ```
 @STATE UPLOADING
-@CAPS MOTION=0 PROBE=0 SPINDLE=0 FILE_SELECT=0 JOB_START=0 JOB_PAUSE=0 JOB_RESUME=0 JOB_ABORT=0 OVERRIDES=0 RESET=0
+@CAPS MOTION=0 PROBE=0 SPINDLE=0 FILE_LOAD=0 JOB_START=0 JOB_PAUSE=0 JOB_RESUME=0 JOB_ABORT=0 OVERRIDES=0 RESET=0
 ```
 
 `UPLOADING` is entered from `IDLE` when `@FILE_UPLOAD` is received. It exits to `IDLE`
@@ -143,7 +143,7 @@ The Pico owns the following state at all times, collapsed into a single unified
 **Safety level** (orthogonal): `SAFE` | `MONITORING` | `WARNING` | `CRITICAL`
 
 **Internal flags** (used to compute `@CAPS` and drive transitions):
-`teensy_connected`, `job_session_active`, `job_selected`, `all_axes_homed`,
+`teensy_connected`, `job_session_active`, `job_loaded`, `all_axes_homed`,
 `sd_mounted`, `hw_estop_active`, `hold_complete`, `job_stream_complete`, `abort_pending`
 
 ---
@@ -238,10 +238,21 @@ Response (one line per file, terminated by `@OK FILE_LIST_END`):
 gate uploads and display storage info.
 
 ```
-@FILE_SELECT NAME=<filename>
+@FILE_LOAD NAME=<filename>
 ```
-Response: `@OK FILE_SELECT NAME=<filename>`
-Selects a file from SD for execution. Valid only in IDLE state (`FILE_SELECT` cap must be 1).
+Response: `@OK FILE_LOAD NAME=<filename>`
+Loads a file from SD as the active job. Valid only in IDLE state (`FILE_LOAD` cap must be 1).
+
+```
+@FILE_UNLOAD
+```
+Response: `@OK FILE_UNLOAD`
+Unloads the active job file. Valid only in IDLE state.
+
+Desktop and TFT preview selection are local UI state and are never sent over the protocol.
+The protocol only represents the active loaded job on the Pico.
+The Pico persists the loaded job by filename in flash and attempts to restore it after boot
+or SD remount if the same file still exists on the card.
 
 ```
 @FILE_DELETE NAME=<filename>
@@ -414,7 +425,7 @@ The Pico must suppress all `@CAPS` flags that would allow conflicting operations
 
 ```
 @STATE IDLE
-@CAPS MOTION=0 PROBE=0 SPINDLE=0 FILE_SELECT=0 JOB_START=0 ...
+@CAPS MOTION=0 PROBE=0 SPINDLE=0 FILE_LOAD=0 JOB_START=0 ...
 ```
 
 after receiving `@FILE_UPLOAD` and restore normal caps after `@FILE_UPLOAD_END` or
@@ -605,7 +616,7 @@ to minimize blocked work:
 
 8. **Desktop `MainWindowViewModel` rework** — pure `@STATE`/`@CAPS`/`@EVENT` sink, remove shadow state
 
-9. SD file management commands (`@FILE_LIST`, `@FILE_SELECT`, `@FILE_DELETE`)
+9. SD file management commands (`@FILE_LIST`, `@FILE_LOAD`, `@FILE_UNLOAD`, `@FILE_DELETE`)
 
 10. WiFi AP + web UI (later)
 

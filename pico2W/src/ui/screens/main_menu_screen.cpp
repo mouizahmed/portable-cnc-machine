@@ -78,8 +78,8 @@ UiEventResult MainMenuScreen::handle_event(const UiEvent& event) {
 }
 
 std::array<MainMenuScreen::ResolvedCard, 4> MainMenuScreen::build_cards() const {
-    const MachineState machine_state = controller_.machine_state();
-    const bool has_job = controller_.jobs().has_selection();
+    const MachineOperationState machine_state = controller_.machine_state();
+    const bool has_job = controller_.jobs().has_loaded_job();
 
     MenuCardSpec primary = make_card(0, "LOAD JOB", "PICK G-CODE", NavTab::Files, true);
     MenuCardSpec jog = make_card(1, "JOG", "MOVE AXES", NavTab::Jog, true);
@@ -87,26 +87,28 @@ std::array<MainMenuScreen::ResolvedCard, 4> MainMenuScreen::build_cards() const 
     MenuCardSpec tool_setup = make_card(3, "TOOL SETUP", "TOUCH-OFF / CHANGE", NavTab::Home, false);
 
     switch (machine_state) {
-        case MachineState::Running:
+        case MachineOperationState::Running:
+        case MachineOperationState::Starting:
             primary = make_card(0, "PAUSE JOB", "HOLD MOTION", NavTab::Home, true);
             jog = make_card(1, "JOG", "DISABLED", NavTab::Home, false);
             set_zero = make_card(2, "SET ZERO", "LOCKED", NavTab::Home, false);
             tool_setup = make_card(3, "TOOL SETUP", "LOCKED", NavTab::Home, false);
             break;
-        case MachineState::Hold:
+        case MachineOperationState::Hold:
             primary = make_card(0, "RESUME JOB", "CONTINUE RUN", NavTab::Home, true);
             jog = make_card(1, "JOG", "DISABLED", NavTab::Home, false);
             set_zero = make_card(2, "SET ZERO", "LOCKED", NavTab::Home, false);
             tool_setup = make_card(3, "TOOL SETUP", "LOCKED", NavTab::Home, false);
             break;
-        case MachineState::Alarm:
-        case MachineState::Estop:
+        case MachineOperationState::Fault:
+        case MachineOperationState::CommsFault:
+        case MachineOperationState::Estop:
             primary = make_card(0, "ALARM", "CHECK MACHINE", NavTab::Home, false);
             jog = make_card(1, "JOG", "DISABLED", NavTab::Home, false);
             set_zero = make_card(2, "SET ZERO", "DISABLED", NavTab::Home, false);
             tool_setup = make_card(3, "TOOL SETUP", "DISABLED", NavTab::Home, false);
             break;
-        case MachineState::Idle:
+        case MachineOperationState::Idle:
             if (has_job) {
                 primary = make_card(0, "START JOB", "FILE READY", NavTab::Home, true);
                 jog = make_card(1, "JOG", "FINAL POSITION", NavTab::Jog, true);
@@ -114,8 +116,12 @@ std::array<MainMenuScreen::ResolvedCard, 4> MainMenuScreen::build_cards() const 
                 tool_setup = make_card(3, "TOOL SETUP", "CONFIRM TOOL", NavTab::Home, false);
             }
             break;
-        case MachineState::Booting:
-        case MachineState::Calibrating:
+        case MachineOperationState::Booting:
+        case MachineOperationState::Syncing:
+        case MachineOperationState::TeensyDisconnected:
+        case MachineOperationState::Homing:
+        case MachineOperationState::Jog:
+        case MachineOperationState::Uploading:
             primary = make_card(0, "SYSTEM", "PLEASE WAIT", NavTab::Home, false);
             jog = make_card(1, "JOG", "DISABLED", NavTab::Home, false);
             set_zero = make_card(2, "SET ZERO", "DISABLED", NavTab::Home, false);

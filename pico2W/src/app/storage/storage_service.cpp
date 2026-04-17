@@ -11,9 +11,9 @@ extern "C" {
 
 namespace {
 FATFS g_sd_fs;
-constexpr uint32_t kRetryIntervalMs = 2000;
-constexpr uint32_t kHealthCheckIntervalMs = 1000;
-constexpr uint8_t kHealthFailureThreshold = 3;
+constexpr uint32_t kRetryIntervalMs = 1000;
+constexpr uint32_t kHealthCheckIntervalMs = 500;
+constexpr uint8_t kHealthFailureThreshold = 2;
 constexpr std::size_t kSectorSize = 512;
 
 bool has_extension(const char* name, const char* extension) {
@@ -62,7 +62,7 @@ void copy_text(char* dest, std::size_t size, const char* src) {
 
 void fill_entry(FileEntry& entry, const FILINFO& info) {
     copy_text(entry.name, sizeof(entry.name), info.fname);
-    copy_text(entry.summary, sizeof(entry.summary), "SD CARD FILE");
+    copy_text(entry.summary, sizeof(entry.summary), "STORAGE FILE");
     copy_text(entry.tool_text, sizeof(entry.tool_text), "--");
     copy_text(entry.zero_text, sizeof(entry.zero_text), "--");
 
@@ -130,7 +130,23 @@ const char* StorageService::status_text() const {
     }
 }
 
+bool StorageService::force_remount(JobStateMachine& jobs) {
+    f_unmount("0:");
+    state_ = StorageState::Mounting;
+    health_failure_count_ = 0;
+    last_attempt_ms_ = 0;
+    last_health_check_ms_ = to_ms_since_boot(get_absolute_time());
+    return try_mount(jobs);
+}
+
 bool StorageService::refresh_job_files(JobStateMachine& jobs) {
+    char loaded_name[sizeof(FileEntry{}.name)]{};
+    const FileEntry* loaded_entry = jobs.loaded_entry();
+    const JobState previous_state = jobs.state();
+    if (loaded_entry != nullptr) {
+        copy_text(loaded_name, sizeof(loaded_name), loaded_entry->name);
+    }
+
     jobs.clear_files();
     if (!is_mounted()) {
         return false;
@@ -139,6 +155,7 @@ bool StorageService::refresh_job_files(JobStateMachine& jobs) {
     DIR dir{};
     FILINFO info{};
     FRESULT result = f_opendir(&dir, "0:/");
+    int16_t restored_loaded_index = -1;
     if (result != FR_OK) {
         state_ = StorageState::ScanError;
         return false;
@@ -162,11 +179,32 @@ bool StorageService::refresh_job_files(JobStateMachine& jobs) {
         FileEntry entry{};
         fill_entry(entry, info);
         jobs.add_file(entry);
+        if (loaded_name[0] != '\0' && std::strcmp(entry.name, loaded_name) == 0) {
+            restored_loaded_index = static_cast<int16_t>(jobs.count() - 1);
+        }
     }
 
     f_closedir(&dir);
+    if (restored_loaded_index >= 0) {
+        jobs.handle_event(JobEvent::LoadFile, restored_loaded_index);
+        if (previous_state == JobState::Running) {
+            jobs.handle_event(JobEvent::StartRun);
+        }
+    }
     state_ = StorageState::Mounted;
     return true;
+}
+
+uint64_t StorageService::free_bytes() const {
+    if (state_ != StorageState::Mounted) {
+        return 0;
+    }
+    FATFS* fs;
+    DWORD free_clust = 0;
+    if (f_getfree("0:", &free_clust, &fs) != FR_OK) {
+        return 0;
+    }
+    return static_cast<uint64_t>(free_clust) * fs->csize * 512u;
 }
 
 bool StorageService::try_mount(JobStateMachine& jobs) {
@@ -198,23 +236,7 @@ bool StorageService::try_mount(JobStateMachine& jobs) {
 
 bool StorageService::check_health(JobStateMachine& jobs) {
     uint8_t sector_buffer[kSectorSize]{};
-    if (!sd_card_.read_blocks(0, sector_buffer, 1)) {
-        ++health_failure_count_;
-        if (health_failure_count_ < kHealthFailureThreshold) {
-            return false;
-        }
-
-        f_unmount("0:");
-        state_ = StorageState::MountError;
-        jobs.clear_files();
-        health_failure_count_ = 0;
-        return true;
-    }
-
-    DIR dir{};
-    const FRESULT result = f_opendir(&dir, "0:/");
-    if (result == FR_OK) {
-        f_closedir(&dir);
+    if (sd_card_.read_blocks(0, sector_buffer, 1)) {
         health_failure_count_ = 0;
         return false;
     }

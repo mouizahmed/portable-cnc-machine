@@ -106,59 +106,93 @@
           <ContentControl Content="{Binding CurrentPage}">
             <ContentControl.DataTemplates>
               <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
-                <controls:SectionCard Title="DASHBOARD">
-                  <controls:SectionCard.Body>
-                    <StackPanel>
-                      <TextBlock Text="{Binding MainVm.CurrentFileName, TargetNullValue='No file loaded'}"
-                                 Classes="CodeValue"
-                                 TextTrimming="CharacterEllipsis"/>
+                <StackPanel Spacing="8">
+                  <controls:SectionCard Title="SELECTED PREVIEW"
+                                        IsVisible="{Binding MainVm.FilesVm.ShowSelectedPreviewCard}">
+                    <controls:SectionCard.Body>
+                      <controls:FileStateCard Header="{Binding MainVm.FilesVm.SelectedPreviewHeaderText}"
+                                              FileName="{Binding MainVm.FilesVm.SelectedPreviewFileName}"
+                                              SizeText="{Binding MainVm.FilesVm.SelectedPreviewSizeText}"
+                                              LinesText="{Binding MainVm.FilesVm.SelectedPreviewLinesText}"
+                                              StatusText="{Binding MainVm.FilesVm.SelectedPreviewStatusText}"
+                                              StatusBackground="{Binding MainVm.FilesVm.SelectedPreviewStatusBrush}"
+                                              PrimaryActionText="Load for Job"
+                                              PrimaryActionCommand="{Binding MainVm.FilesVm.LoadSelectedFileCommand}"
+                                              EmphasizePrimaryAction="True"/>
+                    </controls:SectionCard.Body>
+                  </controls:SectionCard>
 
-                      <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,4">
-                        <TextBlock Text="Progress" Classes="FieldLabel"/>
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding MainVm.Progress, StringFormat={}{0:F1}%}"
-                                   Classes="FieldLabel"/>
-                      </Grid>
+                  <controls:SectionCard Title="LOADED JOB"
+                                        IsVisible="{Binding MainVm.FilesVm.ShowLoadedJobCard}">
+                    <controls:SectionCard.Body>
+                      <controls:FileStateCard Header="{Binding MainVm.FilesVm.LoadedJobHeaderText}"
+                                              FileName="{Binding MainVm.FilesVm.LoadedJobFileName}"
+                                              SizeText="{Binding MainVm.FilesVm.LoadedJobSizeText}"
+                                              LinesText="{Binding MainVm.FilesVm.LoadedJobLinesText}"
+                                              StatusText="{Binding MainVm.FilesVm.LoadedJobStatusText}"
+                                              StatusBackground="{Binding MainVm.FilesVm.LoadedJobStatusBrush}"
+                                              PrimaryActionText="Unload File"
+                                              PrimaryActionCommand="{Binding MainVm.FilesVm.UnloadLoadedFileCommand}"/>
+                    </controls:SectionCard.Body>
+                  </controls:SectionCard>
 
-                      <ProgressBar Value="{Binding MainVm.Progress}" Maximum="100" Height="8" CornerRadius="4"/>
+                  <controls:SectionCard Title="JOB STATUS">
+                    <controls:SectionCard.Body>
+                      <StackPanel>
+                        <TextBlock Text="{Binding MainVm.CurrentFileName, TargetNullValue='No file loaded'}"
+                                   Classes="CodeValue"
+                                   TextTrimming="CharacterEllipsis"/>
 
-                      <TextBlock Text="{Binding MainVm.CurrentLine, StringFormat=Line {0}}"
-                                 Classes="FieldLabel Muted"
-                                 Margin="0,8,0,0"/>
-                      <TextBlock Text="{Binding MainVm.ActiveToolpathBounds}" Classes="FieldLabel" Margin="0,6,0,0"/>
-                      <TextBlock Text="{Binding MainVm.ActiveToolpathDepth}" Classes="FieldLabel" Margin="0,4,0,0"/>
-                    </StackPanel>
-                  </controls:SectionCard.Body>
-                </controls:SectionCard>
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,4">
+                          <TextBlock Text="Progress" Classes="FieldLabel"/>
+                          <TextBlock Grid.Column="1"
+                                     Text="{Binding MainVm.Progress, StringFormat={}{0:F1}%}"
+                                     Classes="FieldLabel"/>
+                        </Grid>
+
+                        <ProgressBar Value="{Binding MainVm.Progress}" Maximum="100" Height="8" CornerRadius="4"/>
+
+                        <TextBlock Text="{Binding MainVm.CurrentLine, StringFormat=Line {0}}"
+                                   Classes="FieldLabel Muted"
+                                   Margin="0,8,0,0"/>
+                        <TextBlock Text="{Binding MainVm.ActiveToolpathBounds}" Classes="FieldLabel" Margin="0,6,0,0"/>
+                        <TextBlock Text="{Binding MainVm.ActiveToolpathDepth}" Classes="FieldLabel" Margin="0,4,0,0"/>
+                      </StackPanel>
+                    </controls:SectionCard.Body>
+                  </controls:SectionCard>
+                </StackPanel>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:FilesViewModel}">
                 <StackPanel Spacing="8">
-                  <controls:SectionCard Title="SELECTION">
+                  <controls:SectionCard Title="SELECTED PREVIEW"
+                                        IsVisible="{Binding ShowSelectedPreviewCard}">
                     <controls:SectionCard.Body>
-                      <StackPanel Spacing="8">
-                        <controls:StatusPill Text="{Binding ToolpathStateLabel}"
-                                             PillBackground="{Binding ToolpathStateBrush}"/>
-                        <TextBlock Text="{Binding FilePreviewTitle}"
-                                   Classes="CodeValue"
-                                   IsVisible="{Binding HasSelectedFile}"
-                                   TextTrimming="CharacterEllipsis"/>
-                        <controls:TwoColumnInfoGrid IsVisible="{Binding HasSelectedFile}">
-                          <TextBlock Text="Size" Classes="FieldLabel"/>
-                          <TextBlock Grid.Column="1"
-                                     Text="{Binding SelectedFile.Size, TargetNullValue='--'}"
-                                     Classes="FieldValue"/>
-
-                          <TextBlock Grid.Row="1" Text="Lines" Classes="FieldLabel"/>
-                          <TextBlock Grid.Row="1"
-                                     Grid.Column="1"
-                                     Text="{Binding SelectedFileLineSummary}"
-                                     Classes="FieldValue"/>
-                        </controls:TwoColumnInfoGrid>
-                      </StackPanel>
+                      <controls:FileStateCard Header="{Binding SelectedPreviewHeaderText}"
+                                              FileName="{Binding SelectedPreviewFileName}"
+                                              SizeText="{Binding SelectedPreviewSizeText}"
+                                              LinesText="{Binding SelectedPreviewLinesText}"
+                                              StatusText="{Binding SelectedPreviewStatusText}"
+                                              StatusBackground="{Binding SelectedPreviewStatusBrush}"
+                                              PrimaryActionText="Load for Job"
+                                              PrimaryActionCommand="{Binding LoadSelectedFileCommand}"
+                                              EmphasizePrimaryAction="True"/>
                     </controls:SectionCard.Body>
                   </controls:SectionCard>
 
+                  <controls:SectionCard Title="LOADED JOB"
+                                        IsVisible="{Binding ShowLoadedJobCard}">
+                    <controls:SectionCard.Body>
+                      <controls:FileStateCard Header="{Binding LoadedJobHeaderText}"
+                                              FileName="{Binding LoadedJobFileName}"
+                                              SizeText="{Binding LoadedJobSizeText}"
+                                              LinesText="{Binding LoadedJobLinesText}"
+                                              StatusText="{Binding LoadedJobStatusText}"
+                                              StatusBackground="{Binding LoadedJobStatusBrush}"
+                                              PrimaryActionText="Unload File"
+                                              PrimaryActionCommand="{Binding UnloadLoadedFileCommand}"/>
+                    </controls:SectionCard.Body>
+                  </controls:SectionCard>
                 </StackPanel>
               </DataTemplate>
 

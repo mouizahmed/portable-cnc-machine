@@ -1,17 +1,17 @@
 #include "services/portable_cnc_controller.h"
 
-PortableCncController::PortableCncController(MachineStateMachine& machine,
+PortableCncController::PortableCncController(MachineFsm& machine,
                                              JogStateMachine& jog,
                                              JobStateMachine& jobs,
                                              StorageService& storage)
     : machine_(machine), jog_(jog), jobs_(jobs), storage_(storage) {}
 
 bool PortableCncController::begin_calibration() {
-    return machine_.handle_event(MachineEvent::StartCalibration);
+    return true;
 }
 
 bool PortableCncController::complete_calibration() {
-    return machine_.handle_event(MachineEvent::CalibrationCompleted);
+    return true;
 }
 
 bool PortableCncController::poll_storage() {
@@ -19,37 +19,34 @@ bool PortableCncController::poll_storage() {
 }
 
 bool PortableCncController::refresh_job_files() {
-    if (!can_select_file()) {
+    if (!can_load_file()) {
         return false;
     }
     return storage_.refresh_job_files(jobs_);
 }
 
-bool PortableCncController::select_file(int16_t index) {
-    if (!can_select_file()) {
-        return false;
-    }
-    return jobs_.handle_event(JobEvent::SelectFile, index);
+bool PortableCncController::force_storage_remount() {
+    return storage_.force_remount(jobs_);
 }
 
 bool PortableCncController::apply_control(ControlCommand command) {
     switch (command) {
         case ControlCommand::Start:
-            if (!can_run_selected_file()) {
+            if (!can_run_loaded_job()) {
                 return false;
             }
             return jobs_.handle_event(JobEvent::StartRun) &&
-                   machine_.handle_event(MachineEvent::RunRequested);
+                   machine_.handle_event(MachineEvent::StartCmd);
         case ControlCommand::Pause:
-            if (machine_.state() != MachineState::Running) {
+            if (machine_.state() != MachineOperationState::Running) {
                 return false;
             }
-            return machine_.handle_event(MachineEvent::HoldRequested);
+            return machine_.handle_event(MachineEvent::PauseCmd);
         case ControlCommand::Resume:
-            if (machine_.state() != MachineState::Hold) {
+            if (machine_.state() != MachineOperationState::Hold) {
                 return false;
             }
-            return machine_.handle_event(MachineEvent::RunRequested);
+            return machine_.handle_event(MachineEvent::ResumeCmd);
     }
 
     return false;
@@ -78,7 +75,7 @@ bool PortableCncController::handle_primary_action() {
     return false;
 }
 
-MachineState PortableCncController::machine_state() const {
+MachineOperationState PortableCncController::machine_state() const {
     return machine_.state();
 }
 
@@ -98,30 +95,41 @@ const char* PortableCncController::storage_status_text() const {
     return storage_.status_text();
 }
 
+uint64_t PortableCncController::storage_free_bytes() const {
+    return storage_.free_bytes();
+}
+
 bool PortableCncController::can_jog() const {
-    return machine_.state() == MachineState::Idle;
+    return machine_.state() == MachineOperationState::Idle;
 }
 
-bool PortableCncController::can_select_file() const {
-    return machine_.state() == MachineState::Idle;
+bool PortableCncController::can_load_file() const {
+    return machine_.state() == MachineOperationState::Idle ||
+           machine_.state() == MachineOperationState::TeensyDisconnected;
 }
 
-bool PortableCncController::can_run_selected_file() const {
-    return machine_.state() == MachineState::Idle && jobs_.can_run();
+bool PortableCncController::can_run_loaded_job() const {
+    return machine_.state() == MachineOperationState::Idle && jobs_.can_run();
 }
 
 PrimaryAction PortableCncController::primary_action() const {
     switch (machine_.state()) {
-        case MachineState::Idle:
-            return jobs_.has_selection() ? PrimaryAction::Start : PrimaryAction::LoadJob;
-        case MachineState::Running:
+        case MachineOperationState::Idle:
+            return jobs_.has_loaded_job() ? PrimaryAction::Start : PrimaryAction::LoadJob;
+        case MachineOperationState::Running:
             return PrimaryAction::Pause;
-        case MachineState::Hold:
+        case MachineOperationState::Hold:
             return PrimaryAction::Resume;
-        case MachineState::Booting:
-        case MachineState::Calibrating:
-        case MachineState::Alarm:
-        case MachineState::Estop:
+        case MachineOperationState::Booting:
+        case MachineOperationState::Syncing:
+        case MachineOperationState::TeensyDisconnected:
+        case MachineOperationState::Homing:
+        case MachineOperationState::Jog:
+        case MachineOperationState::Starting:
+        case MachineOperationState::Fault:
+        case MachineOperationState::Estop:
+        case MachineOperationState::CommsFault:
+        case MachineOperationState::Uploading:
             return PrimaryAction::None;
     }
 

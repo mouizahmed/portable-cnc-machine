@@ -16,7 +16,7 @@ int main() {
     touch.init();
     touch.set_rotation(1);
 
-    SdSpiCard sd_card(spi0);
+    SdSpiCard sd_card(spi1);
     sd_card.init();
 
     CalibrationStorage storage;

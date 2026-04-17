@@ -30,8 +30,10 @@ public sealed class FilesViewModel : PageViewModelBase
     private string _toolpathStatusMessage = "Use 'Preview local file' to inspect a file.";
     private string _toolpathWarningSummary = "";
     private string _globalWarningSummary   = "";
+    private string? _previewDisplayName;
     private bool   _isLocalPreviewFile;
     private string? _localPreviewPath;
+    private string? _downloadPreviewPath;
 
     // ── SD-list fields ────────────────────────────────────────────────────────
     private readonly List<GCodeFileInfo> _pendingFileList = new();
@@ -50,10 +52,18 @@ public sealed class FilesViewModel : PageViewModelBase
     private Channel<UploadAck>?             _uploadChannel;
     private TaskCompletionSource<bool>?     _overwriteTcs;
 
+    // Download preview flow
+    private CancellationTokenSource? _previewDownloadCancellation;
+    private Channel<DownloadPacket>? _downloadChannel;
+    private TaskCompletionSource<bool>? _replaceLoadTcs;
+
     // Upload ACK discriminated union
     private enum UploadAckType { Ready, ChunkOk, Complete, Aborted, Failed, FileExists }
     private record UploadAck(UploadAckType Type, int Seq = 0, string Name = "",
                               long Size = 0, string Reason = "");
+
+    private enum DownloadPacketType { Ready, Chunk, Complete, Failed }
+    private record DownloadPacket(DownloadPacketType Type, int Seq = 0, string Name = "", long Size = 0, string Data = "", string Reason = "");
 
     // ─────────────────────────────────────────────────────────────────────────
     // Constructor
@@ -62,13 +72,19 @@ public sealed class FilesViewModel : PageViewModelBase
     public FilesViewModel()
     {
         ThemeResources.ThemeChanged += HandleThemeChanged;
-        Files.CollectionChanged += (_, _) => RaisePropertyChanged(nameof(HasNoFiles));
+        Files.CollectionChanged += (_, _) =>
+        {
+            RaisePropertyChanged(nameof(HasNoFiles));
+            RaiseFileStateCardProperties();
+        };
 
         UploadCommand             = new RelayCommand(StartUpload,            CanUpload);
         CancelUploadCommand       = new RelayCommand(CancelUpload,           () => IsUploading);
         PreviewLocalCommand       = new RelayCommand(PreviewLocalFile,       () => !IsUploading);
         UploadLocalPreviewCommand = new RelayCommand(StartUploadLocalPreview, CanUploadLocalPreview);
         RefreshCommand            = new RelayCommand(RefreshFileList,        () => !IsUploading);
+        LoadSelectedFileCommand   = new RelayCommand(LoadSelectedFile,       CanLoadSelectedFile);
+        UnloadLoadedFileCommand   = new RelayCommand(UnloadLoadedFile,       CanUnloadLoadedFile);
         DeleteCommand             = new RelayCommand<GCodeFileInfo>(DeleteFile);
     }
 
@@ -83,6 +99,7 @@ public sealed class FilesViewModel : PageViewModelBase
     /// View shows confirm dialog; call ConfirmOverwrite() or CancelOverwrite() in response.
     /// </summary>
     public event EventHandler<string>? UploadFileExistsRequested;
+    public event EventHandler<LoadReplaceDialogRequest>? LoadReplaceRequested;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Collections
@@ -116,24 +133,37 @@ public sealed class FilesViewModel : PageViewModelBase
             if (!SetProperty(ref _selectedFile, value)) return;
 
             RaisePropertyChanged(nameof(HasSelectedFile));
+            RaiseFileStateCardProperties();
             RaiseCanExecuteAll();
 
-            if (value == null) return;
-
-            // Auto-send FileSelect to Pico when an SD file is clicked
-            if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
-                MainVm.Protocol.SendFileSelect(value.Name);
-
-            if (MainVm != null)
-            {
-                MainVm.CurrentFileName = value.Name;
-                MainVm.StatusMessage   = $"Selected: {value.Name}";
-            }
+            if (value != null && MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
+                _ = BeginSelectedFilePreviewAsync(value);
         }
     }
 
     public bool HasSelectedFile => SelectedFile != null;
     public bool HasNoFiles      => Files.Count == 0;
+    public bool HasLoadedJob    => !string.IsNullOrWhiteSpace(MainVm?.CurrentFileName);
+    public bool IsSelectedFileLoaded
+        => SelectedFile != null &&
+           !string.IsNullOrWhiteSpace(MainVm?.CurrentFileName) &&
+           string.Equals(SelectedFile.Name, MainVm.CurrentFileName, StringComparison.OrdinalIgnoreCase);
+
+    public bool ShowSelectedPreviewCard => HasSelectedFile && !IsSelectedFileLoaded;
+    public bool ShowLoadedJobCard => HasLoadedJob;
+
+    public string? SelectedPreviewFileName => SelectedFile?.Name;
+    public string? SelectedPreviewSizeText => SelectedFile?.Size;
+    public string SelectedPreviewLinesText => TryGetDocumentLineSummary(SelectedFile?.Name);
+    public string? LoadedJobFileName => MainVm?.CurrentFileName;
+    public string LoadedJobSizeText => ResolveLoadedJobInfo()?.Size ?? "--";
+    public string LoadedJobLinesText => TryGetDocumentLineSummary(MainVm?.CurrentFileName);
+    public string SelectedPreviewHeaderText => "Inspect only. This file is not armed for the machine.";
+    public string LoadedJobHeaderText => "Machine-ready job. Start will run this file.";
+    public string SelectedPreviewStatusText => "PREVIEW";
+    public IBrush SelectedPreviewStatusBrush => ThemeResources.Brush("InfoBrush", "#5B9BD5");
+    public string LoadedJobStatusText => "LOADED";
+    public IBrush LoadedJobStatusBrush => ThemeResources.Brush("SuccessBrush", "#3BB273");
 
     // ─────────────────────────────────────────────────────────────────────────
     // Upload state
@@ -237,16 +267,13 @@ public sealed class FilesViewModel : PageViewModelBase
         }
     }
 
-    public string FilePreviewTitle
-        => IsLocalPreviewFile && _localPreviewPath != null
-            ? $"{Path.GetFileName(_localPreviewPath)} (local)"
-            : "No local preview loaded";
+    public string FilePreviewTitle => _previewDisplayName ?? "No preview loaded";
 
     public bool HasPreviewContent => PreviewLines.Count > 0;
     public bool IsPreviewEmpty    => !HasPreviewContent;
 
     public string PreviewEmptyMessage
-        => IsLocalPreviewFile ? "No source lines to display." : "Use 'Preview local file' to inspect a file.";
+        => _previewDisplayName != null ? "No source lines to display." : "Select a device file or preview a local file.";
 
     public string SelectedFileLineSummary
         => PreviewLineCount > 0 ? $"{PreviewLineCount} total lines" : "--";
@@ -315,6 +342,8 @@ public sealed class FilesViewModel : PageViewModelBase
     public ICommand PreviewLocalCommand       { get; }
     public ICommand UploadLocalPreviewCommand { get; }
     public ICommand RefreshCommand            { get; }
+    public ICommand LoadSelectedFileCommand   { get; }
+    public ICommand UnloadLoadedFileCommand   { get; }
     public ICommand DeleteCommand             { get; }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -338,23 +367,50 @@ public sealed class FilesViewModel : PageViewModelBase
         MainVm.Protocol.UploadFailedReceived     += reason       => RouteUpload(new UploadAck(UploadAckType.Failed,    Reason: reason));
         MainVm.Protocol.UploadFileExistsReceived += name         => RouteUpload(new UploadAck(UploadAckType.FileExists, Name: name));
 
+        // Download packets for SD-file preview
+        MainVm.Protocol.DownloadReadyReceived    += (name, size) => RouteDownload(new DownloadPacket(DownloadPacketType.Ready, Name: name, Size: size));
+        MainVm.Protocol.DownloadChunkReceived    += (seq, data)  => RouteDownload(new DownloadPacket(DownloadPacketType.Chunk, Seq: seq, Data: data));
+        MainVm.Protocol.DownloadCompleteReceived += (name, crc)  => RouteDownload(new DownloadPacket(DownloadPacketType.Complete, Name: name, Reason: crc));
+        MainVm.Protocol.DownloadFailedReceived   += reason       => RouteDownload(new DownloadPacket(DownloadPacketType.Failed, Reason: reason));
+
         // File operation confirmations
         MainVm.Protocol.FileDeleteConfirmed += HandleFileDeleteConfirmed;
     }
 
     protected override void OnMainViewModelPropertyChanged(string? propertyName)
     {
-        if (propertyName != nameof(MainWindowViewModel.PiConnectionStatus)) return;
+        switch (propertyName)
+        {
+            case nameof(MainWindowViewModel.PiConnectionStatus):
+            {
+                var status = MainVm?.PiConnectionStatus;
 
-        var status = MainVm?.PiConnectionStatus;
+                if (status == ConnectionStatus.Connected)
+                {
+                    RequestFileList();
+                }
+                else
+                {
+                    if (IsUploading)
+                        _uploadCancellation?.Cancel(); // USB disconnect mid-upload — no abort command, just cancel
 
-        if (status == ConnectionStatus.Connected)
-            RequestFileList();
-        else if (IsUploading)
-            _uploadCancellation?.Cancel(); // USB disconnect mid-upload — no abort command, just cancel
+                    ClearDeviceFileStateOnDisconnect();
+                }
 
-        RaisePropertyChanged(nameof(ShowLocalPreviewBanner));
-        RaiseCanExecuteAll();
+                RaisePropertyChanged(nameof(ShowLocalPreviewBanner));
+                RaiseFileStateCardProperties();
+                RaiseCanExecuteAll();
+                break;
+            }
+
+            case nameof(MainWindowViewModel.CurrentFileName):
+            case nameof(MainWindowViewModel.TotalLines):
+            case nameof(MainWindowViewModel.ActiveGCodeDocument):
+            case nameof(MainWindowViewModel.Caps):
+                RaiseFileStateCardProperties();
+                RaiseCanExecuteAll();
+                break;
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -380,12 +436,16 @@ public sealed class FilesViewModel : PageViewModelBase
 
     private void HandleFileListEnd(int count, long freeBytes)
     {
+        var previousSelectionName = SelectedFile?.Name;
         Files.Clear();
-        SelectedFile = null;
         foreach (var entry in _pendingFileList)
             Files.Add(entry);
         _pendingFileList.Clear();
         SdFreeBytes = freeBytes;
+        SelectedFile = previousSelectionName == null
+            ? null
+            : Files.FirstOrDefault(file => string.Equals(file.Name, previousSelectionName, StringComparison.OrdinalIgnoreCase));
+        RaiseFileStateCardProperties();
         // Toolpath preview is independent — do not reset it here.
     }
 
@@ -401,6 +461,7 @@ public sealed class FilesViewModel : PageViewModelBase
                 Files.Clear();
                 SelectedFile = null;
                 SdFreeBytes  = -1;
+                RaiseFileStateCardProperties();
                 break;
         }
     }
@@ -409,6 +470,50 @@ public sealed class FilesViewModel : PageViewModelBase
     {
         if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
             RequestFileList();
+    }
+
+    private bool CanLoadSelectedFile()
+        => !IsUploading &&
+           MainVm?.PiConnectionStatus == ConnectionStatus.Connected &&
+           SelectedFile != null &&
+           !IsSelectedFileLoaded;
+
+    private async void LoadSelectedFile()
+    {
+        if (!CanLoadSelectedFile() || SelectedFile == null || MainVm == null)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(MainVm.CurrentFileName))
+        {
+            if (LoadReplaceRequested == null)
+                return;
+
+            _replaceLoadTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            LoadReplaceRequested?.Invoke(this, new LoadReplaceDialogRequest(MainVm.CurrentFileName!, SelectedFile.Name));
+            var shouldReplace = await _replaceLoadTcs.Task;
+            _replaceLoadTcs = null;
+            if (!shouldReplace)
+                return;
+        }
+
+        MainVm.Protocol.SendFileLoad(SelectedFile.Name);
+        MainVm.StatusMessage = $"Loading: {SelectedFile.Name}";
+        MainVm.IsStatusError = false;
+    }
+
+    private bool CanUnloadLoadedFile()
+        => !IsUploading &&
+           MainVm?.PiConnectionStatus == ConnectionStatus.Connected &&
+           !string.IsNullOrWhiteSpace(MainVm.CurrentFileName);
+
+    private void UnloadLoadedFile()
+    {
+        if (!CanUnloadLoadedFile() || MainVm == null)
+            return;
+
+        MainVm.Protocol.SendFileUnload();
+        MainVm.StatusMessage = "Unloading active job";
+        MainVm.IsStatusError = false;
     }
 
     private void DeleteFile(GCodeFileInfo? file)
@@ -429,6 +534,103 @@ public sealed class FilesViewModel : PageViewModelBase
         }
     }
 
+    private async Task<string?> DownloadSelectedFileAsync(string fileName)
+    {
+        if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
+            return null;
+
+        CancelPendingPreviewDownload();
+        CleanupDownloadedPreviewFile();
+
+        _previewDownloadCancellation = new CancellationTokenSource();
+        var ct = _previewDownloadCancellation.Token;
+        _downloadChannel = Channel.CreateBounded<DownloadPacket>(new BoundedChannelOptions(32)
+        {
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+
+        ToolpathStatusMessage = $"Downloading preview: {fileName}";
+        UpdateToolpathState(hasGeometry: false, hasError: false);
+        ClearWarnings();
+
+        try
+        {
+            MainVm.Protocol.SendFileDownload(fileName);
+
+            var ready = await ReadDownloadPacketAsync(TimeSpan.FromSeconds(3), ct);
+            if (ready.Type != DownloadPacketType.Ready)
+                throw new IOException(ready.Reason.Length > 0 ? ready.Reason : "Preview download was not accepted.");
+
+            using var stream = new MemoryStream();
+            while (true)
+            {
+                var packet = await ReadDownloadPacketAsync(TimeSpan.FromSeconds(5), ct);
+                switch (packet.Type)
+                {
+                    case DownloadPacketType.Chunk:
+                    {
+                        var bytes = Convert.FromBase64String(packet.Data);
+                        await stream.WriteAsync(bytes, ct);
+                        MainVm.Protocol.SendDownloadAck(packet.Seq);
+                        break;
+                    }
+
+                    case DownloadPacketType.Complete:
+                    {
+                        var downloadedBytes = stream.ToArray();
+                        var actualCrc = ComputeCrc32(downloadedBytes).ToString("x8");
+                        if (!string.Equals(actualCrc, packet.Reason, StringComparison.OrdinalIgnoreCase))
+                            throw new IOException("Preview download CRC mismatch.");
+
+                        _downloadPreviewPath = Path.Combine(
+                            Path.GetTempPath(),
+                            $"portable-cnc-preview-{Guid.NewGuid():N}-{fileName}");
+                        await File.WriteAllBytesAsync(_downloadPreviewPath, downloadedBytes, ct);
+                        return _downloadPreviewPath;
+                    }
+
+                    case DownloadPacketType.Failed:
+                        throw new IOException(packet.Reason);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            UpdateToolpathState(hasGeometry: false, hasError: true);
+            ToolpathStatusMessage = "Source preview could not be loaded.";
+            if (MainVm != null)
+                MainVm.ActiveGCodeDocument = null;
+            RaiseParseErrorDialog("Preview Download Error", $"Unable to preview '{fileName}'.", ex.Message);
+            return null;
+        }
+        finally
+        {
+            _downloadChannel?.Writer.TryComplete();
+            _downloadChannel = null;
+            _previewDownloadCancellation?.Dispose();
+            _previewDownloadCancellation = null;
+        }
+    }
+
+    private async Task<DownloadPacket> ReadDownloadPacketAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        linked.CancelAfter(timeout);
+        try
+        {
+            return await _downloadChannel!.Reader.ReadAsync(linked.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException("Preview download timed out.");
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Local preview
     // ─────────────────────────────────────────────────────────────────────────
@@ -440,16 +642,35 @@ public sealed class FilesViewModel : PageViewModelBase
         await BeginLocalPreviewAsync(path);
     }
 
-    private async Task BeginLocalPreviewAsync(string filePath)
+    private Task BeginLocalPreviewAsync(string filePath)
+        => BeginPreviewFromFileAsync(filePath, $"{Path.GetFileName(filePath)} (local)", isLocalPreview: true);
+
+    private async Task BeginSelectedFilePreviewAsync(GCodeFileInfo file)
     {
-        _localPreviewPath  = filePath;
-        IsLocalPreviewFile = true;
+        if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
+            return;
+
+        var tempPath = await DownloadSelectedFileAsync(file.Name);
+        if (tempPath == null)
+            return;
+
+        await BeginPreviewFromFileAsync(tempPath, file.Name, isLocalPreview: false);
+    }
+
+    private async Task BeginPreviewFromFileAsync(string filePath, string displayName, bool isLocalPreview)
+    {
+        if (isLocalPreview)
+            CleanupDownloadedPreviewFile();
+
+        _previewDisplayName = displayName;
+        _localPreviewPath   = filePath;
+        IsLocalPreviewFile  = isLocalPreview;
         ResetPreviewState(keepLocalPreviewFlag: true);
+        _previewDisplayName = displayName;
 
         if (!File.Exists(filePath))
         {
-            IsLocalPreviewFile = false;
-            _localPreviewPath  = null;
+            ClearPreviewIdentity();
             return;
         }
 
@@ -482,8 +703,7 @@ public sealed class FilesViewModel : PageViewModelBase
                 IsMetaLine = true
             });
             PreviewLineCount   = 0;
-            IsLocalPreviewFile = false;
-            _localPreviewPath  = null;
+            ClearPreviewIdentity();
             UpdateToolpathState(hasGeometry: false, hasError: true);
             ToolpathStatusMessage = "Source preview could not be loaded.";
             if (MainVm != null) MainVm.ActiveGCodeDocument = null;
@@ -555,7 +775,11 @@ public sealed class FilesViewModel : PageViewModelBase
     /// <summary>Called by the view after the user declines overwriting an existing file.</summary>
     public void CancelOverwrite()  => _overwriteTcs?.TrySetResult(false);
 
+    public void ConfirmLoadReplace() => _replaceLoadTcs?.TrySetResult(true);
+    public void CancelLoadReplace()  => _replaceLoadTcs?.TrySetResult(false);
+
     private void RouteUpload(UploadAck ack) => _uploadChannel?.Writer.TryWrite(ack);
+    private void RouteDownload(DownloadPacket packet) => _downloadChannel?.Writer.TryWrite(packet);
 
     private async Task DoUploadAsync(string filePath, bool overwrite)
     {
@@ -856,8 +1080,7 @@ public sealed class FilesViewModel : PageViewModelBase
 
         if (!keepLocalPreviewFlag)
         {
-            IsLocalPreviewFile = false;
-            _localPreviewPath  = null;
+            ClearPreviewIdentity();
         }
 
         if (MainVm != null)
@@ -877,12 +1100,71 @@ public sealed class FilesViewModel : PageViewModelBase
         IsParsingToolpath  = false;
     }
 
+    private void CancelPendingPreviewDownload()
+    {
+        if (_previewDownloadCancellation == null)
+            return;
+
+        _previewDownloadCancellation.Cancel();
+        _previewDownloadCancellation.Dispose();
+        _previewDownloadCancellation = null;
+        _downloadChannel?.Writer.TryComplete();
+        _downloadChannel = null;
+    }
+
+    private void ClearDeviceFileStateOnDisconnect()
+    {
+        CancelPendingPreviewDownload();
+        _overwriteTcs?.TrySetResult(false);
+        _overwriteTcs = null;
+        _replaceLoadTcs?.TrySetResult(false);
+        _replaceLoadTcs = null;
+        _pendingFileList.Clear();
+        _pendingDeletes.Clear();
+
+        Files.Clear();
+        SelectedFile = null;
+        SdFreeBytes = -1;
+
+        if (!IsLocalPreviewFile)
+        {
+            CleanupDownloadedPreviewFile();
+            ResetPreviewState();
+        }
+    }
+
     private void UpdateToolpathState(bool hasGeometry, bool hasError)
     {
         _toolpathHasGeometry = hasGeometry;
         _toolpathHasError    = hasError;
         RaisePropertyChanged(nameof(ToolpathStateLabel));
         RaisePropertyChanged(nameof(ToolpathStateBrush));
+    }
+
+    private void ClearPreviewIdentity()
+    {
+        IsLocalPreviewFile = false;
+        _localPreviewPath = null;
+        _previewDisplayName = null;
+        RaisePropertyChanged(nameof(FilePreviewTitle));
+        RaisePropertyChanged(nameof(PreviewEmptyMessage));
+    }
+
+    private void CleanupDownloadedPreviewFile()
+    {
+        if (string.IsNullOrWhiteSpace(_downloadPreviewPath))
+            return;
+
+        try
+        {
+            if (File.Exists(_downloadPreviewPath))
+                File.Delete(_downloadPreviewPath);
+        }
+        catch
+        {
+        }
+
+        _downloadPreviewPath = null;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -896,6 +1178,50 @@ public sealed class FilesViewModel : PageViewModelBase
         ((RelayCommand)PreviewLocalCommand).RaiseCanExecuteChanged();
         ((RelayCommand)UploadLocalPreviewCommand).RaiseCanExecuteChanged();
         ((RelayCommand)RefreshCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)LoadSelectedFileCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)UnloadLoadedFileCommand).RaiseCanExecuteChanged();
+    }
+
+    private void RaiseFileStateCardProperties()
+    {
+        RaisePropertyChanged(nameof(HasLoadedJob));
+        RaisePropertyChanged(nameof(IsSelectedFileLoaded));
+        RaisePropertyChanged(nameof(ShowSelectedPreviewCard));
+        RaisePropertyChanged(nameof(ShowLoadedJobCard));
+        RaisePropertyChanged(nameof(SelectedPreviewFileName));
+        RaisePropertyChanged(nameof(SelectedPreviewSizeText));
+        RaisePropertyChanged(nameof(SelectedPreviewLinesText));
+        RaisePropertyChanged(nameof(LoadedJobFileName));
+        RaisePropertyChanged(nameof(LoadedJobSizeText));
+        RaisePropertyChanged(nameof(LoadedJobLinesText));
+    }
+
+    private GCodeFileInfo? ResolveLoadedJobInfo()
+    {
+        var loadedName = MainVm?.CurrentFileName;
+        if (string.IsNullOrWhiteSpace(loadedName))
+            return null;
+
+        return Files.FirstOrDefault(file => string.Equals(file.Name, loadedName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string TryGetDocumentLineSummary(string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return "--";
+
+        if (MainVm?.ActiveGCodeDocument == null || string.IsNullOrWhiteSpace(_previewDisplayName))
+            return "--";
+
+        var previewName = _previewDisplayName.EndsWith(" (local)", StringComparison.OrdinalIgnoreCase)
+            ? _previewDisplayName[..^8]
+            : _previewDisplayName;
+
+        if (!string.Equals(previewName, fileName, StringComparison.OrdinalIgnoreCase))
+            return "--";
+
+        var totalLines = MainVm?.ActiveGCodeDocument?.TotalLines ?? 0;
+        return totalLines > 0 ? $"{totalLines} total lines" : "--";
     }
 
     private void RaiseParseErrorDialog(string title, string summary, string details)
@@ -986,4 +1312,16 @@ public sealed class ParseErrorDialogRequest : EventArgs
     public string Title   { get; }
     public string Summary { get; }
     public string Details { get; }
+}
+
+public sealed class LoadReplaceDialogRequest : EventArgs
+{
+    public LoadReplaceDialogRequest(string currentLoadedFile, string requestedFile)
+    {
+        CurrentLoadedFile = currentLoadedFile;
+        RequestedFile = requestedFile;
+    }
+
+    public string CurrentLoadedFile { get; }
+    public string RequestedFile { get; }
 }

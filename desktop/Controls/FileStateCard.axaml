@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
+             x:Class="PortableCncApp.Controls.FileStateCard">
+  <StackPanel Spacing="6">
+    <controls:StatusPill x:Name="StatusBadge"/>
+
+    <TextBlock x:Name="HeaderText"
+               Classes="FieldLabel"/>
+
+    <TextBlock x:Name="FileNameText"
+               Classes="CodeValue"
+               TextTrimming="CharacterEllipsis"/>
+
+    <controls:TwoColumnInfoGrid x:Name="InfoGrid">
+      <TextBlock Text="Size" Classes="FieldLabel"/>
+      <TextBlock Grid.Column="1"
+                 x:Name="SizeValueText"
+                 Classes="FieldValue"/>
+
+      <TextBlock Grid.Row="1"
+                 Text="Lines"
+                 Classes="FieldLabel"/>
+      <TextBlock Grid.Row="1"
+                 Grid.Column="1"
+                 x:Name="LinesValueText"
+                 Classes="FieldValue"/>
+    </controls:TwoColumnInfoGrid>
+
+    <StackPanel x:Name="ActionsPanel"
+                Spacing="6">
+      <Button x:Name="PrimaryButton"
+              Classes="AppButton"
+              HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Center"/>
+      <Button x:Name="SecondaryButton"
+              Classes="AppButton"
+              HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Center"/>
+    </StackPanel>
+  </StackPanel>
+</UserControl>
