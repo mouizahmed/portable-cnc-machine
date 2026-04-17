@@ -10,14 +10,14 @@ A modular, portable 3-axis CNC vertical milling machine prototype designed for r
 
 ## Team
 
-| Name | Student ID |
-|------|------------|
-| Mouiz Ahmed | 218105536 |
-| Farzin Aliverdi Mamaghani | 217849068 |
-| Vladislav Fedotov | 218130435 |
-| Quoc Tri (Lloyd) Lam | 219012434 |
-| Anastasia Vitkovskiy | 218644609 |
-| Cameron Waters | 218127605 |
+| Name | Role | Student ID |
+|------|------|------------|
+| Mouiz Ahmed | Software Engineer | 218105536 |
+| Farzin Aliverdi Mamaghani | Software Engineer | 217849068 |
+| Vladislav Fedotov | Mechanical Engineer | 218130435 |
+| Quoc Tri (Lloyd) Lam | Mechanical Engineer | 219012434 |
+| Anastasia Vitkovskiy | Mechanical Engineer | 218644609 |
+| Cameron Waters | Mechanical Engineer | 218127605 |
 
 ## Repository Structure
 
@@ -52,6 +52,18 @@ portable-cnc-machine/
 │   └── samples/             # Sample G-code files for testing
 └── assets/                  # Project assets (logo, etc.)
 ```
+
+## Software Architecture
+
+<!-- TODO -->
+
+## Hardware Architecture
+
+<!-- TODO -->
+
+## Getting Started
+
+<!-- TODO -->
 
 ## Hardware Overview
 
