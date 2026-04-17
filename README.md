@@ -1,10 +1,12 @@
 <div align="center">
     <img alt="Logo" src="assets/logo.png" width="100" />
+    <h1>Portable CNC Machine</h1>
+    <h3>Capstone Team 40 | Team XYZ</h3>
+    <p>York University | Lassonde School of Engineering</p>
+    <p>2025–2026</p>
 </div>
-<h1 align="center">Portable CNC Machine</h1>
-<h3 align="center">Capstone Team 40 — Team XYZ</h3>
-<p align="center">York University — Lassonde School of Engineering</p>
-<p align="center">2025–2026</p>
+
+A modular, portable 3-axis CNC vertical milling machine prototype designed for remote First Nations communities in Canada. Built to fit on a pickup truck bed, operate fully offline, and be maintained with basic hand tools — reducing dependence on distant suppliers for critical replacement parts.
 
 The Pico firmware now lives in `[pico2W](./pico2W)` as a Pico SDK C++ project with a simplified touchscreen UI.
 
@@ -22,4 +24,4 @@ Pin assignments and wiring details are documented in `[WIRING.md](./WIRING.md)`.
 
 ## License
 
-This repository is licensed under the MIT License. See `[LICENSE](./LICENSE)` for the full text.
+This repository is licensed under the MIT License. See [LICENSE](./LICENSE) for the full text.
