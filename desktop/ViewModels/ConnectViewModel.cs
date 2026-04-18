@@ -291,6 +291,10 @@ public sealed class ConnectViewModel : PageViewModelBase
             return;
         }
 
+        // USB CDC can briefly flap control-line state immediately after open.
+        // Give the Pico a moment to settle before the first handshake ping.
+        await Task.Delay(350);
+
         // Step 2: @PING — wait up to 3 s for PONG (handles USB CDC stabilisation delay)
         MainVm.StatusMessage = $"Waiting for Pico on {SelectedPort} (@PING)...";
 

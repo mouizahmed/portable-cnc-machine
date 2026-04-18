@@ -144,24 +144,37 @@ public sealed class FilesViewModel : PageViewModelBase
     public bool HasSelectedFile => SelectedFile != null;
     public bool HasNoFiles      => Files.Count == 0;
     public bool HasLoadedJob    => !string.IsNullOrWhiteSpace(MainVm?.CurrentFileName);
+    public bool HasSelectedPreview => HasSelectedFile || HasLocalPreview;
+    public bool HasLocalPreview
+        => IsLocalPreviewFile &&
+           !string.IsNullOrWhiteSpace(_previewDisplayName) &&
+           !string.IsNullOrWhiteSpace(_localPreviewPath);
     public bool IsSelectedFileLoaded
         => SelectedFile != null &&
            !string.IsNullOrWhiteSpace(MainVm?.CurrentFileName) &&
            string.Equals(SelectedFile.Name, MainVm.CurrentFileName, StringComparison.OrdinalIgnoreCase);
 
-    public bool ShowSelectedPreviewCard => HasSelectedFile && !IsSelectedFileLoaded;
+    public bool ShowSelectedPreviewCard => HasLocalPreview || (HasSelectedFile && !IsSelectedFileLoaded);
     public bool ShowLoadedJobCard => HasLoadedJob;
 
-    public string? SelectedPreviewFileName => SelectedFile?.Name;
-    public string? SelectedPreviewSizeText => SelectedFile?.Size;
-    public string SelectedPreviewLinesText => TryGetDocumentLineSummary(SelectedFile?.Name);
+    public string? SelectedPreviewFileName => HasLocalPreview ? GetLocalPreviewName() : SelectedFile?.Name;
+    public string? SelectedPreviewSizeText => HasLocalPreview ? GetLocalPreviewSizeText() : SelectedFile?.Size;
+    public string SelectedPreviewLinesText => TryGetDocumentLineSummary(SelectedPreviewFileName);
     public string? LoadedJobFileName => MainVm?.CurrentFileName;
     public string LoadedJobSizeText => ResolveLoadedJobInfo()?.Size ?? "--";
     public string LoadedJobLinesText => TryGetDocumentLineSummary(MainVm?.CurrentFileName);
-    public string SelectedPreviewHeaderText => "Inspect only. This file is not armed for the machine.";
+    public string SelectedPreviewHeaderText => HasLocalPreview
+        ? "Local file. Upload it to the device before it can be loaded."
+        : "Inspect only. This file is not armed for the machine.";
     public string LoadedJobHeaderText => "Machine-ready job. Start will run this file.";
-    public string SelectedPreviewStatusText => "PREVIEW";
-    public IBrush SelectedPreviewStatusBrush => ThemeResources.Brush("InfoBrush", "#5B9BD5");
+    public string SelectedPreviewStatusText => HasLocalPreview ? "LOCAL" : "PREVIEW";
+    public IBrush SelectedPreviewStatusBrush => HasLocalPreview
+        ? ThemeResources.Brush("WarningBrush", "#E0A100")
+        : ThemeResources.Brush("InfoBrush", "#5B9BD5");
+    public string SelectedPreviewPrimaryActionText => HasLocalPreview ? "Upload to Device" : "Load for Job";
+    public ICommand SelectedPreviewPrimaryActionCommand => HasLocalPreview
+        ? UploadLocalPreviewCommand
+        : LoadSelectedFileCommand;
     public string LoadedJobStatusText => "LOADED";
     public IBrush LoadedJobStatusBrush => ThemeResources.Brush("SuccessBrush", "#3BB273");
 
@@ -212,6 +225,7 @@ public sealed class FilesViewModel : PageViewModelBase
                 RaisePropertyChanged(nameof(FilePreviewTitle));
                 RaisePropertyChanged(nameof(PreviewEmptyMessage));
                 RaisePropertyChanged(nameof(ToolpathStateLabel));
+                RaiseFileStateCardProperties();
                 RaiseCanExecuteAll();
             }
         }
@@ -667,6 +681,7 @@ public sealed class FilesViewModel : PageViewModelBase
         IsLocalPreviewFile  = isLocalPreview;
         ResetPreviewState(keepLocalPreviewFlag: true);
         _previewDisplayName = displayName;
+        RaiseFileStateCardProperties();
 
         if (!File.Exists(filePath))
         {
@@ -1148,6 +1163,7 @@ public sealed class FilesViewModel : PageViewModelBase
         _previewDisplayName = null;
         RaisePropertyChanged(nameof(FilePreviewTitle));
         RaisePropertyChanged(nameof(PreviewEmptyMessage));
+        RaiseFileStateCardProperties();
     }
 
     private void CleanupDownloadedPreviewFile()
@@ -1184,6 +1200,8 @@ public sealed class FilesViewModel : PageViewModelBase
 
     private void RaiseFileStateCardProperties()
     {
+        RaisePropertyChanged(nameof(HasSelectedPreview));
+        RaisePropertyChanged(nameof(HasLocalPreview));
         RaisePropertyChanged(nameof(HasLoadedJob));
         RaisePropertyChanged(nameof(IsSelectedFileLoaded));
         RaisePropertyChanged(nameof(ShowSelectedPreviewCard));
@@ -1191,6 +1209,11 @@ public sealed class FilesViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(SelectedPreviewFileName));
         RaisePropertyChanged(nameof(SelectedPreviewSizeText));
         RaisePropertyChanged(nameof(SelectedPreviewLinesText));
+        RaisePropertyChanged(nameof(SelectedPreviewHeaderText));
+        RaisePropertyChanged(nameof(SelectedPreviewStatusText));
+        RaisePropertyChanged(nameof(SelectedPreviewStatusBrush));
+        RaisePropertyChanged(nameof(SelectedPreviewPrimaryActionText));
+        RaisePropertyChanged(nameof(SelectedPreviewPrimaryActionCommand));
         RaisePropertyChanged(nameof(LoadedJobFileName));
         RaisePropertyChanged(nameof(LoadedJobSizeText));
         RaisePropertyChanged(nameof(LoadedJobLinesText));
@@ -1222,6 +1245,31 @@ public sealed class FilesViewModel : PageViewModelBase
 
         var totalLines = MainVm?.ActiveGCodeDocument?.TotalLines ?? 0;
         return totalLines > 0 ? $"{totalLines} total lines" : "--";
+    }
+
+    private string? GetLocalPreviewName()
+    {
+        if (string.IsNullOrWhiteSpace(_previewDisplayName))
+            return null;
+
+        return _previewDisplayName.EndsWith(" (local)", StringComparison.OrdinalIgnoreCase)
+            ? _previewDisplayName[..^8]
+            : _previewDisplayName;
+    }
+
+    private string GetLocalPreviewSizeText()
+    {
+        if (string.IsNullOrWhiteSpace(_localPreviewPath) || !File.Exists(_localPreviewPath))
+            return "--";
+
+        try
+        {
+            return FormatSize(new FileInfo(_localPreviewPath).Length);
+        }
+        catch
+        {
+            return "--";
+        }
     }
 
     private void RaiseParseErrorDialog(string title, string summary, string details)

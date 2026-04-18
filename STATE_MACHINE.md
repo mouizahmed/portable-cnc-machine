@@ -171,7 +171,7 @@ If sensors are normal, safety drops to `SAFE`. If a sensor condition persists, s
 | Flag                    | Type | Set by                                | Cleared by                              |
 |-------------------------|------|---------------------------------------|-----------------------------------------|
 | `teensy_connected_`     | bool | `TeensyConnected` event               | `TeensyDisconnected` event              |
-| `job_selected_`         | bool | `JobSelected` event                   | `JobDeselected`, `SdRemoved`            |
+| `job_loaded_`           | bool | `JobLoaded` event / persisted restore | `JobUnloaded`, `SdRemoved`              |
 | `job_session_active_`   | bool | `StartCmd` accepted (enters STARTING) | Job complete, abort confirmed, fault    |
 | `job_stream_complete_`  | bool | All lines sent + all `ok`s received   | Cleared at job start                    |
 | `abort_pending_`        | bool | `AbortCmd` sent to Teensy             | `GrblIdle` received (abort confirmed)   |
@@ -208,7 +208,8 @@ most common source of stale-flag bugs.
 Additional rules:
 - `all_axes_homed_` is cleared when entering `FAULT`, `ESTOP`, `COMMS_FAULT`, or `TEENSY_DISCONNECTED` (position may be lost)
 - `hw_estop_active_` is managed by GPIO ISR, not by state entry
-- `sd_mounted_` and `job_selected_` are managed by `StorageService`, not by state entry
+- `sd_mounted_` is managed by `StorageService`
+- `job_loaded_` is managed by the file-load protocol path and may be restored from persisted filename after boot or SD remount
 - `upload_active_` is managed by the upload protocol handler. It is set when `FileUploadCmd` is accepted and cleared when the upload terminates for any reason (complete, abort, or E-stop cleanup)
 
 ---
@@ -249,7 +250,10 @@ Additional rules:
 | `SpindleOnCmd`   | User requests spindle on (manual)                        |
 | `SpindleOffCmd`  | User requests spindle off                                |
 | `OverrideCmd`    | User adjusts feed/spindle/rapid override                 |
+| `FileLoadCmd`    | Operator requests that an SD file become the loaded job  |
+| `FileUnloadCmd`  | Operator unloads the active job file                     |
 | `FileUploadCmd`  | Desktop begins file upload (`@FILE_UPLOAD NAME=...`)     |
+| `FileDownloadCmd`| Desktop requests an SD file for preview download         |
 | `UploadAbortCmd` | Desktop cancels upload (`@FILE_UPLOAD_ABORT`)            |
 
 ### From Pico hardware / services
@@ -260,8 +264,9 @@ Additional rules:
 | `HwEstopCleared`    | `PIN_ESTOP` GPIO (GP15) | Hardware E-stop pin released                  |
 | `SdMounted`         | `StorageService`        | Storage mounted successfully                  |
 | `SdRemoved`         | `StorageService`        | Storage removed or unmounted                  |
-| `JobSelected`       | Storage / protocol      | Valid G-code file selected (sets bool only)   |
-| `JobDeselected`     | Storage / protocol      | File selection cleared                        |
+| `JobLoaded`         | File load path          | Valid G-code file became the active job       |
+| `JobUnloaded`       | File unload path        | Active loaded job was cleared                 |
+| `JobRestored`       | Load persistence        | Persisted loaded job restored by filename     |
 | `BootTimeout`       | Timer                   | Teensy did not send `@BOOT` within timeout    |
 | `SyncTimeout`       | Timer                   | No `@GRBL_STATE` received after `@BOOT`       |
 | `JobStreamComplete` | Streaming engine        | All lines sent and all `ok`s received         |
@@ -283,7 +288,7 @@ Every state × every significant event is defined. Unlisted combinations are **i
 | `BootTimeout`      | `TEENSY_DISCONNECTED` | —                                   |
 | `HwEstopAsserted`  | `ESTOP`               | —                                   |
 | `SdMounted`        | stay                  | Set `sd_mounted_`                   |
-| `SdRemoved`        | stay                  | Clear `sd_mounted_`, clear `job_selected_` |
+| `SdRemoved`        | stay                  | Clear `sd_mounted_`, clear `job_loaded_` |
 
 ### `SYNCING`
 
@@ -305,7 +310,7 @@ First `@GRBL_STATE` determines the Pico's initial operation state.
 | `TeensyDisconnected`| `TEENSY_DISCONNECTED` | —                                   |
 | `HwEstopAsserted`   | `ESTOP`               | —                                   |
 | `SdMounted`         | stay                  | Set `sd_mounted_`                   |
-| `SdRemoved`         | stay                  | Clear `sd_mounted_`, clear `job_selected_` |
+| `SdRemoved`         | stay                  | Clear `sd_mounted_`, clear `job_loaded_` |
 
 ### `TEENSY_DISCONNECTED`
 
@@ -316,7 +321,7 @@ No active job. Waiting for Teensy to come back online.
 | `TeensyConnected`  | `SYNCING`  | Start sync timeout timer            |
 | `HwEstopAsserted`  | `ESTOP`    | —                                   |
 | `SdMounted`        | stay       | Set `sd_mounted_`                   |
-| `SdRemoved`        | stay       | Clear `sd_mounted_`, clear `job_selected_` |
+| `SdRemoved`        | stay       | Clear `sd_mounted_`, clear `job_loaded_` |
 
 ### `IDLE`
 
@@ -324,7 +329,10 @@ No active job. Waiting for Teensy to come back online.
 |---------------------|------------|---------------------------------------------|-----------------------------------------------|
 | `HomeCmd`           | stay       | Send `$H` to Teensy                        | `teensy_connected_`                           |
 | `JogCmd`            | stay       | Send `$J=<params>` to Teensy               | `teensy_connected_`                           |
-| `StartCmd`          | `STARTING` | Set `job_session_active_`, begin streaming  | `job_selected_` ∧ `teensy_connected_` ∧ `sd_mounted_` ∧ `all_axes_homed_` |
+| `FileLoadCmd`       | stay       | Load SD file as active job, emit `@JOB`    | `sd_mounted_`                                 |
+| `FileUnloadCmd`     | stay       | Clear active job, emit `@JOB NAME=NONE`    | `job_loaded_`                                 |
+| `FileDownloadCmd`   | stay       | Stream SD file for desktop preview         | `sd_mounted_`                                 |
+| `StartCmd`          | `STARTING` | Set `job_session_active_`, begin streaming  | `job_loaded_` ∧ `teensy_connected_` ∧ `sd_mounted_` ∧ `all_axes_homed_` |
 | `SpindleOnCmd`      | stay       | Send spindle command to Teensy              | `teensy_connected_`                           |
 | `SpindleOffCmd`     | stay       | Send spindle stop to Teensy                 | `teensy_connected_`                           |
 | `GrblHoming`        | `HOMING`   | —                                           |                                               |
@@ -340,9 +348,10 @@ No active job. Waiting for Teensy to come back online.
 | `TeensyConnected`   | `SYNCING`  | Unexpected reboot — no active job to cancel |                                               |
 | `HwEstopAsserted`   | `ESTOP`    | Send E-stop signal to Teensy                |                                               |
 | `SdMounted`         | stay       | Set `sd_mounted_`, recompute caps           |                                               |
-| `SdRemoved`         | stay       | Clear `sd_mounted_`, clear `job_selected_`, recompute caps |                              |
-| `JobSelected`       | stay       | Set `job_selected_`, recompute caps         |                                               |
-| `JobDeselected`     | stay       | Clear `job_selected_`, recompute caps       |                                               |
+| `SdRemoved`         | stay       | Clear `sd_mounted_`, clear `job_loaded_`, recompute caps |                              |
+| `JobLoaded`         | stay       | Set `job_loaded_`, recompute caps           |                                               |
+| `JobUnloaded`       | stay       | Clear `job_loaded_`, recompute caps         |                                               |
+| `JobRestored`       | stay       | Set `job_loaded_`, recompute caps           |                                               |
 | `FileUploadCmd`     | `UPLOADING`| Set `upload_active_`, open SD file for write, respond `@OK FILE_UPLOAD_READY` | `sd_mounted_` |
 
 > `HomeCmd` and `JogCmd` do not immediately change state. GRBL's confirmation (`GrblHoming`,
@@ -358,7 +367,7 @@ No active job. Waiting for Teensy to come back online.
 | `AbortCmd`          | stay                  | Send `0x18` to Teensy                       |
 | `TeensyDisconnected`| `TEENSY_DISCONNECTED` | See note below                              |
 | `HwEstopAsserted`   | `ESTOP`               | Send E-stop signal to Teensy                |
-| `SdRemoved`         | stay                  | Clear `sd_mounted_`, clear `job_selected_`, recompute caps |
+| `SdRemoved`         | stay                  | Clear `sd_mounted_`, clear `job_loaded_`, recompute caps |
 | `SdMounted`         | stay                  | Set `sd_mounted_`, recompute caps           |
 
 > **Disconnect during HOMING**: the Pico enters `TEENSY_DISCONNECTED`, not `COMMS_FAULT`,
@@ -378,7 +387,7 @@ No active job. Waiting for Teensy to come back online.
 | `AbortCmd`          | stay                  | Send `0x18` to Teensy                       |
 | `TeensyDisconnected`| `TEENSY_DISCONNECTED` | See note below                              |
 | `HwEstopAsserted`   | `ESTOP`               | Send E-stop signal to Teensy                |
-| `SdRemoved`         | stay                  | Clear `sd_mounted_`, clear `job_selected_`, recompute caps |
+| `SdRemoved`         | stay                  | Clear `sd_mounted_`, clear `job_loaded_`, recompute caps |
 | `SdMounted`         | stay                  | Set `sd_mounted_`, recompute caps           |
 
 > **Disconnect during JOG**: same reasoning as HOMING. No job session is active, so the
@@ -405,7 +414,7 @@ triggers `STATE_CYCLE`.
 | `AbortCmd`          | stay       | Set `abort_pending_`, send `0x18` to Teensy     |
 | `TeensyDisconnected`| `COMMS_FAULT` | Cancel job session, emit `@EVENT JOB_ERROR REASON=TEENSY_DISCONNECTED` |
 | `HwEstopAsserted`   | `ESTOP`    | Cancel job session, send E-stop signal          |
-| `SdRemoved`         | stay       | Set `abort_pending_`, send `0x18`, clear `sd_mounted_`, clear `job_selected_`, emit `@EVENT JOB_ERROR REASON=SD_REMOVED` |
+| `SdRemoved`         | stay       | Set `abort_pending_`, send `0x18`, clear `sd_mounted_`, clear `job_loaded_`, emit `@EVENT JOB_ERROR REASON=SD_REMOVED` |
 | `SdMounted`         | stay       | Set `sd_mounted_`                               |
 | `JobStreamComplete` | stay       | Set `job_stream_complete_`                      |
 
@@ -430,7 +439,7 @@ Job active (`job_session_active_` = true). GRBL is in `STATE_CYCLE`, or briefly
 | `OverrideCmd`       | stay          | Forward override bytes to Teensy                |
 | `TeensyDisconnected`| `COMMS_FAULT` | Cancel job session, emit `@EVENT JOB_ERROR REASON=TEENSY_DISCONNECTED` |
 | `HwEstopAsserted`   | `ESTOP`       | Cancel job session, send E-stop signal          |
-| `SdRemoved`         | stay          | Set `abort_pending_`, send `0x18`, clear `sd_mounted_`, clear `job_selected_`, emit `@EVENT JOB_ERROR REASON=SD_REMOVED` |
+| `SdRemoved`         | stay          | Set `abort_pending_`, send `0x18`, clear `sd_mounted_`, clear `job_loaded_`, emit `@EVENT JOB_ERROR REASON=SD_REMOVED` |
 | `SdMounted`         | stay          | Set `sd_mounted_`                               |
 | `JobStreamComplete` | stay          | Set `job_stream_complete_`                      |
 
@@ -453,7 +462,7 @@ Job session may or may not be active.
 | `OverrideCmd`       | stay          | Forward override bytes to Teensy                |
 | `TeensyDisconnected`| *(conditional)* | If `job_session_active_`: → `COMMS_FAULT`, emit `@EVENT JOB_ERROR REASON=TEENSY_DISCONNECTED`. Else: → `TEENSY_DISCONNECTED` |
 | `HwEstopAsserted`   | `ESTOP`       | Cancel job session if active, send E-stop signal|
-| `SdRemoved`         | stay          | If `job_session_active_`: set `abort_pending_`, send `0x18`, emit `@EVENT JOB_ERROR REASON=SD_REMOVED`. Always clear `sd_mounted_`, clear `job_selected_`, recompute caps |
+| `SdRemoved`         | stay          | If `job_session_active_`: set `abort_pending_`, send `0x18`, emit `@EVENT JOB_ERROR REASON=SD_REMOVED`. Always clear `sd_mounted_`, clear `job_loaded_`, recompute caps |
 | `SdMounted`         | stay          | Set `sd_mounted_`, recompute caps           |
 
 > `ResumeCmd` is only accepted when `hold_complete_` is true (GRBL finished decelerating).
@@ -494,7 +503,7 @@ GRBL is in `STATE_ALARM`. Machine locked. `$X` is the standard recovery path.
 | `TeensyConnected`   | `SYNCING`     | Unexpected reboot                               |
 | `HwEstopAsserted`   | `ESTOP`       | —                                               |
 | `SdMounted`         | stay          | Set `sd_mounted_`, recompute caps               |
-| `SdRemoved`         | stay          | Clear `sd_mounted_`, clear `job_selected_`, recompute caps |
+| `SdRemoved`         | stay          | Clear `sd_mounted_`, clear `job_loaded_`, recompute caps |
 
 > **Standard recovery**: operator sends `ResetCmd` → Pico sends `$X` → GRBL transitions
 > to `STATE_IDLE` → `GrblIdle` → Pico enters `IDLE`.
@@ -513,7 +522,7 @@ running. Motion state is unknown. Recovery requires reconnect, not `$X`.
 | `TeensyConnected`   | `SYNCING`  | Reconnected — sync GRBL state before doing anything |
 | `HwEstopAsserted`   | `ESTOP`    | —                                               |
 | `SdMounted`         | stay       | Set `sd_mounted_`                               |
-| `SdRemoved`         | stay       | Clear `sd_mounted_`, clear `job_selected_`      |
+| `SdRemoved`         | stay       | Clear `sd_mounted_`, clear `job_loaded_`      |
 
 > **Post-reconnect policy**: after a comms loss, the Pico resynchronizes observable machine
 > state only. It does not attempt to reconstruct or resume the old stream session.
@@ -541,7 +550,7 @@ Hardware E-stop latched. GRBL is in `STATE_ESTOP` and/or Pico's `PIN_ESTOP` is a
 | `TeensyDisconnected`| `TEENSY_DISCONNECTED` | —                                |
 | `TeensyConnected`   | `SYNCING`  | Unexpected reboot                               |
 | `SdMounted`         | stay       | Set `sd_mounted_`                               |
-| `SdRemoved`         | stay       | Clear `sd_mounted_`, clear `job_selected_`      |
+| `SdRemoved`         | stay       | Clear `sd_mounted_`, clear `job_loaded_`      |
 
 > **Recovery sequence**: (1) Release physical E-stop → `HwEstopCleared`. (2) `ResetCmd`
 > → Pico sends `0x18`. (3) GRBL `mc_reset()` → `STATE_IDLE`. (4) `GrblIdle` → `IDLE`.
@@ -798,9 +807,11 @@ on storage mount/unmount so `FILE_LOAD` and `JOB_START` caps stay accurate.
 ### UI Preview Selection
 Desktop and TFT preview selection are separate UI state. They are not represented in
 `MachineFsm` and are not sent over the protocol. The Pico only owns the currently loaded
-job file.
+job file. Desktop SD-file preview downloads (`@FILE_DOWNLOAD` / `@ACK` / `@CHUNK`) are
+transport activity only and do not change `MachineFsm` state or the loaded job.
 The loaded job is persisted by filename in Pico flash and may be restored after boot or
 SD remount if that filename still exists in the refreshed file list.
+
 ### Jog UI Preferences
 Step size and feed rate selection are purely UI state on the touch screen.
 Not part of the state machine. Not reported over the protocol.
@@ -812,7 +823,25 @@ scales with activity.
 
 ---
 
-## What Needs to Be Built
+## Current Implementation Status
+
+This document describes the current architecture and protocol/state semantics in the repo.
+Most of the core items below are implemented already; any remaining gaps should be treated
+as follow-up cleanup, not as greenfield work.
+
+| Item | Status |
+|------|--------|
+| Unified `MachineStateMachine` with 13 operation states | Implemented |
+| Safety level tracking inside state machine | Implemented |
+| Internal flags (`job_session_active_`, `abort_pending_`, `hold_complete_`, etc.) | Implemented |
+| `compute_caps()` method with 10 flags | Implemented |
+| `@STATE` + `@CAPS` + `@SAFETY` + `@EVENT` emission | Implemented |
+| File load / unload and persisted loaded-job restore | Implemented |
+| Desktop `@PING` / `@INFO` handshake and typed protocol client | Implemented |
+| Desktop/TFT local preview selection kept out of protocol/state machine | Implemented |
+| Desktop SD preview download path (`@FILE_DOWNLOAD`, `@ACK`, `@CHUNK`) | Implemented |
+
+## Historical Planning Section
 
 | Item | Status |
 |------|--------|

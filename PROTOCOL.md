@@ -249,6 +249,14 @@ Loads a file from SD as the active job. Valid only in IDLE state (`FILE_LOAD` ca
 Response: `@OK FILE_UNLOAD`
 Unloads the active job file. Valid only in IDLE state.
 
+```
+@JOB NAME=<filename|NONE>
+```
+
+Unsolicited snapshot/event emitted by the Pico whenever the loaded job changes and when a
+loaded job is restored after boot or SD remount. Clients should treat this as the canonical
+loaded-job signal for UI sync after reconnect.
+
 Desktop and TFT preview selection are local UI state and are never sent over the protocol.
 The protocol only represents the active loaded job on the Pico.
 The Pico persists the loaded job by filename in flash and attempts to restore it after boot
@@ -258,6 +266,56 @@ or SD remount if the same file still exists on the card.
 @FILE_DELETE NAME=<filename>
 ```
 Response: `@OK FILE_DELETE NAME=<filename>` or `@ERROR FILE_NOT_FOUND`
+
+---
+
+### File Download (Pico SD Card → Desktop Preview)
+
+Used by the desktop to preview an SD-card file locally without loading it as the active job.
+This is a desktop preview flow only; it does not change the Pico's loaded job state.
+
+#### 1. Initiate
+
+```
+@FILE_DOWNLOAD NAME=<filename>
+```
+
+| Response | Meaning |
+|---|---|
+| `@OK FILE_DOWNLOAD_READY NAME=<filename> SIZE=<bytes>` | Pico opened the file and is ready to stream it |
+| `@ERROR FILE_NOT_FOUND` | File is not present on SD |
+| `@ERROR SD_NOT_MOUNTED` | No SD card present |
+| `@ERROR SD_READ_FAIL` | SD file could not be opened or read |
+| `@ERROR INVALID_STATE` | Pico is not in an SD-capable state |
+
+#### 2. Stream Chunks
+
+The Pico streams base64 chunks to the desktop:
+
+```
+@CHUNK SEQ=<n> DATA=<base64>
+```
+
+After each chunk, the desktop acknowledges it:
+
+```
+@ACK SEQ=<n>
+```
+
+- `SEQ` starts at 0 and increments by 1 per chunk
+- the Pico sends the next chunk only after receiving the matching `@ACK`
+- stale or out-of-order `@ACK` frames are ignored
+
+#### 3. Complete
+
+When the file has been fully streamed:
+
+```
+@OK FILE_DOWNLOAD_END NAME=<filename> CRC=<crc32hex>
+```
+
+`CRC` is the CRC-32 of the raw file bytes, expressed as 8 lowercase hex digits. The desktop
+verifies it after reassembling the file.
 
 ---
 

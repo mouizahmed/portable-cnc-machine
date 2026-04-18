@@ -12,8 +12,11 @@ namespace PortableCncApp.Services;
 /// </summary>
 public sealed class SerialService : IDisposable
 {
+    private static readonly TimeSpan StartupErrorGracePeriod = TimeSpan.FromSeconds(2);
+
     private SerialPort? _port;
     private readonly StringBuilder _lineBuffer = new();
+    private DateTime _connectedAtUtc = DateTime.MinValue;
 
     public bool IsConnected => _port?.IsOpen == true;
     public string? PortName => _port?.PortName;
@@ -33,8 +36,10 @@ public sealed class SerialService : IDisposable
             _port = new SerialPort(portName, 115200)
             {
                 Encoding = Encoding.ASCII,
+                // Pico USB CDC generally expects DTR to be asserted for normal traffic,
+                // but forcing RTS high has proven destabilizing on reopen.
                 DtrEnable = true,
-                RtsEnable = true,
+                RtsEnable = false,
                 WriteTimeout = 1000
             };
 
@@ -42,6 +47,9 @@ public sealed class SerialService : IDisposable
             _port.ErrorReceived += OnSerialErrorReceived;
             _port.PinChanged += OnSerialPinChanged;
             _port.Open();
+            _port.DiscardInBuffer();
+            _port.DiscardOutBuffer();
+            _connectedAtUtc = DateTime.UtcNow;
 
             return true;
         }
@@ -130,17 +138,28 @@ public sealed class SerialService : IDisposable
             _port.Dispose();
             _port = null;
         }
+        _connectedAtUtc = DateTime.MinValue;
         _lineBuffer.Clear();
     }
 
+    private bool IsWithinStartupErrorGrace()
+        => _connectedAtUtc != DateTime.MinValue &&
+           DateTime.UtcNow - _connectedAtUtc < StartupErrorGracePeriod;
+
     private void OnSerialErrorReceived(object sender, SerialErrorReceivedEventArgs e)
     {
+        if (IsWithinStartupErrorGrace())
+            return;
+
         Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke($"Serial error: {e.EventType}"));
     }
 
     private void OnSerialPinChanged(object sender, SerialPinChangedEventArgs e)
     {
-        if (e.EventType is SerialPinChange.Break or SerialPinChange.CDChanged)
+        if (IsWithinStartupErrorGrace())
+            return;
+
+        if (e.EventType == SerialPinChange.Break)
             Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke($"Serial pin change: {e.EventType}"));
     }
 

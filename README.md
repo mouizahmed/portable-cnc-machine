@@ -65,17 +65,6 @@ portable-cnc-machine/
 
 <!-- TODO -->
 
-## Hardware Overview
-
-The project is split across a few hardware pieces:
-
-- `Pico 2W`: runs the touchscreen UI and calibration utility in `[pico2W](./pico2W)`.
-- `Teensy 4.1`: runs the machine-control firmware in `[teensy4.1](./teensy4.1)`.
-- `3.5"` SPI display with `ILI9488` controller and `XPT2046` touch controller: connected to the Pico over shared SPI.
-- `MicroSD` SPI breakout: shares the Pico SPI bus with the display and touch controller.
-- `E-STOP` button: wired to the Pico as an active-low input.
-
-Pin assignments and wiring details are documented in `[WIRING.md](./WIRING.md)`.
 
 ## License
 

@@ -29,6 +29,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly DispatcherTimer _heartbeatTimer;
     private DateTime _lastPongUtc = DateTime.MinValue;
     private DateTime _lastPingUtc = DateTime.MinValue;
+    private DateTime _serialFaultGraceUntilUtc = DateTime.MinValue;
     private bool _heartbeatFaulted;
 
     // ════════════════════════════════════════════════════════════════
@@ -48,6 +49,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 {
                     _heartbeatFaulted = false;
                     _lastPingUtc = DateTime.MinValue;
+                    _serialFaultGraceUntilUtc = DateTime.UtcNow.AddSeconds(5);
                     if (_lastPongUtc == DateTime.MinValue)
                         _lastPongUtc = DateTime.UtcNow;
                 }
@@ -55,6 +57,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 {
                     _lastPingUtc = DateTime.MinValue;
                     _lastPongUtc = DateTime.MinValue;
+                    _serialFaultGraceUntilUtc = DateTime.MinValue;
                 }
 
                 RaisePropertyChanged(nameof(ConnectionStatusText));
@@ -707,7 +710,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             : $"Pico busy: {reason}";
 
         // Handle serial-layer disconnect (cable pulled, port error, etc.)
-        Serial.ErrorOccurred += _ => OnDeviceLost();
+        Serial.ErrorOccurred += HandleSerialError;
 
         // Page ViewModels
         DashboardVm    = new DashboardViewModel();
@@ -805,6 +808,17 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     {
         _lastPongUtc = DateTime.UtcNow;
         _heartbeatFaulted = false;
+    }
+
+    private void HandleSerialError(string _)
+    {
+        if (PiConnectionStatus != ConnectionStatus.Connected)
+            return;
+
+        if (DateTime.UtcNow < _serialFaultGraceUntilUtc)
+            return;
+
+        OnDeviceLost();
     }
 
     private void CheckHeartbeat()

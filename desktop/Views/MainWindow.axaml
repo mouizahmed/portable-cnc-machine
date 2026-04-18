@@ -116,8 +116,8 @@
                                               LinesText="{Binding MainVm.FilesVm.SelectedPreviewLinesText}"
                                               StatusText="{Binding MainVm.FilesVm.SelectedPreviewStatusText}"
                                               StatusBackground="{Binding MainVm.FilesVm.SelectedPreviewStatusBrush}"
-                                              PrimaryActionText="Load for Job"
-                                              PrimaryActionCommand="{Binding MainVm.FilesVm.LoadSelectedFileCommand}"
+                                              PrimaryActionText="{Binding MainVm.FilesVm.SelectedPreviewPrimaryActionText}"
+                                              PrimaryActionCommand="{Binding MainVm.FilesVm.SelectedPreviewPrimaryActionCommand}"
                                               EmphasizePrimaryAction="True"/>
                     </controls:SectionCard.Body>
                   </controls:SectionCard>
@@ -174,8 +174,8 @@
                                               LinesText="{Binding SelectedPreviewLinesText}"
                                               StatusText="{Binding SelectedPreviewStatusText}"
                                               StatusBackground="{Binding SelectedPreviewStatusBrush}"
-                                              PrimaryActionText="Load for Job"
-                                              PrimaryActionCommand="{Binding LoadSelectedFileCommand}"
+                                              PrimaryActionText="{Binding SelectedPreviewPrimaryActionText}"
+                                              PrimaryActionCommand="{Binding SelectedPreviewPrimaryActionCommand}"
                                               EmphasizePrimaryAction="True"/>
                     </controls:SectionCard.Body>
                   </controls:SectionCard>
