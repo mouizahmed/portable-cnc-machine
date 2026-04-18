@@ -263,16 +263,16 @@
                                              PillBackground="{Binding MainVm.ConnectionStatusBrush}"/>
 
                         <controls:TwoColumnInfoGrid>
-                          <TextBlock Text="Port" Classes="FieldLabel"/>
+                          <TextBlock Text="USB Port" Classes="FieldLabel"/>
                           <TextBlock Grid.Column="1"
                                      Text="{Binding SelectedPortDisplay}"
                                      Classes="FieldValue"
                                      TextTrimming="CharacterEllipsis"/>
 
-                          <TextBlock Grid.Row="1" Text="Pico" Classes="FieldLabel"/>
+                          <TextBlock Grid.Row="1" Text="Controller" Classes="FieldLabel"/>
                           <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding PicoLinkSummary}" Classes="FieldValue"/>
 
-                          <TextBlock Grid.Row="2" Text="Teensy" Classes="FieldLabel"/>
+                          <TextBlock Grid.Row="2" Text="Motion Controller" Classes="FieldLabel"/>
                           <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding TeensyLinkSummary}" Classes="FieldValue"/>
                         </controls:TwoColumnInfoGrid>
 
@@ -287,14 +287,11 @@
                     <controls:SectionCard.Body>
                       <StackPanel Spacing="8">
                         <controls:TwoColumnInfoGrid>
-                          <TextBlock Text="Pico FW" Classes="FieldLabel"/>
+                          <TextBlock Text="Controller FW" Classes="FieldLabel"/>
                           <TextBlock Grid.Column="1" Text="{Binding PicoFirmware}" Classes="FieldValue"/>
 
-                          <TextBlock Grid.Row="1" Text="Teensy FW" Classes="FieldLabel"/>
+                          <TextBlock Grid.Row="1" Text="Motion Controller FW" Classes="FieldLabel"/>
                           <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TeensyFirmware}" Classes="FieldValue"/>
-
-                          <TextBlock Grid.Row="2" Text="Serial" Classes="FieldLabel"/>
-                          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PicoSerialNumber}" Classes="FieldValue"/>
                         </controls:TwoColumnInfoGrid>
                       </StackPanel>
                     </controls:SectionCard.Body>

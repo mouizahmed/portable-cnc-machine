@@ -12,7 +12,7 @@ namespace PortableCncApp.ViewModels;
 public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 {
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(8);
 
     // ════════════════════════════════════════════════════════════════
     // SERVICES
@@ -31,6 +31,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private DateTime _lastPingUtc = DateTime.MinValue;
     private DateTime _serialFaultGraceUntilUtc = DateTime.MinValue;
     private bool _heartbeatFaulted;
+    private bool _hasReceivedMachineState;
 
     // ════════════════════════════════════════════════════════════════
     // CONNECTION STATUS
@@ -58,11 +59,18 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                     _lastPingUtc = DateTime.MinValue;
                     _lastPongUtc = DateTime.MinValue;
                     _serialFaultGraceUntilUtc = DateTime.MinValue;
+                    _hasReceivedMachineState = false;
                 }
 
                 RaisePropertyChanged(nameof(ConnectionStatusText));
                 RaisePropertyChanged(nameof(ConnectionStatusBrush));
                 RaisePropertyChanged(nameof(IsConnected));
+                RaisePropertyChanged(nameof(MotionStateLabel));
+                RaisePropertyChanged(nameof(MotionStateBrush));
+                RaisePropertyChanged(nameof(SafetyStateLabel));
+                RaisePropertyChanged(nameof(SafetyStateBrush));
+                RaisePropertyChanged(nameof(FeedSpindleSummary));
+                RaisePropertyChanged(nameof(SpindleStatusText));
                 RaisePropertyChanged(nameof(CanStart));
                 RaisePropertyChanged(nameof(CanPause));
                 RaisePropertyChanged(nameof(CanStop));
@@ -104,13 +112,29 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             if (PiConnectionStatus == ConnectionStatus.Connecting ||
                 TeensyConnectionStatus == ConnectionStatus.Connecting)
                 return "CONNECTING...";
+            if (PiConnectionStatus == ConnectionStatus.Connected)
+                return "CONTROLLER LINKED";
             return "DISCONNECTED";
         }
     }
 
-    public IBrush ConnectionStatusBrush => IsConnected
-        ? ThemeResources.Brush("SuccessBrush", "#3BB273")
-        : ThemeResources.Brush("NeutralStateBrush", "#808080");
+    public IBrush ConnectionStatusBrush
+    {
+        get
+        {
+            if (IsConnected)
+                return ThemeResources.Brush("SuccessBrush", "#3BB273");
+
+            if (PiConnectionStatus == ConnectionStatus.Connecting ||
+                TeensyConnectionStatus == ConnectionStatus.Connecting)
+                return ThemeResources.Brush("WarningBrush", "#E0A100");
+
+            if (PiConnectionStatus == ConnectionStatus.Connected)
+                return ThemeResources.Brush("WarningBrush", "#E0A100");
+
+            return ThemeResources.Brush("NeutralStateBrush", "#808080");
+        }
+    }
 
     // ════════════════════════════════════════════════════════════════
     // MACHINE OPERATION STATE  (driven by @STATE from Pico)
@@ -144,8 +168,10 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public string MotionStateLabel => MachineState switch
     {
+        _ when PiConnectionStatus != ConnectionStatus.Connected => "DISCONNECTED",
+        _ when !_hasReceivedMachineState => "SYNCING",
         MachineOperationState.Booting            => "BOOTING",
-        MachineOperationState.TeensyDisconnected => "TEENSY DISC.",
+        MachineOperationState.TeensyDisconnected => "MOTION DISC.",
         MachineOperationState.Syncing            => "SYNCING",
         MachineOperationState.Idle               => "IDLE",
         MachineOperationState.Homing             => "HOMING",
@@ -162,6 +188,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public IBrush MotionStateBrush => MachineState switch
     {
+        _ when PiConnectionStatus != ConnectionStatus.Connected => ThemeResources.Brush("NeutralStateBrush", "#808080"),
+        _ when !_hasReceivedMachineState => ThemeResources.Brush("WarningBrush", "#E0A100"),
         MachineOperationState.Idle      => ThemeResources.Brush("SuccessBrush",      "#3BB273"),
         MachineOperationState.Homing    => ThemeResources.Brush("InfoBrush",         "#5B9BD5"),
         MachineOperationState.Jog       => ThemeResources.Brush("InfoBrush",         "#5B9BD5"),
@@ -220,6 +248,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public string SafetyStateLabel => SafetyLevel switch
     {
+        _ when PiConnectionStatus != ConnectionStatus.Connected => "--",
         SafetyLevel.Safe       => "SAFE",
         SafetyLevel.Monitoring => "MONITORING",
         SafetyLevel.Warning    => "WARNING",
@@ -229,6 +258,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public IBrush SafetyStateBrush => SafetyLevel switch
     {
+        _ when PiConnectionStatus != ConnectionStatus.Connected => ThemeResources.Brush("NeutralStateBrush", "#808080"),
         SafetyLevel.Safe       => ThemeResources.Brush("SuccessBrush",      "#3BB273"),
         SafetyLevel.Monitoring => ThemeResources.Brush("SuccessBrush",      "#3BB273"),
         SafetyLevel.Warning    => ThemeResources.Brush("WarningBrush",      "#E0A100"),
@@ -399,7 +429,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public string SpindleStatusText => SpindleOn ? $"ON ({SpindleSpeed:F0} RPM)" : "OFF";
+    public string SpindleStatusText => PiConnectionStatus != ConnectionStatus.Connected
+        ? "DISCONNECTED"
+        : SpindleOn ? $"ON ({SpindleSpeed:F0} RPM)" : "OFF";
 
     private double _feedRate;
     public double FeedRate
@@ -415,7 +447,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private int _feedOverride = 100;
     public int FeedOverride { get => _feedOverride; set => SetProperty(ref _feedOverride, value); }
 
-    public string FeedSpindleSummary => $"{FeedRate:F0} / {SpindleSpeed:F0}";
+    public string FeedSpindleSummary => PiConnectionStatus != ConnectionStatus.Connected
+        ? "-- / --"
+        : $"{FeedRate:F0} / {SpindleSpeed:F0}";
 
     // ════════════════════════════════════════════════════════════════
     // ENVIRONMENTAL
@@ -697,7 +731,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         _heartbeatTimer.Tick += (_, _) => CheckHeartbeat();
 
         // Subscribe to protocol events — these are the only writers for machine state.
-        Protocol.StateChanged    += s => MachineState = s;
+        Protocol.StateChanged    += HandleStateChanged;
         Protocol.CapsChanged     += c => Caps = c;
         Protocol.SafetyChanged   += l => SafetyLevel = l;
         Protocol.PositionChanged += OnPositionChanged;
@@ -706,10 +740,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         Protocol.EventReceived   += HandleProtocolEvent;
         Protocol.ErrorReceived   += msg => { StatusMessage = $"Error: {msg}"; IsStatusError = true; };
         Protocol.WaitReceived    += reason => StatusMessage = string.IsNullOrEmpty(reason)
-            ? "Pico busy — please wait"
-            : $"Pico busy: {reason}";
+            ? "Controller busy - please wait"
+            : $"Controller busy: {reason}";
 
         // Handle serial-layer disconnect (cable pulled, port error, etc.)
+        Serial.LineReceived += _ => HandleProtocolActivity();
         Serial.ErrorOccurred += HandleSerialError;
 
         // Page ViewModels
@@ -804,8 +839,23 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         IsStatusError = false;
     }
 
+    private void HandleStateChanged(MachineOperationState state)
+    {
+        _hasReceivedMachineState = true;
+        MachineState = state;
+    }
+
     private void HandlePongReceived()
     {
+        _lastPongUtc = DateTime.UtcNow;
+        _heartbeatFaulted = false;
+    }
+
+    private void HandleProtocolActivity()
+    {
+        if (PiConnectionStatus != ConnectionStatus.Connected)
+            return;
+
         _lastPongUtc = DateTime.UtcNow;
         _heartbeatFaulted = false;
     }
@@ -877,13 +927,13 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
             case "TEENSY_CONNECTED":
                 TeensyConnectionStatus = ConnectionStatus.Connected;
-                StatusMessage          = "Teensy motion controller online";
+                StatusMessage          = "Motion controller online";
                 IsStatusError          = false;
                 break;
 
             case "TEENSY_DISCONNECTED":
                 TeensyConnectionStatus = ConnectionStatus.Disconnected;
-                StatusMessage          = "Teensy motion controller disconnected";
+                StatusMessage          = "Motion controller disconnected";
                 break;
 
             case "ESTOP_ACTIVE":
@@ -937,6 +987,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         TotalLines             = 0;
         Progress               = 0;
         ActiveGCodeDocument    = null;
+        _hasReceivedMachineState = false;
         StatusMessage          = "Device disconnected";
         IsStatusError          = true;
         _lastPingUtc           = DateTime.MinValue;
@@ -999,3 +1050,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(SafetyStateBrush));
     }
 }
+
+
+

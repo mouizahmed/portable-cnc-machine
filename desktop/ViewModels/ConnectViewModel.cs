@@ -68,7 +68,7 @@ public sealed class ConnectViewModel : PageViewModelBase
                 return "MACHINE ONLINE";
 
             if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
-                return "PICO LINKED";
+                return "CONTROLLER LINKED";
 
             return SelectedPort is null ? "SELECT A PORT" : "READY TO CONNECT";
         }
@@ -79,7 +79,7 @@ public sealed class ConnectViewModel : PageViewModelBase
         get
         {
             if (IsConnecting)
-                return "Handshaking with the Pico over USB serial.";
+                return "Opening the USB link, handshaking with the controller, then checking the motion controller.";
 
             if (MainVm?.PiConnectionStatus == ConnectionStatus.Error ||
                 MainVm?.TeensyConnectionStatus == ConnectionStatus.Error)
@@ -90,53 +90,106 @@ public sealed class ConnectViewModel : PageViewModelBase
                 return "Both controllers are online and reporting state.";
 
             if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
-                return "The Pico link is healthy. Waiting for the motion controller to report in.";
+            {
+                return MainVm.TeensyConnectionStatus switch
+                {
+                    ConnectionStatus.Connecting => "The controller link is healthy. Waiting for the motion controller state.",
+                    ConnectionStatus.Disconnected => "The controller link is healthy, but the motion controller is disconnected.",
+                    ConnectionStatus.Error => "The controller link is healthy, but the motion controller reported a fault.",
+                    _ => "The controller link is healthy. Waiting for the motion controller state."
+                };
+            }
 
             return SelectedPort is null
-                ? "Scan for the Pico 2W USB serial device to begin."
+                ? "Scan for the controller USB serial device to begin."
                 : "The port is selected and ready for a connection attempt.";
         }
     }
 
+    private bool _lastInfoReceived;
+
     public string PortSelectionStageText => SelectedPort is null
-        ? "Pick a serial device to arm the connection."
-        : $"{SelectedPort} selected for the handshake.";
+        ? "Pick a USB serial device to arm the connection."
+        : $"{SelectedPort} selected for the USB link.";
 
-    public string PicoStageText => MainVm?.PiConnectionStatus switch
+    public string PicoStageText
     {
-        ConnectionStatus.Connected  => "Pico responded to @PING and @INFO.",
-        ConnectionStatus.Connecting => "Probing the Pico with @PING...",
-        ConnectionStatus.Error      => "No Pico response on the selected port.",
-        _ => SelectedPort is null
-            ? "Waiting for a port selection."
-            : "Ready to probe the Pico."
-    };
+        get
+        {
+            if (IsConnecting)
+                return "Opening the USB link and probing the controller.";
 
-    public string TeensyStageText => MainVm?.TeensyConnectionStatus switch
-    {
-        ConnectionStatus.Connected => "Teensy motion controller is online.",
-        ConnectionStatus.Connecting => "Waiting for the motion controller.",
-        ConnectionStatus.Error => "Motion controller reported a connection error.",
-        _ => MainVm?.PiConnectionStatus == ConnectionStatus.Connected
-            ? "Waiting for Teensy to connect via @EVENT."
-            : "Teensy handshake starts after the Pico link is up."
-    };
+            return MainVm?.PiConnectionStatus switch
+            {
+                ConnectionStatus.Connected => _lastInfoReceived
+                    ? "Controller responded to @PING and @INFO."
+                    : "Controller link is up. Waiting for device info/state.",
+                ConnectionStatus.Error => "No controller response on the selected port.",
+                _ => SelectedPort is null
+                    ? "Waiting for a port selection."
+                    : "Ready to probe the controller."
+            };
+        }
+    }
 
-    public string PicoLinkSummary => MainVm?.PiConnectionStatus switch
+    public string TeensyStageText
     {
-        ConnectionStatus.Connected  => "Online",
-        ConnectionStatus.Connecting => "Linking",
-        ConnectionStatus.Error      => "Fault",
-        _                           => "Idle"
-    };
+        get
+        {
+            if (IsConnecting)
+                return "Waiting for the controller handshake before checking the motion controller.";
 
-    public string TeensyLinkSummary => MainVm?.TeensyConnectionStatus switch
+            if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
+                return "Motion controller status depends on the controller link.";
+
+            return MainVm?.TeensyConnectionStatus switch
+            {
+                ConnectionStatus.Connected => "Motion controller is online.",
+                ConnectionStatus.Disconnected => "The controller reported the motion controller as disconnected.",
+                ConnectionStatus.Connecting => "Waiting for the controller to finish resolving motion controller state.",
+                ConnectionStatus.Error => "Motion controller reported a connection error.",
+                _ => "Waiting for the controller to report the motion controller state."
+            };
+        }
+    }
+
+    public string PicoLinkSummary
     {
-        ConnectionStatus.Connected  => "Online",
-        ConnectionStatus.Connecting => "Linking",
-        ConnectionStatus.Error      => "Fault",
-        _                           => "Idle"
-    };
+        get
+        {
+            if (IsConnecting)
+                return "Linking";
+
+            return MainVm?.PiConnectionStatus switch
+            {
+                ConnectionStatus.Connected => "Online",
+                ConnectionStatus.Error => "Fault",
+                ConnectionStatus.Disconnected => "Disconnected",
+                _ => "--"
+            };
+        }
+    }
+
+    public string TeensyLinkSummary
+    {
+        get
+        {
+            if (IsConnecting)
+                return "Waiting for Controller";
+
+            if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
+                return "Disconnected";
+
+            return MainVm?.TeensyConnectionStatus switch
+            {
+                ConnectionStatus.Connected => "Online",
+                ConnectionStatus.Connecting => "Linking",
+                ConnectionStatus.Error => "Fault",
+                ConnectionStatus.Disconnected => "Disconnected",
+                _ => "--"
+            };
+        }
+    }
 
     public IBrush PortStageBackground => SelectedPort is null
         ? ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B")
@@ -156,6 +209,8 @@ public sealed class ConnectViewModel : PageViewModelBase
     {
         ConnectionStatus.Connected  => ThemeResources.Brush("StageSuccessBackgroundBrush", "#1F3A2A"),
         ConnectionStatus.Connecting => ThemeResources.Brush("StageWarningBackgroundBrush", "#4A390B"),
+        ConnectionStatus.Disconnected when MainVm?.PiConnectionStatus == ConnectionStatus.Connected
+            => ThemeResources.Brush("StageDangerBackgroundBrush",  "#4A1616"),
         ConnectionStatus.Error      => ThemeResources.Brush("StageDangerBackgroundBrush",  "#4A1616"),
         _ => MainVm?.PiConnectionStatus == ConnectionStatus.Error
             ? ThemeResources.Brush("StageDangerBackgroundBrush",  "#4A1616")
@@ -182,6 +237,8 @@ public sealed class ConnectViewModel : PageViewModelBase
     {
         ConnectionStatus.Connected  => ThemeResources.Brush("SuccessBrush",            "#3BB273"),
         ConnectionStatus.Connecting => ThemeResources.Brush("WarningBrush",            "#E0A100"),
+        ConnectionStatus.Disconnected when MainVm?.PiConnectionStatus == ConnectionStatus.Connected
+            => ThemeResources.Brush("DangerBrush",             "#D83B3B"),
         ConnectionStatus.Error      => ThemeResources.Brush("DangerBrush",             "#D83B3B"),
         _ => MainVm?.PiConnectionStatus == ConnectionStatus.Error
             ? ThemeResources.Brush("DangerBrush",             "#D83B3B")
@@ -217,8 +274,6 @@ public sealed class ConnectViewModel : PageViewModelBase
     }
 
     // Kept for UI compat — old [SN:] field; maps to PicoBoard from @INFO.
-    public string PicoSerialNumber => PicoBoard;
-
     // ════════════════════════════════════════════════════════════════
     // COMMANDS
     // ════════════════════════════════════════════════════════════════
@@ -227,7 +282,6 @@ public sealed class ConnectViewModel : PageViewModelBase
     public ICommand ConnectCommand    => _connectCommand;
     public ICommand DisconnectCommand  { get; }
     public ICommand RefreshPortsCommand { get; }
-    public ICommand TestConnectionCommand { get; }
 
     public ConnectViewModel()
     {
@@ -236,7 +290,6 @@ public sealed class ConnectViewModel : PageViewModelBase
         _connectCommand       = new RelayCommand(Connect, () => SelectedPort != null && !IsConnecting);
         DisconnectCommand     = new RelayCommand(Disconnect);
         RefreshPortsCommand   = new RelayCommand(RefreshPorts);
-        TestConnectionCommand = new RelayCommand(TestConnection);
 
         RefreshPorts();
     }
@@ -279,7 +332,9 @@ public sealed class ConnectViewModel : PageViewModelBase
         if (MainVm == null || SelectedPort == null) return;
 
         IsConnecting = true;
+        _lastInfoReceived = false;
         MainVm.PiConnectionStatus = ConnectionStatus.Connecting;
+        MainVm.TeensyConnectionStatus = ConnectionStatus.Connecting;
         MainVm.StatusMessage = $"Opening {SelectedPort}...";
 
         // Step 1: Open serial port
@@ -296,7 +351,7 @@ public sealed class ConnectViewModel : PageViewModelBase
         await Task.Delay(350);
 
         // Step 2: @PING — wait up to 3 s for PONG (handles USB CDC stabilisation delay)
-        MainVm.StatusMessage = $"Waiting for Pico on {SelectedPort} (@PING)...";
+        MainVm.StatusMessage = $"Waiting for controller on {SelectedPort} (@PING)...";
 
         var pongTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnPong() => pongTcs.TrySetResult(true);
@@ -316,13 +371,13 @@ public sealed class ConnectViewModel : PageViewModelBase
         {
             MainVm.Serial.Disconnect();
             MainVm.PiConnectionStatus = ConnectionStatus.Error;
-            MainVm.StatusMessage = $"No response on {SelectedPort} — is the Pico connected?";
+            MainVm.StatusMessage = $"No response on {SelectedPort} — is the controller connected?";
             IsConnecting = false;
             return;
         }
 
         // Step 3: @INFO — wait up to 2 s for device info
-        MainVm.StatusMessage = "Querying Pico info (@INFO)...";
+        MainVm.StatusMessage = "Querying controller info (@INFO)...";
 
         var infoTcs = new TaskCompletionSource<PicoInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnInfo(PicoInfo info) => infoTcs.TrySetResult(info);
@@ -335,11 +390,12 @@ public sealed class ConnectViewModel : PageViewModelBase
         {
             // Step 4: Populate device info from @INFO response
             var picoInfo = await infoTcs.Task;
+            _lastInfoReceived = true;
             PicoFirmware = picoInfo.Firmware;
             PicoBoard    = picoInfo.Board;
-
-            if (picoInfo.TeensyConnected)
-                MainVm.TeensyConnectionStatus = ConnectionStatus.Connected;
+            MainVm.TeensyConnectionStatus = picoInfo.TeensyConnected
+                ? ConnectionStatus.Connected
+                : ConnectionStatus.Disconnected;
         }
 
         // Step 5: Mark Pico connected — Teensy status will come via @EVENT if not already set
@@ -347,6 +403,7 @@ public sealed class ConnectViewModel : PageViewModelBase
         MainVm.Settings.Save();
 
         MainVm.PiConnectionStatus = ConnectionStatus.Connected;
+        MainVm.Protocol.SendStatus();
         MainVm.StatusMessage = infoCompleted
             ? $"Connected on {SelectedPort} — firmware {PicoFirmware}"
             : $"Connected on {SelectedPort} — @INFO timed out, waiting for state...";
@@ -356,6 +413,7 @@ public sealed class ConnectViewModel : PageViewModelBase
 
     public void ResetDeviceInfo()
     {
+        _lastInfoReceived = false;
         PicoFirmware   = "-";
         PicoBoard      = "-";
         TeensyFirmware = "-";
@@ -392,13 +450,6 @@ public sealed class ConnectViewModel : PageViewModelBase
             SelectedPort = AvailablePorts[0];
 
         RaiseConnectionStateProperties();
-    }
-
-    private void TestConnection()
-    {
-        if (MainVm == null) return;
-        MainVm.Protocol.SendPing();
-        MainVm.StatusMessage = "@PING sent";
     }
 
     private void RaiseConnectionStateProperties()

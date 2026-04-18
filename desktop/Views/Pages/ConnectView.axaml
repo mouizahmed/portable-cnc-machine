@@ -10,7 +10,7 @@
 
   <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
     <controls:SectionCard Title="USB SERIAL CONNECTION"
-                          Subtitle="Choose the Pico 2W USB serial device and connect. Session and device details stay in the app right rail.">
+                          Subtitle="Choose the controller USB serial device and connect. Session and device details stay in the app right rail.">
       <controls:SectionCard.Actions>
         <Button Content="Refresh"
                 Command="{Binding RefreshPortsCommand}"
@@ -29,7 +29,7 @@
                 <TextBlock Text="{Binding ConnectionHeadline}"
                            Classes="FieldValue"
                            FontSize="16"/>
-                <TextBlock Text="{Binding MainVm.StatusMessage, TargetNullValue='Select the Pico USB serial device to begin.'}"
+                <TextBlock Text="{Binding MainVm.StatusMessage, TargetNullValue='Select the controller USB serial device to begin.'}"
                            Classes="FieldLabel"
                            TextWrapping="Wrap"/>
               </StackPanel>
@@ -56,11 +56,6 @@
                     Classes="AppButton Primary"
                     IsEnabled="{Binding !IsConnecting}"
                     Margin="0,0,8,8"/>
-            <Button Content="Test Link"
-                    Command="{Binding TestConnectionCommand}"
-                    Classes="AppButton"
-                    ToolTip.Tip="Send a realtime status query to verify the link"
-                    Margin="0,0,8,8"/>
             <Button Content="Disconnect"
                     Command="{Binding DisconnectCommand}"
                     Classes="AppButton"
@@ -73,7 +68,7 @@
                   BorderThickness="1"
                   CornerRadius="6"
                   Padding="12,10">
-            <TextBlock Text="Probing the Pico and waiting for the motion controller to report in."
+            <TextBlock Text="Opening the USB link, handshaking with the controller, then checking the motion controller."
                        Classes="FieldLabel"
                        TextWrapping="Wrap"/>
           </Border>
@@ -94,7 +89,7 @@
                   Height="NaN"
                   MinHeight="0">
             <StackPanel Spacing="4">
-              <TextBlock Text="1. Port" Classes="SectionHeading"/>
+              <TextBlock Text="1. USB Port" Classes="SectionHeading"/>
               <TextBlock Text="{Binding PortSelectionStageText}"
                          Classes="FieldLabel"
                          TextWrapping="Wrap"/>
@@ -110,7 +105,7 @@
                   Height="NaN"
                   MinHeight="0">
             <StackPanel Spacing="4">
-              <TextBlock Text="2. Pico" Classes="SectionHeading"/>
+              <TextBlock Text="2. Controller" Classes="SectionHeading"/>
               <TextBlock Text="{Binding PicoStageText}"
                          Classes="FieldLabel"
                          TextWrapping="Wrap"/>
@@ -126,7 +121,7 @@
                   Height="NaN"
                   MinHeight="0">
             <StackPanel Spacing="4">
-              <TextBlock Text="3. Teensy" Classes="SectionHeading"/>
+              <TextBlock Text="3. Motion Controller" Classes="SectionHeading"/>
               <TextBlock Text="{Binding TeensyStageText}"
                          Classes="FieldLabel"
                          TextWrapping="Wrap"/>
