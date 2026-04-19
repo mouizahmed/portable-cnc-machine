@@ -7,6 +7,7 @@ PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_c
     : touch_(touch),
       storage_service_(sd_card),
       controller_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
+      uart_client_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
       status_provider_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
       calibration_app_(display, touch, storage),
       frame_(display),
@@ -71,6 +72,13 @@ void PortableCncApp::run() {
         }
         if (needs_render) {
             render_current_screen(upload_ended_this_tick);
+        }
+
+        if (uart_client_.poll()) {
+            frame_.render_status_bar(status_provider_.current());
+            if (!desktop_protocol_.upload_active()) {
+                render_current_screen(false);
+            }
         }
 
         UiEvent event{};
@@ -145,6 +153,10 @@ void PortableCncApp::handle_event(const UiEvent& event) {
         result = router_.current().handle_event(event);
     }
 
+    if (result.command != UiCommandType::None) {
+        handle_ui_command(result);
+    }
+
     if (result.refresh_status_bar) {
         frame_.render_status_bar(status_provider_.current());
     }
@@ -163,6 +175,34 @@ void PortableCncApp::handle_event(const UiEvent& event) {
             controller_.refresh_job_files();
         }
         render_current_screen(false);
+    }
+}
+
+void PortableCncApp::handle_ui_command(const UiEventResult& result) {
+    switch (result.command) {
+        case UiCommandType::None:
+            break;
+        case UiCommandType::SelectFile:
+            uart_client_.select_file(static_cast<int16_t>(result.selected_index));
+            break;
+        case UiCommandType::StartJob:
+            uart_client_.upload_and_run_loaded_job();
+            break;
+        case UiCommandType::HoldJob:
+            uart_client_.hold();
+            break;
+        case UiCommandType::ResumeJob:
+            uart_client_.resume();
+            break;
+        case UiCommandType::JogMove:
+            uart_client_.jog(result.jog_action);
+            break;
+        case UiCommandType::HomeAll:
+            uart_client_.home_all();
+            break;
+        case UiCommandType::ZeroAll:
+            uart_client_.zero_all();
+            break;
     }
 }
 

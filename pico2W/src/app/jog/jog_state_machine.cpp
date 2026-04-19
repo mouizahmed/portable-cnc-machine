@@ -118,6 +118,12 @@ void JogStateMachine::format_axis_line(char axis, char* out, std::size_t size) c
     std::snprintf(out, size, "%c %+.1f", axis, value);
 }
 
+void JogStateMachine::set_position(float x, float y, float z) {
+    x_ = x;
+    y_ = y;
+    z_ = z;
+}
+
 void JogStateMachine::move_axis(float& axis, float direction) {
     axis += direction * step_size_mm();
 }

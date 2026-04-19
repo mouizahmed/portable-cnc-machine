@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/comm/pico_uart_client.h"
 #include "app/jog/jog_state_machine.h"
 #include "app/job/job_state_machine.h"
 #include "app/job/loaded_job_storage.h"
@@ -37,6 +38,7 @@ private:
     LoadedJobStorage loaded_job_storage_;
     StorageService storage_service_;
     PortableCncController controller_;
+    PicoUartClient uart_client_;
     StatusProvider status_provider_;
     TouchCalibrationApp calibration_app_;
     AppFrame frame_;
@@ -52,6 +54,7 @@ private:
     void run_startup_sequence();
     bool poll_event(UiEvent& event);
     void handle_event(const UiEvent& event);
+    void handle_ui_command(const UiEventResult& result);
     void render_storage_change();
     void render_current_screen(bool full = false);
 };

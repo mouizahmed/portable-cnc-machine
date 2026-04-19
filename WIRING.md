@@ -1,8 +1,8 @@
 # Portable CNC Machine - Wiring Reference
 
-This document includes the `pico2W` firmware assumptions and a **Teensy 4.1 schematic pinout** (planning). Align `teensy4.1` `my_machine_map.h` with any hardware you build.
+This document includes the `pico2W` firmware assumptions and a Teensy 4.1 schematic pinout plan. Align `teensy4.1` `my_machine_map.h` with any hardware you build.
 
-On Teensy 4.1 symbols, **physical pin** is the red index (1–67). **Arduino digital pin** is the leading number on the silk (e.g. `23_A9…` → **D23**).
+On Teensy 4.1 symbols, the physical pin is the red index (1-67). The Arduino digital pin is the leading number on the silk label.
 
 ## Power
 
@@ -51,14 +51,14 @@ Note: the current Pico firmware does not use a card-detect pin.
 
 ---
 
-## Teensy 4.1 - UART (Planned / Reserved)
+## Teensy 4.1 - UART
 
-These pins are documented as the intended Pico-to-Teensy UART link, but the current Pico firmware does not initialize or use UART yet.
+These pins are the intended Pico-to-Teensy UART link.
 
 | Signal | Pico GPIO | Pico Pin | Teensy physical pin | Teensy silk (Serial1) |
 |---|---|---|---|---|
-| TX → Teensy RX | GP0 | 1 | 2 | `0_RX1…` (D0) |
-| RX ← Teensy TX | GP1 | 2 | 3 | `1_TX1…` (D1) |
+| TX -> Teensy RX | GP0 | 1 | 2 | `0_RX1...` (D0) |
+| RX <- Teensy TX | GP1 | 2 | 3 | `1_TX1...` (D1) |
 | Shared GND | GND | 38 | any GND | e.g. 1, 34, 47 |
 
 Both Pico and Teensy 4.1 are 3.3 V logic, so no level shifter should be needed for a direct UART connection.
@@ -79,8 +79,8 @@ Both Pico and Teensy 4.1 are 3.3 V logic, so no level shifter should be needed f
 ## Full Pin Assignment Summary
 
 ```text
-GP0  -> Reserved for Teensy UART TX
-GP1  -> Reserved for Teensy UART RX
+GP0  -> Teensy RX1
+GP1  <- Teensy TX1
 GP2  -> Display RST
 GP3  -> Display DC
 GP4  -> SPI0 MISO    (display + touch + SD, shared)
@@ -92,7 +92,6 @@ GP9  -> Touch CS
 GP10 -> Touch IRQ
 GP11 -> SD CS
 GP15 -> Reserved for E-STOP
-
 GP12-GP14, GP16-GP22, GP26-GP28 -> currently free for future use
 ```
 
@@ -113,18 +112,18 @@ Each device has its own CS pin. Only one device is active at a time.
 
 ---
 
-## Teensy 4.1 — schematic pinout (planning)
+## Teensy 4.1 - Schematic Pinout Plan
 
-Use one row per net; step/dir/enable go to driver **PUL / DIR / ENA** plus common GND. **UART:** Pico TX (GP0) → Teensy D0 (RX); Pico RX (GP1) ← Teensy D1 (TX).
+Use one row per net. Step/dir/enable go to driver `PUL / DIR / ENA` plus common GND. UART: Pico TX (`GP0`) -> Teensy D0 (RX), Pico RX (`GP1`) <- Teensy D1 (TX).
 
 ### Pico UART (Serial1)
 
 | Physical pin | Silk / function | Net / use |
 |---|---|---|
-| 2 | `0_RX1…` (D0) | From **Pico TX** (GP0) |
-| 3 | `1_TX1…` (D1) | To **Pico RX** (GP1) |
+| 2 | `0_RX1...` (D0) | From Pico TX (GP0) |
+| 3 | `1_TX1...` (D1) | To Pico RX (GP1) |
 
-### Limits / home (example: D2–D4)
+### Limits / home (example: D2-D4)
 
 | Physical pin | Silk | Net |
 |---|---|---|
@@ -139,7 +138,7 @@ Use one row per net; step/dir/enable go to driver **PUL / DIR / ENA** plus commo
 | 7 | `5_IN2` (D5) | Z_PROBE |
 | 8 | `6_OUT1D` (D6) | ESTOP_N (if wired to Teensy) |
 
-### Encoders (example: D7–D12)
+### Encoders (example: D7-D12)
 
 | Physical pin | Silk | Net |
 |---|---|---|
@@ -150,9 +149,9 @@ Use one row per net; step/dir/enable go to driver **PUL / DIR / ENA** plus commo
 | 13 | `11_MOSI_CTX1` (D11) | Z_ENC_A |
 | 14 | `12_MISO_MQSL` (D12) | Z_ENC_B |
 
-### Stepper drivers (example: D15–D23)
+### Stepper Drivers (example: D15-D23)
 
-These **physical pin** numbers match the Teensy 4.1 symbol (red indices on the outer edge). On the **right** row, each `N_A*` label sits one pin **higher** than a naive count from the bottom (e.g. `23_A9…` is pin **45**, not 44).
+These physical pin numbers match the Teensy 4.1 symbol. On the right row, each `N_A*` label sits one pin higher than a naive count from the bottom.
 
 | Physical pin | Silk | Net |
 |---|---|---|
@@ -166,9 +165,9 @@ These **physical pin** numbers match the Teensy 4.1 symbol (red indices on the o
 | 38 | `16_A2_RX4_SCL1` (D16) | Z_DIR |
 | 37 | `15_A1_RX3_SPDIF_IN` (D15) | Z_EN |
 
-### Spindle and Z brake (example)
+### Spindle and Z Brake (example)
 
-`14_A0…` (Arduino **D14**) is on **physical pin 36**. The next pin up the row (**35**) is `13_SCK_LED` (**D13**), not D14.
+`14_A0...` (Arduino `D14`) is on physical pin 36. The next pin up the row (35) is `13_SCK_LED` (`D13`), not D14.
 
 | Physical pin | Silk | Net |
 |---|---|---|

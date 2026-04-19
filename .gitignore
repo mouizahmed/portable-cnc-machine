@@ -1,3 +1,4 @@
 .vscode/
 .DS_Store
 desktop/buildverify/
+docs/uart/pico-teensy-uart-scheme.svg

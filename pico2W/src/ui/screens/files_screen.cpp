@@ -130,6 +130,9 @@ UiEventResult FilesScreen::handle_event(const UiEvent& event) {
     }
     const int16_t previous_index = preview_index_;
     preview_index_ = index;
+    if (previous_index == index) {
+        return UiEventResult{true, false, tab()};
+    }
 
     DirtyRectList dirty_regions;
     if (previous_index >= 0) {

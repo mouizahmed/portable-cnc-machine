@@ -36,6 +36,7 @@ public:
 
     void format_xyz(char* out, std::size_t size) const;
     void format_axis_line(char axis, char* out, std::size_t size) const;
+    void set_position(float x, float y, float z);
 
 private:
     static constexpr float kStepSizes[3]{0.1f, 1.0f, 10.0f};
