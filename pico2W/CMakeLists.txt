@@ -97,6 +97,7 @@ target_link_libraries(portable_cnc_machine PRIVATE
     hardware_flash
     hardware_spi
     hardware_sync
+    hardware_uart
     pico_stdlib
 )
 

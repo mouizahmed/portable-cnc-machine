@@ -107,25 +107,29 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
         AddLog("INFO", "Thermal readings refreshed");
     }
 
-    private void ResetFault()
+    private async void ResetFault()
     {
         if (MainVm == null) return;
 
         if (MainVm.MachineState == MachineOperationState.Fault)
         {
-            MainVm.Protocol.SendReset();
             AddLog("INFO", "Reset sent - waiting for machine to return to idle");
+            var result = await MainVm.SendCommandAndWaitAsync("RESET", MainVm.Protocol.SendReset, TimeSpan.FromSeconds(3));
+            if (!result.Success && result.Kind != MainWindowViewModel.ControllerCommandResultKind.Timeout)
+                AddLog("ERROR", $"Reset failed: {result.Message}");
         }
     }
 
-    private void Unlock()
+    private async void Unlock()
     {
         if (MainVm == null) return;
 
         if (MainVm.MachineState == MachineOperationState.Estop)
         {
-            MainVm.Protocol.SendReset();
             AddLog("INFO", "Reset sent - waiting for E-stop to clear");
+            var result = await MainVm.SendCommandAndWaitAsync("RESET", MainVm.Protocol.SendReset, TimeSpan.FromSeconds(3));
+            if (!result.Success && result.Kind != MainWindowViewModel.ControllerCommandResultKind.Timeout)
+                AddLog("ERROR", $"Reset failed: {result.Message}");
         }
     }
 

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -11,8 +13,9 @@ namespace PortableCncApp.ViewModels;
 
 public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 {
-    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan LivenessTickInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan IdleSilenceBeforePing = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan LivenessResponseTimeout = TimeSpan.FromSeconds(3);
 
     // ════════════════════════════════════════════════════════════════
     // SERVICES
@@ -26,12 +29,26 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     /// Child ViewModels use this for all outbound commands (Phase 3-5).
     /// </summary>
     public PicoProtocolService Protocol { get; }
-    private readonly DispatcherTimer _heartbeatTimer;
-    private DateTime _lastPongUtc = DateTime.MinValue;
-    private DateTime _lastPingUtc = DateTime.MinValue;
+    private readonly DispatcherTimer _livenessTimer;
     private DateTime _serialFaultGraceUntilUtc = DateTime.MinValue;
-    private bool _heartbeatFaulted;
+    private DateTime _lastProtocolActivityUtc = DateTime.MinValue;
+    private DateTime _lastLivenessPingUtc = DateTime.MinValue;
+    private bool _awaitingLivenessPong;
     private bool _hasReceivedMachineState;
+    private readonly SemaphoreSlim _commandWaitGate = new(1, 1);
+
+    public enum ControllerCommandResultKind
+    {
+        Success,
+        Busy,
+        Error,
+        Timeout
+    }
+
+    public readonly record struct ControllerCommandResult(ControllerCommandResultKind Kind, string Message = "")
+    {
+        public bool Success => Kind == ControllerCommandResultKind.Success;
+    }
 
     // ════════════════════════════════════════════════════════════════
     // CONNECTION STATUS
@@ -48,17 +65,17 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             {
                 if (value == ConnectionStatus.Connected)
                 {
-                    _heartbeatFaulted = false;
-                    _lastPingUtc = DateTime.MinValue;
                     _serialFaultGraceUntilUtc = DateTime.UtcNow.AddSeconds(5);
-                    if (_lastPongUtc == DateTime.MinValue)
-                        _lastPongUtc = DateTime.UtcNow;
+                    _lastProtocolActivityUtc = DateTime.UtcNow;
+                    _lastLivenessPingUtc = DateTime.MinValue;
+                    _awaitingLivenessPong = false;
                 }
                 else if (value != ConnectionStatus.Connecting)
                 {
-                    _lastPingUtc = DateTime.MinValue;
-                    _lastPongUtc = DateTime.MinValue;
                     _serialFaultGraceUntilUtc = DateTime.MinValue;
+                    _lastProtocolActivityUtc = DateTime.MinValue;
+                    _lastLivenessPingUtc = DateTime.MinValue;
+                    _awaitingLivenessPong = false;
                     _hasReceivedMachineState = false;
                 }
 
@@ -724,11 +741,11 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         ThemeResources.ThemeChanged += HandleThemeChanged;
 
         Protocol = new PicoProtocolService(Serial);
-        _heartbeatTimer = new DispatcherTimer
+        _livenessTimer = new DispatcherTimer
         {
-            Interval = HeartbeatInterval
+            Interval = LivenessTickInterval
         };
-        _heartbeatTimer.Tick += (_, _) => CheckHeartbeat();
+        _livenessTimer.Tick += (_, _) => CheckLinkLiveness();
 
         // Subscribe to protocol events — these are the only writers for machine state.
         Protocol.StateChanged    += HandleStateChanged;
@@ -736,12 +753,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         Protocol.SafetyChanged   += l => SafetyLevel = l;
         Protocol.PositionChanged += OnPositionChanged;
         Protocol.JobChanged      += HandleJobChanged;
-        Protocol.PongReceived    += HandlePongReceived;
         Protocol.EventReceived   += HandleProtocolEvent;
         Protocol.ErrorReceived   += msg => { StatusMessage = $"Error: {msg}"; IsStatusError = true; };
         Protocol.WaitReceived    += reason => StatusMessage = string.IsNullOrEmpty(reason)
             ? "Controller busy - please wait"
             : $"Controller busy: {reason}";
+        Protocol.PongReceived    += HandlePongReceived;
 
         // Handle serial-layer disconnect (cable pulled, port error, etc.)
         Serial.LineReceived += _ => HandleProtocolActivity();
@@ -782,28 +799,62 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         ConnectVm.TryAutoConnect();
 
         CurrentPage = DashboardVm;
-        _heartbeatTimer.Start();
+        _livenessTimer.Start();
     }
 
     // ════════════════════════════════════════════════════════════════
     // MACHINE CONTROL COMMANDS
     // ════════════════════════════════════════════════════════════════
 
-    private void ExecuteStart()
+    private async void ExecuteStart()
     {
         if (Caps.JobResume)
-            Protocol.SendJobResume();
+        {
+            StatusMessage = "Resuming job...";
+            IsStatusError = false;
+            var result = await SendCommandAndWaitAsync("RESUME", Protocol.SendJobResume, TimeSpan.FromSeconds(3));
+            ApplyCommandResult(result, "Resume failed");
+        }
         else if (Caps.JobStart)
-            Protocol.SendJobStart();
+        {
+            StatusMessage = "Starting job...";
+            IsStatusError = false;
+            var result = await SendCommandAndWaitAsync("START", Protocol.SendJobStart, TimeSpan.FromSeconds(3));
+            ApplyCommandResult(result, "Start failed");
+        }
     }
 
-    private void ExecutePause() => Protocol.SendJobPause();
+    private async void ExecutePause()
+    {
+        StatusMessage = "Pausing job...";
+        IsStatusError = false;
+        var result = await SendCommandAndWaitAsync("PAUSE", Protocol.SendJobPause, TimeSpan.FromSeconds(3));
+        ApplyCommandResult(result, "Pause failed");
+    }
 
-    private void ExecuteStop()  => Protocol.SendJobAbort();
+    private async void ExecuteStop()
+    {
+        StatusMessage = "Stopping job...";
+        IsStatusError = false;
+        var result = await SendCommandAndWaitAsync("ABORT", Protocol.SendJobAbort, TimeSpan.FromSeconds(3));
+        ApplyCommandResult(result, "Stop failed");
+    }
 
-    private void ExecuteHome()  => Protocol.SendHome();
+    private async void ExecuteHome()
+    {
+        StatusMessage = "Homing machine...";
+        IsStatusError = false;
+        var result = await SendCommandAndWaitAsync("HOME", Protocol.SendHome, TimeSpan.FromSeconds(3));
+        ApplyCommandResult(result, "Home failed");
+    }
 
-    private void ExecuteEStop() => Protocol.SendEstop();
+    private async void ExecuteEStop()
+    {
+        StatusMessage = "Sending E-stop...";
+        IsStatusError = false;
+        var result = await SendCommandAndWaitAsync("ESTOP", Protocol.SendEstop, TimeSpan.FromSeconds(3));
+        ApplyCommandResult(result, "E-stop failed");
+    }
 
     // ════════════════════════════════════════════════════════════════
     // PROTOCOL EVENT ROUTING
@@ -847,8 +898,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void HandlePongReceived()
     {
-        _lastPongUtc = DateTime.UtcNow;
-        _heartbeatFaulted = false;
+        _lastProtocolActivityUtc = DateTime.UtcNow;
+        _awaitingLivenessPong = false;
+        _lastLivenessPingUtc = DateTime.MinValue;
     }
 
     private void HandleProtocolActivity()
@@ -856,8 +908,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         if (PiConnectionStatus != ConnectionStatus.Connected)
             return;
 
-        _lastPongUtc = DateTime.UtcNow;
-        _heartbeatFaulted = false;
+        _lastProtocolActivityUtc = DateTime.UtcNow;
+        _awaitingLivenessPong = false;
+        _lastLivenessPingUtc = DateTime.MinValue;
     }
 
     private void HandleSerialError(string _)
@@ -871,28 +924,44 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         OnDeviceLost();
     }
 
-    private void CheckHeartbeat()
+    private void CheckLinkLiveness()
     {
-        if (PiConnectionStatus != ConnectionStatus.Connected || _heartbeatFaulted)
+        if (PiConnectionStatus != ConnectionStatus.Connected)
             return;
+
+        if (DateTime.UtcNow < _serialFaultGraceUntilUtc)
+            return;
+
+        if (HasActiveProtocolOperation())
+        {
+            _awaitingLivenessPong = false;
+            _lastLivenessPingUtc = DateTime.MinValue;
+            return;
+        }
 
         var now = DateTime.UtcNow;
-        var hasOutstandingPing = _lastPingUtc != DateTime.MinValue && _lastPingUtc > _lastPongUtc;
-
-        if (hasOutstandingPing && now - _lastPingUtc >= HeartbeatTimeout)
+        if (_awaitingLivenessPong)
         {
-            _heartbeatFaulted = true;
-            OnDeviceLost();
+            if (now - _lastLivenessPingUtc >= LivenessResponseTimeout)
+            {
+                OnDeviceLost();
+            }
             return;
         }
 
-        if (!hasOutstandingPing &&
-            (_lastPingUtc == DateTime.MinValue || now - _lastPingUtc >= HeartbeatInterval))
-        {
-            _lastPingUtc = now;
-            Protocol.SendPing();
-        }
+        if (_lastProtocolActivityUtc == DateTime.MinValue)
+            _lastProtocolActivityUtc = now;
+
+        if (now - _lastProtocolActivityUtc < IdleSilenceBeforePing)
+            return;
+
+        _awaitingLivenessPong = true;
+        _lastLivenessPingUtc = now;
+        Protocol.SendPing();
     }
+
+    private bool HasActiveProtocolOperation()
+        => FilesVm.IsUploading || FilesVm.IsPreviewDownloadActive;
 
     private void HandleProtocolEvent(string name, IReadOnlyDictionary<string, string> kv)
     {
@@ -971,12 +1040,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void OnDeviceLost()
     {
-        if (_heartbeatFaulted == false)
-            _heartbeatFaulted = true;
-
         Serial.Disconnect();
 
-        PiConnectionStatus     = ConnectionStatus.Error;
+        PiConnectionStatus     = ConnectionStatus.Disconnected;
         TeensyConnectionStatus = ConnectionStatus.Disconnected;
         MachineState           = MachineOperationState.CommsFault;
         SafetyLevel            = SafetyLevel.Safe;
@@ -990,12 +1056,89 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         _hasReceivedMachineState = false;
         StatusMessage          = "Device disconnected";
         IsStatusError          = true;
-        _lastPingUtc           = DateTime.MinValue;
-        _lastPongUtc           = DateTime.MinValue;
         XHomed = YHomed = ZHomed = false;
         XLimitTriggered = YLimitTriggered = ZLimitTriggered = false;
 
         ConnectVm.ResetDeviceInfo();
+    }
+
+    public void NotifyControllerUnresponsive()
+    {
+        if (PiConnectionStatus != ConnectionStatus.Connected)
+            return;
+
+        OnDeviceLost();
+    }
+
+    public void ApplyCommandResult(ControllerCommandResult result, string defaultPrefix)
+    {
+        // Timeout already escalates through NotifyControllerUnresponsive() -> OnDeviceLost(),
+        // which owns the disconnect UI and status text. Do not overwrite that here.
+        if (result.Success || result.Kind == ControllerCommandResultKind.Timeout)
+            return;
+
+        var suffix = string.IsNullOrWhiteSpace(result.Message) ? "Unknown controller response." : result.Message;
+        StatusMessage = $"{defaultPrefix}: {suffix}";
+        IsStatusError = true;
+    }
+
+    public async Task<ControllerCommandResult> SendCommandAndWaitAsync(
+        string okToken,
+        Action send,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        if (PiConnectionStatus != ConnectionStatus.Connected)
+            return new ControllerCommandResult(ControllerCommandResultKind.Error, "Controller is disconnected.");
+
+        await _commandWaitGate.WaitAsync(cancellationToken);
+
+        var completion = new TaskCompletionSource<ControllerCommandResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void HandleOk(string token, IReadOnlyDictionary<string, string> _)
+        {
+            if (string.Equals(token, okToken, StringComparison.OrdinalIgnoreCase))
+                completion.TrySetResult(new ControllerCommandResult(ControllerCommandResultKind.Success));
+        }
+
+        void HandleError(string reason)
+            => completion.TrySetResult(new ControllerCommandResult(ControllerCommandResultKind.Error, reason));
+
+        void HandleWait(string reason)
+            => completion.TrySetResult(new ControllerCommandResult(
+                ControllerCommandResultKind.Busy,
+                string.IsNullOrWhiteSpace(reason) ? "Controller busy." : reason));
+
+        Protocol.OkReceived += HandleOk;
+        Protocol.ErrorReceived += HandleError;
+        Protocol.WaitReceived += HandleWait;
+
+        try
+        {
+            send();
+
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            linked.CancelAfter(timeout);
+
+            try
+            {
+                return await completion.Task.WaitAsync(linked.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                NotifyControllerUnresponsive();
+                return new ControllerCommandResult(
+                    ControllerCommandResultKind.Timeout,
+                    "Controller did not respond within the timeout period.");
+            }
+        }
+        finally
+        {
+            Protocol.OkReceived -= HandleOk;
+            Protocol.ErrorReceived -= HandleError;
+            Protocol.WaitReceived -= HandleWait;
+            _commandWaitGate.Release();
+        }
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -1039,7 +1182,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
-        _heartbeatTimer.Stop();
+        _livenessTimer.Stop();
         Serial.Dispose();
     }
 

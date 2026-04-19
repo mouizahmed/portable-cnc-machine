@@ -52,7 +52,7 @@ All protocol lines follow the same style across all links:
 |--------------|--------------------------------------|
 | `@OK ...`    | Command accepted / succeeded         |
 | `@ERROR ...` | Command rejected or failed           |
-| `@STATE ...` | Unsolicited or polled state update   |
+| `@STATE ...` | Pushed state update, or included in a one-shot snapshot response |
 | `@CAPS ...`  | Capability flags — sent alongside every `@STATE` change |
 | `@EVENT ...` | Unsolicited event notification       |
 | `@WAIT ...`  | Busy, retry later                    |
@@ -157,7 +157,8 @@ The Pico owns the following state at all times, collapsed into a single unified
 ```
 Response: `@OK PONG`
 
-Used by the desktop to confirm the Pico is alive on the port.
+Used by the desktop during initial connect / reconnect and for optional manual diagnostics.
+It is **not** part of a steady-state heartbeat loop by default.
 
 ```
 @INFO
@@ -173,9 +174,14 @@ Returns Pico firmware version and whether the Teensy UART link is up.
 ```
 @STATUS
 ```
-Response: `@STATE MACHINE=<state> JOB=<state> SD=<state> TEENSY=<CONNECTED|DISCONNECTED>`
+Response: current `@STATE`, `@CAPS`, `@SAFETY`, `@POS`, and `@JOB` lines
 
-Poll the full Pico state snapshot.
+One-shot snapshot sync. Used for:
+- initial desktop connect
+- reconnect / resync
+- manual refresh / diagnostics
+
+It is **not** used as a periodic polling loop during normal runtime.
 
 ---
 
@@ -518,6 +524,11 @@ Clears latched E-stop (only valid when safe to do so).
 
 ## Events: Pico → Desktop (unsolicited)
 
+After the initial `@PING` / `@INFO` / `@STATUS` sync, the desktop UI is driven by pushed
+updates from the Pico rather than a polling loop. Any valid inbound protocol traffic counts
+as current link activity; the desktop does not issue background `@STATUS` requests and does
+not run a default background `@PING` heartbeat.
+
 The Pico pushes these without being polled:
 
 ```
@@ -536,11 +547,18 @@ The Pico pushes these without being polled:
 
 ---
 
-## Pico → Teensy Protocol (redesigned — replaces pico_framework.cpp)
+## Pico → Teensy Protocol
 
-`pico_framework.cpp` will be redesigned from scratch. The new protocol replaces the
-old buffered job model with direct GRBL state reporting and line-by-line G-code streaming
-with standard `ok`/`error` flow control.
+The Pico talks to the motion controller over **UART1 on GP20/GP21 at 115200**.
+Normal valid UART traffic counts as liveness. If the link goes silent for a long interval,
+the Pico sends an occasional probe; only repeated silence after probing causes a
+`@EVENT TEENSY_DISCONNECTED` transition.
+
+The preferred motion-controller push protocol is the documented `@BOOT TEENSY_READY` +
+`@GRBL_STATE ...` model below. The current Pico implementation also accepts the older
+merged compatibility messages (`@HELLO`, `@EVT MACHINE`, `@EVT JOB`, `@EVT POS`) so the
+repo can interoperate while the motion-controller side finishes converging on the
+documented format.
 
 ### Teensy → Pico (unsolicited push)
 
@@ -562,7 +580,7 @@ with standard `ok`/`error` flow control.
 
 | Command                              | Effect on Teensy                                          |
 |--------------------------------------|-----------------------------------------------------------|
-| `@PING`                              | Responds `@OK PONG` — link health check                   |
+| `@PING`                              | Optional silence probe / link health check                |
 | `@HOME`                              | Sends `$H` to GRBL                                        |
 | `@JOG AXIS=<X\|Y\|Z> DIST=<f> FEED=<f>` | Sends `$J=G91 G21 <axis><dist> F<feed>` to GRBL       |
 | `@JOG_CANCEL`                        | Sends jog cancel realtime byte (0x85) to GRBL             |
@@ -601,14 +619,14 @@ Pico and Teensy state machine code is considered outdated and will be replaced.
 
 | Component | Status | Action |
 |---|---|---|
-| `MachineStateMachine` | ❌ Redesign | Replace with 12-state unified FSM per `STATE_MACHINE.md` |
-| `JobStateMachine` | ❌ Remove | Merged into `MachineStateMachine` (STARTING/RUNNING/HOLD states own job logic) |
-| `JogStateMachine` | ⚠️ Partial keep | Remove position tracking. Keep UI prefs (step size, feed rate) |
-| `StorageState` | ✅ Keep | Correct and complete — feeds events into `MachineStateMachine` |
-| Teensy link tracking | ❌ Build new | `TEENSY_DISCONNECTED`/`SYNCING` states in `MachineStateMachine` + ping watchdog |
-| Safety / E-stop | ❌ Build new | `ESTOP` state + safety level (SAFE/MONITORING/WARNING/CRITICAL) in `MachineStateMachine` |
-| G-code streamer | ❌ Build new | Pico reads SD line-by-line, streams via `@GCODE`, tracks `ok`/`error` responses |
-| E-stop GPIO | ❌ Wire up | `PIN_ESTOP = GP15` defined in `config.h` — not yet read anywhere |
+| `MachineStateMachine` | ✅ Implemented | Unified 13-state FSM in current Pico code |
+| `JobStateMachine` | ✅ Kept | Tracks loaded/running job selection alongside unified machine FSM |
+| `JogStateMachine` | ✅ Kept | Holds touch UI jog prefs and current reported position |
+| `StorageState` | ✅ Keep | Feeds storage events into `MachineFsm` |
+| Teensy link tracking | ✅ Implemented | UART1 + silence/probe-based disconnect tracking in `PicoUartClient` |
+| Safety / E-stop | ⚠️ Partial | Safety levels implemented; hardware E-stop GPIO wiring still follow-up |
+| G-code streamer | ⚠️ Partial | Current Pico path still streams files with the merged command path; documented pure `@GRBL_STATE` side is still converging |
+| E-stop GPIO | ❌ Follow-up | `PIN_ESTOP = GP15` is configured but not yet fully wired into runtime |
 
 ### Teensy (`teensy4.1/src/`)
 
@@ -621,9 +639,9 @@ Pico and Teensy state machine code is considered outdated and will be replaced.
 
 | Component | Status | Action |
 |---|---|---|
-| `MainWindowViewModel` shadow state | ❌ Remove | Local `MotionState`/`SafetyState` mutation, optimistic homing flags, GRBL status parsing — all must go |
-| `PicoProtocolService` | ❌ Build new | Replaces `SerialService` GRBL parser — pure `@`-protocol sink |
-| `MotionState`/`SafetyState` enums | ⚠️ Keep as display enums | Must never be written to directly — only set by parsing Pico messages |
+| `MainWindowViewModel` shadow state | ⚠️ Partial cleanup | Main runtime is now transport + pushed-protocol driven; remaining cleanup is follow-up |
+| `PicoProtocolService` | ✅ Implemented | Typed `@`-protocol sink used by desktop |
+| `MotionState`/`SafetyState` enums | ⚠️ Keep as display enums | Still compatibility-facing display types only |
 
 ---
 
@@ -632,9 +650,10 @@ Pico and Teensy state machine code is considered outdated and will be replaced.
 - [x] **Desktop → Pico protocol vs Pico → Teensy protocol**: Desktop uses high-level `@START`
       etc.; Pico translates and breaks them down into GRBL realtime bytes / `@GCODE` lines.
       The two links intentionally have different command vocabularies.
-- [x] **Teensy disconnection recovery**: `MachineStateMachine` enters `TEENSY_DISCONNECTED`.
-      Pico retries the UART link with a ping watchdog. On `@BOOT TEENSY_READY` → `SYNCING`
-      → reads first `@GRBL_STATE` → routes to appropriate state.
+- [x] **Teensy disconnection recovery**: normal UART traffic counts as alive. After a long
+      silence window the Pico sends occasional probes; repeated silence transitions to
+      `TEENSY_DISCONNECTED`. Valid traffic or `@BOOT TEENSY_READY` restores the link and
+      re-enters `SYNCING`.
 - [x] **Sensor forwarding**: Pico translates sensor state into `@EVENT` lines (limit hit,
       probe triggered) and position into `@POS` updates. No raw Teensy data forwarded.
 - [x] **DRO update rate**: Teensy pushes `@POS` at ≈ 5 Hz from `on_realtime_report` callback.
@@ -649,34 +668,11 @@ Pico and Teensy state machine code is considered outdated and will be replaced.
 All implementation details are governed by `STATE_MACHINE.md`. Build in this order
 to minimize blocked work:
 
-1. **Teensy `pico_framework.cpp` redesign** — everything else is blocked on `@GRBL_STATE`
-   - Hook `on_state_change` → emit `@GRBL_STATE <state>` (with HOLD substate)
-   - Hook `on_realtime_report` → emit `@POS MX=… MY=… MZ=… WX=… WY=… WZ=…` at 5 Hz
-   - Implement new command set (see Pico → Teensy table above)
-   - Pass `@GCODE <line>` content directly to GRBL input; respond `ok`/`error:<code>`
-   - Delete `my_stream.cpp` / `my_stream.h`
-
-2. **Pico UART1 driver** (GP20/GP21, 115200) — Pico ↔ Teensy line-framed transport
-
-3. **Pico `MachineStateMachine` redesign** — 12 states, 10 caps, all flags per `STATE_MACHINE.md`
-   - Wire `@GRBL_STATE` events from UART1 driver
-   - Wire `StorageService` events (SdMounted / SdRemoved)
-   - Wire E-stop GPIO (GP15) → HwEstopAsserted / HwEstopCleared
-   - Wire ping watchdog for Teensy link health
-
-4. **Pico G-code streaming engine** — reads SD file, sends lines via `@GCODE`, tracks `ok`/`error`
-
-5. **Pico USB CDC-ACM driver** — Pico ↔ Desktop line-framed transport
-
-6. **Pico protocol dispatcher** — routes incoming desktop `@`-commands to `MachineStateMachine`
-
-7. **Desktop `PicoProtocolService`** — replaces GRBL serial parser with `@`-protocol sink
-
-8. **Desktop `MainWindowViewModel` rework** — pure `@STATE`/`@CAPS`/`@EVENT` sink, remove shadow state
-
-9. SD file management commands (`@FILE_LIST`, `@FILE_LOAD`, `@FILE_UNLOAD`, `@FILE_DELETE`)
-
-10. WiFi AP + web UI (later)
+1. Finish converging the motion-controller side onto the documented `@BOOT TEENSY_READY` /
+   `@GRBL_STATE` push protocol so the temporary compatibility parser can be removed.
+2. Finish hardware E-stop GPIO wiring into the runtime.
+3. Continue desktop cleanup of remaining legacy display/shadow-state code.
+4. WiFi AP + web UI (later)
 
 ---
 
@@ -743,26 +739,23 @@ is a stateless viewer. The following must be addressed before implementing the n
 
 ### `ConnectViewModel.cs`
 
-**Problem: Handshake probes with raw `?` and waits for `[PICO:...]`**
+**Current behavior**
 
-- `ConnectAsync()` sends `?` (GRBL realtime byte) and waits for a `[PICO:...]` line —
-  both the command and expected response are wrong
-- After connecting, sends `$I` (GRBL info command) — obsolete
-- Calls `MainVm.StartPolling()` which fires raw `?` every 200ms — to be removed
+- `ConnectAsync()` opens the serial port, sends `@PING`, waits for `@OK PONG`,
+  then requests `@INFO` and `@STATUS`
+- There is no steady-state polling loop after connect
+- Runtime UI state is pushed from the Pico via `@STATE`, `@CAPS`, `@SAFETY`,
+  `@POS`, `@JOB`, and `@EVENT`
 
-**What it becomes:**
-- Opens port, sends `@PING`, waits for `@OK PONG` → Pico confirmed
-- Sends `@INFO`, waits for `@INFO FIRMWARE=... TEENSY=<CONNECTED|DISCONNECTED>` → step 2
-- If `TEENSY=CONNECTED`, mark fully online → step 3
-- No polling loop — Pico pushes state changes via `@EVENT`
+Remaining cleanup is naming / stale comment removal, not architecture.
 
 ---
 
 ### `SerialService.cs`
 
-**Currently fine structurally** — opens port, fires `LineReceived` per line, has `SendCommand`
-and `SendRealtime`. The `SendRealtime` method (used for `?`, `!`, `~`, `0x18`) becomes
-obsolete since the `@`-protocol has no realtime bytes. Can be removed after the rework.
+**Currently fine structurally** — opens port, fires `LineReceived` per line, and surfaces
+transport errors used for disconnect detection. `SendRealtime` is legacy and can be removed
+once the remaining call sites are gone.
 
 ---
 
@@ -770,9 +763,9 @@ obsolete since the `@`-protocol has no realtime bytes. Can be removed after the 
 
 | File | Action |
 |------|--------|
-| `MainWindowViewModel.cs` | Remove GRBL parser, polling loop, local state mutation. Become a pure `@`-event sink |
-| `ManualControlViewModel.cs` | Replace raw GRBL command builders with `@`-commands. Remove direct state writes |
-| `Enums.cs` | Keep enums, remove state machine semantics — values come from Pico strings |
-| `ConnectViewModel.cs` | Replace `?` / `$I` handshake with `@PING` / `@INFO` flow |
-| `SerialService.cs` | Remove `SendRealtime`, keep the rest |
-| `DiagnosticsViewModel.cs` | Review — likely fine if it just logs received lines |
+| `MainWindowViewModel.cs` | Mostly complete — remaining cleanup is legacy display glue, not protocol architecture |
+| `ManualControlViewModel.cs` | Continue removing remaining legacy direct-state assumptions |
+| `Enums.cs` | Keep enums as display types only |
+| `ConnectViewModel.cs` | Current handshake is `@PING` / `@INFO` / `@STATUS` snapshot sync |
+| `SerialService.cs` | Transport error handling is current; `SendRealtime` is legacy follow-up cleanup |
+| `DiagnosticsViewModel.cs` | Review as needed |

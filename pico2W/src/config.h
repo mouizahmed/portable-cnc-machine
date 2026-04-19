@@ -16,6 +16,8 @@ constexpr unsigned int PIN_SD_CS = 13;
 constexpr unsigned int PIN_SD_SPI_SCK = 14;
 constexpr unsigned int PIN_SD_SPI_MOSI = 27;
 constexpr unsigned int PIN_ESTOP = 15;
+constexpr unsigned int PIN_MOTION_UART_TX = 20;
+constexpr unsigned int PIN_MOTION_UART_RX = 21;
 
 constexpr unsigned int LCD_WIDTH = 480;
 constexpr unsigned int LCD_HEIGHT = 320;
@@ -23,6 +25,7 @@ constexpr unsigned int LCD_HEIGHT = 320;
 constexpr uint32_t DISPLAY_SPI_BAUD = 20'000'000;
 constexpr uint32_t SD_SPI_INIT_BAUD = 400'000;
 constexpr uint32_t SD_SPI_BAUD = 12'000'000;
+constexpr uint32_t MOTION_UART_BAUD = 115200;
 constexpr uint32_t UI_POLL_MS = 20;
 constexpr uint32_t TOUCH_SETTLE_MS = 80;
 constexpr uint32_t TOUCH_RELEASE_TIMEOUT_MS = 1500;

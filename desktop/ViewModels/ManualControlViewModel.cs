@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Media;
 
@@ -280,8 +281,8 @@ public sealed class ManualControlViewModel : PageViewModelBase
 
         StartSpindleCommand = new RelayCommand(StartSpindle);
         StopSpindleCommand  = new RelayCommand(StopSpindle);
-        AlarmUnlockCommand  = new RelayCommand(AlarmUnlock);
-        SoftResetCommand    = new RelayCommand(SoftReset);
+        AlarmUnlockCommand  = new RelayCommand(AlarmUnlockTracked);
+        SoftResetCommand    = new RelayCommand(SoftResetTracked);
         ProbeZCommand       = new RelayCommand(ProbeZ);
         JogCancelCommand    = new RelayCommand(JogCancel);
         SendCustomCommandCommand = new RelayCommand(SendCustom);
@@ -389,82 +390,104 @@ public sealed class ManualControlViewModel : PageViewModelBase
     // JOG COMMANDS
     // ════════════════════════════════════════════════════════════════
 
-    private void Jog(char axis, double distance)
+    private async void Jog(char axis, double distance)
     {
         if (MainVm == null || !CanJogControls) return;
 
-        MainVm.Protocol.SendJog(axis, (float)distance, (float)JogFeedRate);
-        SetCommandPreview($"@JOG AXIS={axis} DIST={distance:+0.000;-0.000} FEED={JogFeedRate:F0}");
-        MainVm.StatusMessage = $"Jog {axis} {distance:+0.000;-0.000} mm";
+        await ExecuteProtocolCommandAsync(
+            "JOG",
+            () => MainVm.Protocol.SendJog(axis, (float)distance, (float)JogFeedRate),
+            $"@JOG AXIS={axis} DIST={distance:+0.000;-0.000} FEED={JogFeedRate:F0}",
+            $"Jog {axis} {distance:+0.000;-0.000} mm",
+            "Jog failed");
     }
 
-    private void JogXY(double xDistance, double yDistance)
+    private async void JogXY(double xDistance, double yDistance)
     {
         if (MainVm == null || !CanJogControls) return;
 
         // Jog X then Y as two commands; diagonal jog requires firmware support.
         // Send the dominant axis if they differ, or X first.
-        MainVm.Protocol.SendJog('X', (float)xDistance, (float)JogFeedRate);
-        MainVm.Protocol.SendJog('Y', (float)yDistance, (float)JogFeedRate);
-        SetCommandPreview($"@JOG X{xDistance:+0.000;-0.000} Y{yDistance:+0.000;-0.000} FEED={JogFeedRate:F0}");
-        MainVm.StatusMessage = $"Jog X{xDistance:+0.000;-0.000} Y{yDistance:+0.000;-0.000} mm";
+        var xOk = await ExecuteProtocolCommandAsync(
+            "JOG",
+            () => MainVm.Protocol.SendJog('X', (float)xDistance, (float)JogFeedRate),
+            $"@JOG AXIS=X DIST={xDistance:+0.000;-0.000} FEED={JogFeedRate:F0}",
+            $"Jog X{xDistance:+0.000;-0.000} Y{yDistance:+0.000;-0.000} mm",
+            "Jog failed");
+        if (!xOk)
+            return;
+
+        await ExecuteProtocolCommandAsync(
+            "JOG",
+            () => MainVm.Protocol.SendJog('Y', (float)yDistance, (float)JogFeedRate),
+            $"@JOG AXIS=Y DIST={yDistance:+0.000;-0.000} FEED={JogFeedRate:F0}",
+            $"Jog X{xDistance:+0.000;-0.000} Y{yDistance:+0.000;-0.000} mm",
+            "Jog failed");
     }
 
-    private void JogCancel()
+    private async void JogCancel()
     {
         if (MainVm == null || !CanCancelJog) return;
-        MainVm.Protocol.SendJogCancel();
-        SetCommandPreview("@JOG_CANCEL");
-        MainVm.StatusMessage = "Jog cancelled.";
+        await ExecuteProtocolCommandAsync("JOG_CANCEL", MainVm.Protocol.SendJogCancel, "@JOG_CANCEL", "Jog cancelled.", "Jog cancel failed");
     }
 
     // ════════════════════════════════════════════════════════════════
     // HOME COMMANDS
     // ════════════════════════════════════════════════════════════════
 
-    private void Home(string axes)
+    private async void Home(string axes)
     {
         if (MainVm == null || !CanHomeControls) return;
 
-        MainVm.Protocol.SendHome();
-        SetCommandPreview("@HOME");
-        MainVm.StatusMessage = axes == "ALL"
-            ? "Homing all axes..."
-            : $"Homing {axes} axis...";
+        await ExecuteProtocolCommandAsync(
+            "HOME",
+            MainVm.Protocol.SendHome,
+            "@HOME",
+            axes == "ALL" ? "Homing all axes..." : $"Homing {axes} axis...",
+            "Home failed");
     }
 
     // ════════════════════════════════════════════════════════════════
     // ZERO COMMANDS
     // ════════════════════════════════════════════════════════════════
 
-    private void Zero(string axis)
+    private async void Zero(string axis)
     {
         if (MainVm == null || !CanJogControls) return;
 
-        MainVm.Protocol.SendZero(axis);
-        SetCommandPreview($"@ZERO AXIS={axis}");
-        MainVm.StatusMessage = $"Work offset {axis} = 0";
+        await ExecuteProtocolCommandAsync(
+            "ZERO",
+            () => MainVm.Protocol.SendZero(axis),
+            $"@ZERO AXIS={axis}",
+            $"Work offset {axis} = 0",
+            "Zero failed");
     }
 
-    private void ZeroAll()
+    private async void ZeroAll()
     {
         if (MainVm == null || !CanJogControls) return;
 
-        MainVm.Protocol.SendZero("ALL");
-        SetCommandPreview("@ZERO AXIS=ALL");
-        MainVm.StatusMessage = "Work offset XYZ = 0";
+        await ExecuteProtocolCommandAsync(
+            "ZERO",
+            () => MainVm.Protocol.SendZero("ALL"),
+            "@ZERO AXIS=ALL",
+            "Work offset XYZ = 0",
+            "Zero failed");
     }
 
     // ════════════════════════════════════════════════════════════════
     // MOVE-TO COMMANDS  (require @JOG with absolute target — not yet in protocol)
     // ════════════════════════════════════════════════════════════════
 
-    private void RaiseZSafe()
+    private async void RaiseZSafe()
     {
         if (MainVm == null || !CanJogControls) return;
-        MainVm.Protocol.SendJog('Z', (float)JogStep, (float)JogFeedRate);
-        SetCommandPreview($"@JOG AXIS=Z DIST=+{JogStep:0.000} FEED={JogFeedRate:F0}");
-        MainVm.StatusMessage = $"Raise Z by +{JogStep:0.000} mm";
+        await ExecuteProtocolCommandAsync(
+            "JOG",
+            () => MainVm.Protocol.SendJog('Z', (float)JogStep, (float)JogFeedRate),
+            $"@JOG AXIS=Z DIST=+{JogStep:0.000} FEED={JogFeedRate:F0}",
+            $"Raise Z by +{JogStep:0.000} mm",
+            "Raise Z failed");
     }
 
     private void GoToXYZero()
@@ -492,49 +515,76 @@ public sealed class ManualControlViewModel : PageViewModelBase
     // SPINDLE COMMANDS
     // ════════════════════════════════════════════════════════════════
 
-    private void StartSpindle()
+    private async void StartSpindle()
     {
         if (MainVm == null || !CanUseAuxControls) return;
 
         var rpm = (int)ClampSpindleRpm(SpindleTargetRpm);
         SpindleTargetRpm = rpm;
-        MainVm.Protocol.SendSpindleOn(rpm);
-        SetCommandPreview($"@SPINDLE_ON RPM={rpm}");
-        MainVm.StatusMessage = $"Spindle start {rpm} RPM";
+        await ExecuteProtocolCommandAsync(
+            "SPINDLE_ON",
+            () => MainVm.Protocol.SendSpindleOn(rpm),
+            $"@SPINDLE_ON RPM={rpm}",
+            $"Spindle start {rpm} RPM",
+            "Spindle start failed");
     }
 
-    private void StopSpindle()
+    private async void StopSpindle()
     {
         if (MainVm == null || !CanUseAuxControls) return;
 
-        MainVm.Protocol.SendSpindleOff();
-        SetCommandPreview("@SPINDLE_OFF");
-        MainVm.StatusMessage = "Spindle stopped";
+        await ExecuteProtocolCommandAsync(
+            "SPINDLE_OFF",
+            MainVm.Protocol.SendSpindleOff,
+            "@SPINDLE_OFF",
+            "Spindle stopped",
+            "Spindle stop failed");
     }
 
     // ════════════════════════════════════════════════════════════════
     // OVERRIDE COMMANDS
     // ════════════════════════════════════════════════════════════════
 
-    private void SendFeedOverride(int percent)
+    private async void SendFeedOverride(int percent)
     {
         FeedOverride = percent;
-        MainVm?.Protocol.SendOverrideFeed(FeedOverride);
-        SetCommandPreview($"@OVERRIDE FEED={FeedOverride}");
+        if (MainVm == null)
+            return;
+
+        await ExecuteProtocolCommandAsync(
+            "OVERRIDE",
+            () => MainVm.Protocol.SendOverrideFeed(FeedOverride),
+            $"@OVERRIDE FEED={FeedOverride}",
+            $"Feed override {FeedOverride}%",
+            "Feed override failed");
     }
 
-    private void SendSpindleOverride(int percent)
+    private async void SendSpindleOverride(int percent)
     {
         SpindleOverride = percent;
-        MainVm?.Protocol.SendOverrideSpindle(SpindleOverride);
-        SetCommandPreview($"@OVERRIDE SPINDLE={SpindleOverride}");
+        if (MainVm == null)
+            return;
+
+        await ExecuteProtocolCommandAsync(
+            "OVERRIDE",
+            () => MainVm.Protocol.SendOverrideSpindle(SpindleOverride),
+            $"@OVERRIDE SPINDLE={SpindleOverride}",
+            $"Spindle override {SpindleOverride}%",
+            "Spindle override failed");
     }
 
-    private void SendRapidOverride(int percent)
+    private async void SendRapidOverride(int percent)
     {
         RapidOverride = percent;
-        MainVm?.Protocol.SendOverrideRapid(RapidOverride);
-        SetCommandPreview($"@OVERRIDE RAPID={RapidOverride}");
+        if (MainVm == null)
+            return;
+
+        await ExecuteProtocolCommandAsync(
+            "OVERRIDE",
+            () => MainVm.Protocol.SendOverrideRapid(RapidOverride),
+            $"@OVERRIDE RAPID={RapidOverride}",
+            $"Rapid override {RapidOverride}%",
+            "Rapid override failed");
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -557,6 +607,30 @@ public sealed class ManualControlViewModel : PageViewModelBase
         MainVm.Protocol.SendReset();
         SetCommandPreview("@RESET");
         MainVm.StatusMessage = "Soft reset sent.";
+    }
+
+    private async void AlarmUnlockTracked()
+    {
+        if (MainVm == null || !CanAlarmUnlock) return;
+
+        await ExecuteProtocolCommandAsync(
+            "RESET",
+            MainVm.Protocol.SendReset,
+            "@RESET",
+            "Reset sent — check machine position before moving.",
+            "Reset failed");
+    }
+
+    private async void SoftResetTracked()
+    {
+        if (MainVm == null || !CanSoftReset) return;
+
+        await ExecuteProtocolCommandAsync(
+            "RESET",
+            MainVm.Protocol.SendReset,
+            "@RESET",
+            "Soft reset sent.",
+            "Soft reset failed");
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -626,6 +700,26 @@ public sealed class ManualControlViewModel : PageViewModelBase
 
     private double ClampSpindleRpm(double value)
         => Math.Clamp(value, SpindleMinRpm, SpindleMaxRpm);
+
+    private async Task<bool> ExecuteProtocolCommandAsync(
+        string okToken,
+        Action send,
+        string preview,
+        string statusText,
+        string failurePrefix,
+        TimeSpan? timeout = null)
+    {
+        if (MainVm == null)
+            return false;
+
+        SetCommandPreview(preview);
+        MainVm.StatusMessage = statusText;
+        MainVm.IsStatusError = false;
+
+        var result = await MainVm.SendCommandAndWaitAsync(okToken, send, timeout ?? TimeSpan.FromSeconds(3));
+        MainVm.ApplyCommandResult(result, failurePrefix);
+        return result.Success;
+    }
 
     private void SetCommandPreview(string preview) => CommandPreview = preview;
 

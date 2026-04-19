@@ -192,6 +192,8 @@ public sealed class FilesViewModel : PageViewModelBase
         }
     }
 
+    public bool IsPreviewDownloadActive => _previewDownloadCancellation != null;
+
     public double UploadProgress
     {
         get => _uploadProgress;
@@ -401,7 +403,7 @@ public sealed class FilesViewModel : PageViewModelBase
 
                 if (status == ConnectionStatus.Connected)
                 {
-                    RequestFileList();
+                    _ = RequestFileListAsync();
                 }
                 else
                 {
@@ -431,10 +433,14 @@ public sealed class FilesViewModel : PageViewModelBase
     // File list (SD card)
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void RequestFileList()
+    private async Task RequestFileListAsync()
     {
+        if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
+            return;
+
         _pendingFileList.Clear();
-        MainVm?.Protocol.SendFileList();
+        var result = await MainVm.SendCommandAndWaitAsync("FILE_LIST_END", MainVm.Protocol.SendFileList, TimeSpan.FromSeconds(3));
+        MainVm.ApplyCommandResult(result, "File list refresh failed");
     }
 
     private void HandleFileListEntry(string name, long sizeBytes)
@@ -463,12 +469,12 @@ public sealed class FilesViewModel : PageViewModelBase
         // Toolpath preview is independent — do not reset it here.
     }
 
-    private void HandleProtocolEvent(string name, IReadOnlyDictionary<string, string> _)
+    private void HandleProtocolEvent(string name, IReadOnlyDictionary<string, string> metadata)
     {
         switch (name)
         {
             case "SD_MOUNTED":
-                RequestFileList();
+                _ = RequestFileListAsync();
                 break;
 
             case "SD_REMOVED":
@@ -483,7 +489,7 @@ public sealed class FilesViewModel : PageViewModelBase
     private void RefreshFileList()
     {
         if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
-            RequestFileList();
+            _ = RequestFileListAsync();
     }
 
     private bool CanLoadSelectedFile()
@@ -510,9 +516,13 @@ public sealed class FilesViewModel : PageViewModelBase
                 return;
         }
 
-        MainVm.Protocol.SendFileLoad(SelectedFile.Name);
         MainVm.StatusMessage = $"Loading: {SelectedFile.Name}";
         MainVm.IsStatusError = false;
+        var result = await MainVm.SendCommandAndWaitAsync(
+            "FILE_LOAD",
+            () => MainVm.Protocol.SendFileLoad(SelectedFile.Name),
+            TimeSpan.FromSeconds(3));
+        MainVm.ApplyCommandResult(result, "Load failed");
     }
 
     private bool CanUnloadLoadedFile()
@@ -520,23 +530,32 @@ public sealed class FilesViewModel : PageViewModelBase
            MainVm?.PiConnectionStatus == ConnectionStatus.Connected &&
            !string.IsNullOrWhiteSpace(MainVm.CurrentFileName);
 
-    private void UnloadLoadedFile()
+    private async void UnloadLoadedFile()
     {
         if (!CanUnloadLoadedFile() || MainVm == null)
             return;
 
-        MainVm.Protocol.SendFileUnload();
         MainVm.StatusMessage = "Unloading active job";
         MainVm.IsStatusError = false;
+        var result = await MainVm.SendCommandAndWaitAsync("FILE_UNLOAD", MainVm.Protocol.SendFileUnload, TimeSpan.FromSeconds(3));
+        MainVm.ApplyCommandResult(result, "Unload failed");
     }
 
-    private void DeleteFile(GCodeFileInfo? file)
+    private async void DeleteFile(GCodeFileInfo? file)
     {
         if (file == null || MainVm == null) return;
         _pendingDeletes[file.Name] = file;
         if (SelectedFile == file)
             SelectedFile = null;
-        MainVm.Protocol.SendFileDelete(file.Name);
+        var result = await MainVm.SendCommandAndWaitAsync(
+            "FILE_DELETE",
+            () => MainVm.Protocol.SendFileDelete(file.Name),
+            TimeSpan.FromSeconds(3));
+        if (!result.Success)
+        {
+            _pendingDeletes.Remove(file.Name);
+            MainVm.ApplyCommandResult(result, "Delete failed");
+        }
     }
 
     private void HandleFileDeleteConfirmed(string name)
@@ -641,6 +660,7 @@ public sealed class FilesViewModel : PageViewModelBase
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
+            MainVm?.NotifyControllerUnresponsive();
             throw new TimeoutException("Preview download timed out.");
         }
     }
@@ -913,7 +933,7 @@ public sealed class FilesViewModel : PageViewModelBase
             IsLocalPreviewFile    = false;           // file is now on SD
             MainVm!.StatusMessage = $"Uploaded: {name}";
             MainVm.IsStatusError  = false;
-            RequestFileList();
+            _ = RequestFileListAsync();
         }
         catch (OperationCanceledException)
         {
@@ -956,6 +976,7 @@ public sealed class FilesViewModel : PageViewModelBase
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
+            MainVm?.NotifyControllerUnresponsive();
             throw new TimeoutException("Pico did not respond within the timeout period.");
         }
     }

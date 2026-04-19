@@ -17,6 +17,7 @@ PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_c
       upload_screen_(display),
       desktop_protocol_(usb_transport_,
                         machine_fsm_,
+                        jog_state_machine_,
                         job_state_machine_,
                         loaded_job_storage_,
                         storage_service_,
@@ -74,10 +75,30 @@ void PortableCncApp::run() {
             render_current_screen(upload_ended_this_tick);
         }
 
-        if (uart_client_.poll()) {
+        const PicoUartPollResult uart_result = uart_client_.poll();
+        if (uart_result.link_transition == MotionLinkTransition::Connected) {
+            desktop_protocol_.emit_event("TEENSY_CONNECTED");
+        } else if (uart_result.link_transition == MotionLinkTransition::Disconnected) {
+            desktop_protocol_.emit_event("TEENSY_DISCONNECTED");
+        }
+
+        if (uart_result.machine_changed) {
+            desktop_protocol_.emit_state_update();
+        }
+        if (uart_result.job_changed) {
+            desktop_protocol_.emit_job();
+        }
+        if (uart_result.position_changed) {
+            desktop_protocol_.emit_position();
+        }
+
+        if (uart_result.machine_changed || uart_result.job_changed || uart_result.position_changed) {
             frame_.render_status_bar(status_provider_.current());
             if (!desktop_protocol_.upload_active()) {
                 render_current_screen(false);
+                if (uart_result.machine_changed) {
+                    desktop_protocol_.consume_state_changed();
+                }
             }
         }
 

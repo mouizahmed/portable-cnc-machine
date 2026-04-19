@@ -9,12 +9,14 @@
 
 DesktopProtocol::DesktopProtocol(UsbCdcTransport& transport,
                                  MachineFsm& msm,
+                                 JogStateMachine& jogs,
                                  JobStateMachine& jobs,
                                  LoadedJobStorage& loaded_job_storage,
                                  StorageService& storage,
                                  SdSpiCard& sd)
     : transport_(transport),
       msm_(msm),
+      jogs_(jogs),
       jobs_(jobs),
       loaded_job_storage_(loaded_job_storage),
       storage_(storage),
@@ -126,11 +128,13 @@ void DesktopProtocol::emit_safety() {
     transport_.send_fmt("@SAFETY %s", s);
 }
 
-void DesktopProtocol::emit_state_update() {
+void DesktopProtocol::emit_state_update(bool mark_changed) {
     emit_state();
     emit_caps();
     emit_safety();
-    state_changed_ = true;
+    if (mark_changed) {
+        state_changed_ = true;
+    }
 }
 
 void DesktopProtocol::emit_job() {
@@ -140,6 +144,14 @@ void DesktopProtocol::emit_job() {
     }
 
     transport_.send_fmt("@JOB NAME=NONE");
+}
+
+void DesktopProtocol::emit_position() {
+    const double x = static_cast<double>(jogs_.x());
+    const double y = static_cast<double>(jogs_.y());
+    const double z = static_cast<double>(jogs_.z());
+    transport_.send_fmt("@POS MX=%.3f MY=%.3f MZ=%.3f WX=%.3f WY=%.3f WZ=%.3f",
+                        x, y, z, x, y, z);
 }
 
 void DesktopProtocol::emit_event(const char* name) {
@@ -235,12 +247,13 @@ void DesktopProtocol::handle_info() {
     // Push current state + caps immediately after @INFO so the desktop always has
     // an up-to-date view on connect (the @STATE emitted at startup is lost if the
     // desktop wasn't connected yet).
-    emit_state_update();
+    emit_state_update(false);
     emit_job();
 }
 
 void DesktopProtocol::handle_status() {
-    emit_state_update();
+    emit_state_update(false);
+    emit_position();
     emit_job();
 }
 

@@ -13,7 +13,6 @@ namespace PortableCncApp.Services;
 public sealed class SerialService : IDisposable
 {
     private static readonly TimeSpan StartupErrorGracePeriod = TimeSpan.FromSeconds(2);
-
     private SerialPort? _port;
     private readonly StringBuilder _lineBuffer = new();
     private DateTime _connectedAtUtc = DateTime.MinValue;
@@ -125,6 +124,20 @@ public sealed class SerialService : IDisposable
             var msg = ex.Message;
             Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke(msg));
         }
+    }
+
+    public void NotifyPortRemoved(string portName)
+    {
+        if (_port == null || !IsConnected)
+            return;
+
+        if (IsWithinStartupErrorGrace())
+            return;
+
+        if (!string.Equals(_port.PortName, portName, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke($"Serial device removed: {portName}"));
     }
 
     private void CleanupPort()

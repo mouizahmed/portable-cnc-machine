@@ -350,24 +350,18 @@ public sealed class ConnectViewModel : PageViewModelBase
         // Give the Pico a moment to settle before the first handshake ping.
         await Task.Delay(350);
 
-        // Step 2: @PING — wait up to 3 s for PONG (handles USB CDC stabilisation delay)
+        // Step 2: @PING — one-shot liveness probe during connect only.
         MainVm.StatusMessage = $"Waiting for controller on {SelectedPort} (@PING)...";
 
         var pongTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnPong() => pongTcs.TrySetResult(true);
         MainVm.Protocol.PongReceived += OnPong;
-
-        // Send @PING every 500 ms during the 3 s window so we don't miss the device waking up.
+        MainVm.Protocol.SendPing();
         var pongTask = pongTcs.Task;
-        for (int i = 0; i < 6 && !pongTask.IsCompleted; i++)
-        {
-            MainVm.Protocol.SendPing();
-            await Task.WhenAny(pongTask, Task.Delay(500));
-        }
-
+        var pongCompleted = await Task.WhenAny(pongTask, Task.Delay(3000)) == pongTask;
         MainVm.Protocol.PongReceived -= OnPong;
 
-        if (!pongTask.IsCompleted)
+        if (!pongCompleted)
         {
             MainVm.Serial.Disconnect();
             MainVm.PiConnectionStatus = ConnectionStatus.Error;

@@ -47,6 +47,12 @@ public sealed class PicoProtocolService
     /// <summary>Fired when @OK PONG is received (response to SendPing).</summary>
     public event Action? PongReceived;
 
+    /// <summary>
+    /// Fired for every @OK token, including generic command acknowledgements
+    /// like HOME/JOG/START as well as specialized file-transfer tokens.
+    /// </summary>
+    public event Action<string, IReadOnlyDictionary<string, string>>? OkReceived;
+
     /// <summary>Fired when an @ERROR line is received. Arg is the reason string.</summary>
     public event Action<string>? ErrorReceived;
 
@@ -263,8 +269,11 @@ public sealed class PicoProtocolService
     private void ParseOk(string[] parts)
     {
         if (parts.Length < 2) return;
+        var token = parts[1];
         var kv = ParseKeyValues(parts, startIndex: 2);
-        switch (parts[1])
+        OkReceived?.Invoke(token, kv);
+
+        switch (token)
         {
             case "PONG":
                 PongReceived?.Invoke();

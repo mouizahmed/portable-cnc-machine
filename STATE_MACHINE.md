@@ -220,15 +220,15 @@ Additional rules:
 
 | Event                 | Wire format                           | Description                                           |
 |-----------------------|---------------------------------------|-------------------------------------------------------|
-| `TeensyConnected`     | `@BOOT TEENSY_READY`                  | Teensy finished boot, GRBL initialised                |
-| `TeensyDisconnected`  | UART timeout / line error             | Lost contact with Teensy                              |
-| `GrblIdle`            | `@GRBL_STATE IDLE`                    | GRBL entered `STATE_IDLE`                             |
-| `GrblHoming`          | `@GRBL_STATE HOMING`                  | GRBL entered `STATE_HOMING`                           |
-| `GrblCycle`           | `@GRBL_STATE CYCLE`                   | GRBL entered `STATE_CYCLE`                            |
-| `GrblHold`            | `@GRBL_STATE HOLD SUBSTATE=<P\|C>`    | GRBL entered `STATE_HOLD` (Pending or Complete)       |
-| `GrblJog`             | `@GRBL_STATE JOG`                     | GRBL entered `STATE_JOG`                              |
-| `GrblAlarm`           | `@GRBL_STATE ALARM CODE=<n>`          | GRBL entered `STATE_ALARM` with alarm code            |
-| `GrblEstop`           | `@GRBL_STATE ESTOP`                   | GRBL entered `STATE_ESTOP`                            |
+| `TeensyConnected`     | `@BOOT TEENSY_READY` or valid compatibility traffic (`@HELLO`, `@EVT ...`) | Motion controller link confirmed |
+| `TeensyDisconnected`  | Long UART silence after occasional probe / line error | Lost contact with motion controller |
+| `GrblIdle`            | `@GRBL_STATE IDLE` or compatibility `@EVT MACHINE STATE=IDLE` | GRBL entered `STATE_IDLE` |
+| `GrblHoming`          | `@GRBL_STATE HOMING` or compatibility `@EVT MACHINE STATE=HOMING` | GRBL entered `STATE_HOMING` |
+| `GrblCycle`           | `@GRBL_STATE CYCLE` or compatibility `@EVT MACHINE STATE=RUNNING` | GRBL entered `STATE_CYCLE` |
+| `GrblHold`            | `@GRBL_STATE HOLD SUBSTATE=<P\|C>` or compatibility `@EVT MACHINE STATE=HOLD` | GRBL entered `STATE_HOLD` |
+| `GrblJog`             | `@GRBL_STATE JOG` or compatibility `@EVT MACHINE STATE=JOG` | GRBL entered `STATE_JOG` |
+| `GrblAlarm`           | `@GRBL_STATE ALARM CODE=<n>` or compatibility `@EVT MACHINE STATE=ALARM` / `@ERR` | GRBL entered `STATE_ALARM` |
+| `GrblEstop`           | `@GRBL_STATE ESTOP` or compatibility `@EVT MACHINE STATE=ESTOP` | GRBL entered `STATE_ESTOP` |
 | `GrblDoor`            | `@GRBL_STATE DOOR`                    | GRBL entered `STATE_SAFETY_DOOR`                      |
 | `GrblToolChange`      | `@GRBL_STATE TOOL_CHANGE`             | GRBL entered `STATE_TOOL_CHANGE`                      |
 | `GrblSleep`           | `@GRBL_STATE SLEEP`                   | GRBL entered `STATE_SLEEP`                            |
@@ -267,8 +267,8 @@ Additional rules:
 | `JobLoaded`         | File load path          | Valid G-code file became the active job       |
 | `JobUnloaded`       | File unload path        | Active loaded job was cleared                 |
 | `JobRestored`       | Load persistence        | Persisted loaded job restored by filename     |
-| `BootTimeout`       | Timer                   | Teensy did not send `@BOOT` within timeout    |
-| `SyncTimeout`       | Timer                   | No `@GRBL_STATE` received after `@BOOT`       |
+| `BootTimeout`       | Timer                   | Motion controller did not send valid boot / handshake traffic within timeout |
+| `SyncTimeout`       | Timer                   | No machine-state traffic received after link-up |
 | `JobStreamComplete` | Streaming engine        | All lines sent and all `ok`s received         |
 | `UploadComplete`    | Upload protocol handler | `@FILE_UPLOAD_END` CRC verified, file written |
 | `UploadFailed`      | Upload protocol handler | CRC mismatch, SD write fail, or chunk timeout |
@@ -818,8 +818,9 @@ Not part of the state machine. Not reported over the protocol.
 
 ### Position / DRO
 Machine position is a separate data stream, not a state machine concern. The Pico
-periodically polls the Teensy for position data and relays it to clients. Frequency
-scales with activity.
+relays position updates to clients when the motion-controller side reports them.
+The desktop also receives a one-shot `@POS` as part of `@STATUS` snapshot sync.
+There is no desktop polling loop for DRO updates.
 
 ---
 
@@ -838,8 +839,13 @@ as follow-up cleanup, not as greenfield work.
 | `@STATE` + `@CAPS` + `@SAFETY` + `@EVENT` emission | Implemented |
 | File load / unload and persisted loaded-job restore | Implemented |
 | Desktop `@PING` / `@INFO` handshake and typed protocol client | Implemented |
+| Desktop `@STATUS` snapshot-only sync (connect/resync/manual refresh) | Implemented |
+| Desktop transport-based disconnect handling (no default heartbeat loop) | Implemented |
 | Desktop/TFT local preview selection kept out of protocol/state machine | Implemented |
 | Desktop SD preview download path (`@FILE_DOWNLOAD`, `@ACK`, `@CHUNK`) | Implemented |
+| Pico UART1 driver (GP20/GP21, 115200) | Implemented |
+| Pico motion-link silence/probe disconnect tracking | Implemented |
+| Pico push of `@STATE` / `@JOB` / `@POS` / `@EVENT TEENSY_*` on UART-side changes | Implemented |
 
 ## Historical Planning Section
 
@@ -850,8 +856,8 @@ as follow-up cleanup, not as greenfield work.
 | Internal flags (`job_session_active_`, `abort_pending_`, `hold_complete_`, etc.) | ❌ Not built |
 | `compute_caps()` method with 10 flags | ❌ Not built |
 | `@STATE` + `@CAPS` + `@SAFETY` + `@EVENT` emission | ❌ Not built |
-| Teensy `pico_framework.cpp` rewrite (`@GRBL_STATE` push, streaming, realtime forwarding) | ❌ Not built |
-| Pico UART1 driver (GP20/GP21, 115200) | ❌ Not built |
+| Teensy `pico_framework.cpp` rewrite (`@GRBL_STATE` push, streaming, realtime forwarding) | ⚠️ In progress / partially converged |
+| Pico UART1 driver (GP20/GP21, 115200) | ✅ Built |
 | Pico USB CDC-ACM driver for desktop link | ❌ Not built |
 | Pico protocol dispatcher | ❌ Not built |
 | Pico G-code streaming engine (SD → Teensy with `ok`/`error` flow control) | ❌ Not built |
@@ -859,7 +865,7 @@ as follow-up cleanup, not as greenfield work.
 | `PIN_ESTOP` GPIO (GP15) → `HwEstopAsserted` / `HwEstopCleared` | ❌ Not built |
 | Desktop `PicoProtocolService` | ❌ Not built |
 | Desktop `MainWindowViewModel` rework (pure `@STATE`/`@CAPS` sink) | ❌ Not built |
-| Desktop `ConnectViewModel` rework (`@PING`/`@INFO` handshake) | ❌ Not built |
+| Desktop `ConnectViewModel` rework (`@PING`/`@INFO` handshake) | ✅ Built |
 | Desktop `ManualControlViewModel` rework (`@`-commands only) | ❌ Not built |
 | Desktop `DiagnosticsViewModel` rework | ❌ Not built |
 | Desktop `Enums.cs` cleanup (display-only, no state writes) | ❌ Not built |

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "app/jog/jog_state_machine.h"
 #include "app/job/loaded_job_storage.h"
 #include "app/job/job_state_machine.h"
 #include "app/machine/machine_fsm.h"
@@ -17,6 +18,7 @@ class DesktopProtocol {
 public:
     DesktopProtocol(UsbCdcTransport& transport,
                     MachineFsm& msm,
+                    JogStateMachine& jogs,
                     JobStateMachine& jobs,
                     LoadedJobStorage& loaded_job_storage,
                     StorageService& storage,
@@ -50,7 +52,7 @@ public:
     // Ã¢â€â‚¬Ã¢â€â‚¬ Outbound protocol messages Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     // Emit current @STATE, @CAPS, @SAFETY (call after any MSM transition)
-    void emit_state_update();
+    void emit_state_update(bool mark_changed = true);
 
     // Emit @STATE <state>
     void emit_state();
@@ -63,6 +65,9 @@ public:
 
     // Emit @JOB NAME=<filename|NONE>
     void emit_job();
+
+    // Emit @POS MX=... MY=... MZ=... WX=... WY=... WZ=...
+    void emit_position();
 
     // Emit @EVENT <name> [key=val ...]
     void emit_event(const char* name);
@@ -90,6 +95,7 @@ public:
 private:
     UsbCdcTransport& transport_;
     MachineFsm& msm_;
+    JogStateMachine& jogs_;
     JobStateMachine& jobs_;
     LoadedJobStorage& loaded_job_storage_;
     StorageService& storage_;
