@@ -130,46 +130,43 @@ void UsbCdcTransport::send_frame(uint8_t type, uint8_t transfer_id, uint32_t seq
         return;
     }
 
-    uint8_t raw[kTransferFrameHeaderSize + kMaxTransferPayloadSize + sizeof(uint32_t)]{};
-    uint8_t encoded[sizeof(raw) + 4]{};
-    uint8_t wire[1 + (sizeof(encoded) * 2) + 1]{};
     size_t offset = 0;
-    raw[offset++] = type;
-    raw[offset++] = transfer_id;
-    raw[offset++] = 0;
-    write_u32_le(raw + offset, seq);
+    tx_raw_[offset++] = type;
+    tx_raw_[offset++] = transfer_id;
+    tx_raw_[offset++] = 0;
+    write_u32_le(tx_raw_ + offset, seq);
     offset += sizeof(uint32_t);
-    write_u16_le(raw + offset, payload_len);
+    write_u16_le(tx_raw_ + offset, payload_len);
     offset += sizeof(uint16_t);
     if (payload_len > 0 && payload != nullptr) {
-        std::memcpy(raw + offset, payload, payload_len);
+        std::memcpy(tx_raw_ + offset, payload, payload_len);
         offset += payload_len;
     }
-    const uint32_t crc = crc32(raw, kTransferFrameHeaderSize + payload_len);
-    write_u32_le(raw + offset, crc);
+    const uint32_t crc = crc32(tx_raw_, kTransferFrameHeaderSize + payload_len);
+    write_u32_le(tx_raw_ + offset, crc);
     offset += sizeof(uint32_t);
 
-    const size_t encoded_len = cobs_encode(raw, offset, encoded, sizeof(encoded));
+    const size_t encoded_len = cobs_encode(tx_raw_, offset, tx_encoded_, sizeof(tx_encoded_));
     if (encoded_len == 0) {
         return;
     }
 
     size_t wire_len = 0;
-    wire[wire_len++] = kTransferFrameMarker;
+    tx_wire_[wire_len++] = kTransferFrameMarker;
     for (size_t i = 0; i < encoded_len; ++i) {
-        if (encoded[i] == kTransferFrameMarker ||
-            encoded[i] == kTransferFrameEscape ||
-            encoded[i] == '\r' ||
-            encoded[i] == '\n') {
-            wire[wire_len++] = kTransferFrameEscape;
-            wire[wire_len++] = static_cast<uint8_t>(encoded[i] ^ kTransferFrameEscapeXor);
+        if (tx_encoded_[i] == kTransferFrameMarker ||
+            tx_encoded_[i] == kTransferFrameEscape ||
+            tx_encoded_[i] == '\r' ||
+            tx_encoded_[i] == '\n') {
+            tx_wire_[wire_len++] = kTransferFrameEscape;
+            tx_wire_[wire_len++] = static_cast<uint8_t>(tx_encoded_[i] ^ kTransferFrameEscapeXor);
             continue;
         }
-        wire[wire_len++] = encoded[i];
+        tx_wire_[wire_len++] = tx_encoded_[i];
     }
-    wire[wire_len++] = kTransferFrameMarker;
+    tx_wire_[wire_len++] = kTransferFrameMarker;
 
-    std::fwrite(wire, 1, wire_len, stdout);
+    std::fwrite(tx_wire_, 1, wire_len, stdout);
     std::fflush(stdout);
 }
 

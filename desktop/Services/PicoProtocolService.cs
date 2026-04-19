@@ -23,7 +23,7 @@ public readonly record struct FileDownloadComplete(byte TransferId, string Name,
 /// </summary>
 public sealed class PicoProtocolService
 {
-    public const int BinaryTransferChunkSize = 256;
+    public const int BinaryTransferChunkSize = 1024;
 
     private const byte UploadDataFrameType = 1;
     private const byte UploadAckFrameType = 2;
@@ -401,6 +401,7 @@ public sealed class PicoProtocolService
         if (parts.Length < 2) { ErrorReceived?.Invoke("UNKNOWN"); return; }
 
         var errorKv = ParseKeyValues(parts, startIndex: 2);
+        var storageOp = errorKv.GetValueOrDefault("OP", "");
 
         switch (parts[1])
         {
@@ -470,6 +471,36 @@ public sealed class PicoProtocolService
                 DownloadFailedReceived?.Invoke(parts[1]);
                 ErrorReceived?.Invoke(parts[1]);
                 return;
+
+            case "STORAGE_BUSY":
+            case "STORAGE_NOT_ALLOWED":
+            case "STORAGE_NO_SD":
+            case "STORAGE_FILE_NOT_FOUND":
+            case "STORAGE_BAD_SEQUENCE":
+            case "STORAGE_INVALID_SESSION":
+            case "STORAGE_READ_FAIL":
+            case "STORAGE_WRITE_FAIL":
+            case "STORAGE_CRC_FAIL":
+            case "STORAGE_SIZE_MISMATCH":
+            case "STORAGE_INVALID_FILENAME":
+            case "STORAGE_NO_SPACE":
+            case "STORAGE_ABORTED":
+            {
+                if (parts[1] == "STORAGE_NO_SD" && string.Equals(storageOp, "UPLOAD", StringComparison.OrdinalIgnoreCase))
+                {
+                    UploadFailedReceived?.Invoke("SD card not present");
+                }
+                else if (string.Equals(storageOp, "UPLOAD", StringComparison.OrdinalIgnoreCase))
+                {
+                    UploadFailedReceived?.Invoke(parts[1]);
+                }
+
+                if (string.Equals(storageOp, "DOWNLOAD", StringComparison.OrdinalIgnoreCase))
+                    DownloadFailedReceived?.Invoke(parts[1]);
+
+                ErrorReceived?.Invoke(parts[1]);
+                return;
+            }
         }
 
         // Check for upload-fatal errors that can arrive mid-stream.

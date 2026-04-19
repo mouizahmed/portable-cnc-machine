@@ -55,7 +55,7 @@ public sealed class FilesViewModel : PageViewModelBase
     private readonly Dictionary<string, GCodeFileInfo> _pendingDeletes = new();
 
     // ── Upload fields ─────────────────────────────────────────────────────────
-    private bool   _isUploading;
+    private DesktopStorageState _storageState;
     private double _uploadProgress;
     private string _uploadStatusText = "";
     private string? _uploadFileExistsName;
@@ -92,9 +92,9 @@ public sealed class FilesViewModel : PageViewModelBase
 
         UploadCommand             = new RelayCommand(StartUpload,            CanUpload);
         CancelUploadCommand       = new RelayCommand(CancelUpload,           () => IsUploading);
-        PreviewLocalCommand       = new RelayCommand(PreviewLocalFile,       () => !IsUploading);
+        PreviewLocalCommand       = new RelayCommand(PreviewLocalFile,       () => !HasActiveStorageOperation);
         UploadLocalPreviewCommand = new RelayCommand(StartUploadLocalPreview, CanUploadLocalPreview);
-        RefreshCommand            = new RelayCommand(RefreshFileList,        () => !IsUploading && !IsPreviewDownloadActive);
+        RefreshCommand            = new RelayCommand(RefreshFileList,        () => !HasActiveStorageOperation);
         LoadSelectedFileCommand   = new RelayCommand(LoadSelectedFile,       CanLoadSelectedFile);
         UnloadLoadedFileCommand   = new RelayCommand(UnloadLoadedFile,       CanUnloadLoadedFile);
         DeleteCommand             = new RelayCommand<GCodeFileInfo>(DeleteFile);
@@ -194,17 +194,31 @@ public sealed class FilesViewModel : PageViewModelBase
     // Upload state
     // ─────────────────────────────────────────────────────────────────────────
 
-    public bool IsUploading
+    public DesktopStorageState StorageState
     {
-        get => _isUploading;
+        get => _storageState;
         private set
         {
-            if (SetProperty(ref _isUploading, value))
-                RaiseCanExecuteAll();
+            if (!SetProperty(ref _storageState, value))
+                return;
+
+            RaisePropertyChanged(nameof(IsUploading));
+            RaisePropertyChanged(nameof(IsPreviewDownloadActive));
+            RaisePropertyChanged(nameof(HasActiveStorageOperation));
+            RaiseCanExecuteAll();
         }
     }
 
-    public bool IsPreviewDownloadActive => _previewDownloadCancellation != null;
+    public bool IsUploading => StorageState == DesktopStorageState.Uploading;
+
+    public bool IsPreviewDownloadActive => StorageState == DesktopStorageState.DownloadingPreview;
+
+    public bool HasActiveStorageOperation => StorageState is DesktopStorageState.Refreshing
+        or DesktopStorageState.Uploading
+        or DesktopStorageState.DownloadingPreview
+        or DesktopStorageState.Deleting
+        or DesktopStorageState.Loading
+        or DesktopStorageState.Aborting;
 
     public double UploadProgress
     {
@@ -222,6 +236,21 @@ public sealed class FilesViewModel : PageViewModelBase
     {
         get => _uploadFileExistsName;
         private set => SetProperty(ref _uploadFileExistsName, value);
+    }
+
+    private void SetStorageState(DesktopStorageState state) => StorageState = state;
+
+    private void CompleteStorageState(bool success)
+        => SetStorageState(success ? DesktopStorageState.Idle : DesktopStorageState.Failed);
+
+    private void ClearTransferStateToIdle()
+    {
+        if (StorageState is DesktopStorageState.Uploading
+            or DesktopStorageState.DownloadingPreview
+            or DesktopStorageState.Aborting)
+        {
+            SetStorageState(DesktopStorageState.Idle);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -423,6 +452,7 @@ public sealed class FilesViewModel : PageViewModelBase
                     if (IsUploading)
                         _uploadCancellation?.Cancel(); // USB disconnect mid-upload — no abort command, just cancel
 
+                    _previewDownloadCancellation?.Cancel();
                     ClearDeviceFileStateOnDisconnect();
                 }
 
@@ -455,6 +485,7 @@ public sealed class FilesViewModel : PageViewModelBase
         await _storageOperationGate.WaitAsync();
         try
         {
+            SetStorageState(DesktopStorageState.Refreshing);
             _pendingFileList.Clear();
             var result = await MainVm.SendCommandAndWaitAsync(
                 "FILE_LIST_END",
@@ -462,6 +493,7 @@ public sealed class FilesViewModel : PageViewModelBase
                 TimeSpan.FromSeconds(5),
                 disconnectOnTimeout: false);
             MainVm.ApplyCommandResult(result, "File list refresh failed");
+            CompleteStorageState(result.Success);
         }
         finally
         {
@@ -519,8 +551,7 @@ public sealed class FilesViewModel : PageViewModelBase
     }
 
     private bool CanLoadSelectedFile()
-        => !IsUploading &&
-           !IsPreviewDownloadActive &&
+        => !HasActiveStorageOperation &&
            MainVm?.PiConnectionStatus == ConnectionStatus.Connected &&
            SelectedFile != null &&
            !IsSelectedFileLoaded;
@@ -547,6 +578,7 @@ public sealed class FilesViewModel : PageViewModelBase
         await _storageOperationGate.WaitAsync();
         try
         {
+            SetStorageState(DesktopStorageState.Loading);
             MainVm.StatusMessage = $"Loading: {SelectedFile.Name}";
             MainVm.IsStatusError = false;
             var result = await MainVm.SendCommandAndWaitAsync(
@@ -555,6 +587,7 @@ public sealed class FilesViewModel : PageViewModelBase
                 TimeSpan.FromSeconds(3),
                 disconnectOnTimeout: false);
             MainVm.ApplyCommandResult(result, "Load failed");
+            CompleteStorageState(result.Success);
         }
         finally
         {
@@ -563,8 +596,7 @@ public sealed class FilesViewModel : PageViewModelBase
     }
 
     private bool CanUnloadLoadedFile()
-        => !IsUploading &&
-           !IsPreviewDownloadActive &&
+        => !HasActiveStorageOperation &&
            MainVm?.PiConnectionStatus == ConnectionStatus.Connected &&
            !string.IsNullOrWhiteSpace(MainVm.CurrentFileName);
 
@@ -577,6 +609,7 @@ public sealed class FilesViewModel : PageViewModelBase
         await _storageOperationGate.WaitAsync();
         try
         {
+            SetStorageState(DesktopStorageState.Loading);
             MainVm.StatusMessage = "Unloading active job";
             MainVm.IsStatusError = false;
             var result = await MainVm.SendCommandAndWaitAsync(
@@ -585,6 +618,7 @@ public sealed class FilesViewModel : PageViewModelBase
                 TimeSpan.FromSeconds(3),
                 disconnectOnTimeout: false);
             MainVm.ApplyCommandResult(result, "Unload failed");
+            CompleteStorageState(result.Success);
         }
         finally
         {
@@ -599,6 +633,7 @@ public sealed class FilesViewModel : PageViewModelBase
         await _storageOperationGate.WaitAsync();
         try
         {
+            SetStorageState(DesktopStorageState.Deleting);
             _pendingDeletes[file.Name] = file;
             if (SelectedFile == file)
                 SelectedFile = null;
@@ -612,6 +647,7 @@ public sealed class FilesViewModel : PageViewModelBase
                 _pendingDeletes.Remove(file.Name);
                 MainVm.ApplyCommandResult(result, "Delete failed");
             }
+            CompleteStorageState(result.Success);
         }
         finally
         {
@@ -642,8 +678,7 @@ public sealed class FilesViewModel : PageViewModelBase
         _previewDownloadCancellation = new CancellationTokenSource();
         var ct = _previewDownloadCancellation.Token;
         var localCancellation = _previewDownloadCancellation;
-        RaisePropertyChanged(nameof(IsPreviewDownloadActive));
-        RaiseCanExecuteAll();
+        SetStorageState(DesktopStorageState.DownloadingPreview);
         // Preview downloads can legitimately produce hundreds of chunk packets for
         // mid-sized files. Dropping old packets corrupts the stream and eventually
         // turns into CRC mismatches or timeouts. Keep the full packet sequence.
@@ -775,18 +810,21 @@ public sealed class FilesViewModel : PageViewModelBase
                 MainVm.Protocol.SendFileDownloadAbort();
             if (tempPath != null && File.Exists(tempPath))
                 File.Delete(tempPath);
+            SetStorageState(DesktopStorageState.Idle);
             return null;
         }
         catch (ChannelClosedException)
         {
             if (tempPath != null && File.Exists(tempPath))
                 File.Delete(tempPath);
+            SetStorageState(DesktopStorageState.Idle);
             return null;
         }
         catch (Exception ex)
         {
             if (tempPath != null && File.Exists(tempPath))
                 File.Delete(tempPath);
+            SetStorageState(DesktopStorageState.Failed);
             UpdateToolpathState(hasGeometry: false, hasError: true);
             ToolpathStatusMessage = "Source preview could not be loaded.";
             if (MainVm != null)
@@ -804,8 +842,7 @@ public sealed class FilesViewModel : PageViewModelBase
             {
                 _previewDownloadCancellation?.Dispose();
                 _previewDownloadCancellation = null;
-                RaisePropertyChanged(nameof(IsPreviewDownloadActive));
-                RaiseCanExecuteAll();
+                ClearTransferStateToIdle();
             }
             _storageOperationGate.Release();
         }
@@ -930,10 +967,10 @@ public sealed class FilesViewModel : PageViewModelBase
     // ─────────────────────────────────────────────────────────────────────────
 
     private bool CanUpload()
-        => !IsUploading && !IsPreviewDownloadActive && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
+        => !HasActiveStorageOperation && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
 
     private bool CanUploadLocalPreview()
-        => IsLocalPreviewFile && !IsUploading && !IsPreviewDownloadActive && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
+        => IsLocalPreviewFile && !HasActiveStorageOperation && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
 
     private async void StartUpload()
     {
@@ -967,7 +1004,7 @@ public sealed class FilesViewModel : PageViewModelBase
 
     private async Task DoUploadAsync(string filePath, bool overwrite)
     {
-        if (IsUploading || MainVm?.PiConnectionStatus != ConnectionStatus.Connected) return;
+        if (HasActiveStorageOperation || MainVm?.PiConnectionStatus != ConnectionStatus.Connected) return;
 
         await StopPreviewDownloadBeforeStorageCommandAsync();
         await _storageOperationGate.WaitAsync();
@@ -988,7 +1025,7 @@ public sealed class FilesViewModel : PageViewModelBase
 
         var name = Path.GetFileName(filePath);
         var uploadSucceeded = false;
-        IsUploading      = true;
+        SetStorageState(DesktopStorageState.Uploading);
         UploadProgress   = 0;
         UploadStatusText = $"Reading {name}…";
 
@@ -1102,12 +1139,14 @@ public sealed class FilesViewModel : PageViewModelBase
             if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
                 MainVm.Protocol.SendFileUploadAbort();
             UploadStatusText = "Upload cancelled.";
+            SetStorageState(DesktopStorageState.Idle);
         }
         catch (Exception ex)
         {
             if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
                 MainVm.Protocol.SendFileUploadAbort();
             UploadStatusText = $"Upload failed: {ex.Message}";
+            SetStorageState(DesktopStorageState.Failed);
             if (MainVm != null)
             {
                 MainVm.StatusMessage = UploadStatusText;
@@ -1126,9 +1165,12 @@ public sealed class FilesViewModel : PageViewModelBase
             }
             _overwriteTcs?.TrySetResult(false);
             _overwriteTcs  = null;
-            IsUploading    = false;
             if (!uploadSucceeded)
                 UploadProgress = 0;
+            if (uploadSucceeded)
+                SetStorageState(DesktopStorageState.Idle);
+            else
+                ClearTransferStateToIdle();
             _storageOperationGate.Release();
         }
     }
@@ -1354,6 +1396,8 @@ public sealed class FilesViewModel : PageViewModelBase
 
     private async Task StopPreviewDownloadBeforeStorageCommandAsync()
     {
+        if (StorageState == DesktopStorageState.DownloadingPreview)
+            SetStorageState(DesktopStorageState.Aborting);
         CancelPendingPreviewDownload();
         await AbortRemotePreviewDownloadAsync();
     }
@@ -1378,8 +1422,7 @@ public sealed class FilesViewModel : PageViewModelBase
         _previewDownloadCancellation = null;
         _downloadChannel?.Writer.TryComplete();
         _downloadChannel = null;
-        RaisePropertyChanged(nameof(IsPreviewDownloadActive));
-        RaiseCanExecuteAll();
+        ClearTransferStateToIdle();
     }
 
     private void DrainDownloadChannel()
@@ -1411,6 +1454,8 @@ public sealed class FilesViewModel : PageViewModelBase
             CleanupDownloadedPreviewFile();
             ResetPreviewState();
         }
+
+        SetStorageState(DesktopStorageState.Idle);
     }
 
     private void UpdateToolpathState(bool hasGeometry, bool hasError)

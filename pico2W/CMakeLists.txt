@@ -45,6 +45,7 @@ add_executable(portable_cnc_machine
     src/app/status/status_line_formatter.cpp
     src/app/status/status_provider.cpp
     src/app/storage/storage_service.cpp
+    src/app/storage/storage_transfer_fsm.cpp
     src/protocol/desktop_protocol.cpp
     src/protocol/usb_cdc_transport.cpp
     src/services/portable_cnc_controller.cpp

@@ -100,31 +100,38 @@ void DesktopProtocol::dispatch_frame(const UsbCdcTransport::FramePacket& frame) 
     }
 
     if (frame.type == kDownloadAckFrameType) {
-        if (!download_.active) {
-            if (download_.completion_valid &&
-                frame.transfer_id == download_.completion_transfer_id &&
-                frame.seq == download_.completion_last_seq) {
+        const auto& ctx = transfer_.context();
+        const uint32_t expected_last_seq =
+            ctx.expected_sequence == 0 ? 0u : (ctx.expected_sequence - 1u);
+
+        if (!transfer_.is_download()) {
+            if (ctx.completion_valid &&
+                ctx.completion_operation == StorageTransferOperation::Download &&
+                frame.transfer_id == ctx.completion_session_id &&
+                frame.seq == ctx.completion_last_seq) {
                 send_download_complete();
             }
             return;
         }
-        if (frame.transfer_id != download_.transfer_id) {
-            emit_error("DOWNLOAD_INVALID_SESSION");
+        if (frame.transfer_id != ctx.session_id) {
+            emit_storage_error(StorageTransferError::InvalidSession, StorageTransferOperation::Download);
             return;
         }
-        if (!download_.awaiting_ack) {
+        if (!ctx.awaiting_ack) {
             return;
         }
-        if (frame.seq < download_.last_chunk_seq) {
+        if (frame.seq < expected_last_seq) {
             return;
         }
-        if (frame.seq != download_.last_chunk_seq) {
-            transport_.send_fmt("@ERROR DOWNLOAD_BAD_SEQUENCE SEQ=%lu EXPECTED=%lu",
-                                static_cast<unsigned long>(frame.seq),
-                                static_cast<unsigned long>(download_.last_chunk_seq));
+        if (frame.seq != expected_last_seq) {
+            char kv[64];
+            std::snprintf(kv, sizeof(kv), "SEQ=%lu EXPECTED=%lu",
+                          static_cast<unsigned long>(frame.seq),
+                          static_cast<unsigned long>(expected_last_seq));
+            emit_storage_error(StorageTransferError::BadSequence, StorageTransferOperation::Download, kv);
             return;
         }
-        download_.awaiting_ack = false;
+        transfer_.note_download_ack(frame.seq);
         send_next_download_chunk();
     }
 }
@@ -235,30 +242,108 @@ void DesktopProtocol::emit_error(const char* reason) {
     transport_.send_fmt("@ERROR %s", reason);
 }
 
+void DesktopProtocol::emit_storage_error(StorageTransferError error,
+                                         StorageTransferOperation operation,
+                                         const char* kv) {
+    const char* reason = "STORAGE_ERROR";
+    switch (error) {
+        case StorageTransferError::Busy:            reason = "STORAGE_BUSY"; break;
+        case StorageTransferError::NotAllowed:      reason = "STORAGE_NOT_ALLOWED"; break;
+        case StorageTransferError::SdNotMounted:    reason = "STORAGE_NO_SD"; break;
+        case StorageTransferError::FileNotFound:    reason = "STORAGE_FILE_NOT_FOUND"; break;
+        case StorageTransferError::InvalidFilename: reason = "STORAGE_INVALID_FILENAME"; break;
+        case StorageTransferError::InvalidSession:  reason = "STORAGE_INVALID_SESSION"; break;
+        case StorageTransferError::BadSequence:     reason = "STORAGE_BAD_SEQUENCE"; break;
+        case StorageTransferError::SizeMismatch:    reason = "STORAGE_SIZE_MISMATCH"; break;
+        case StorageTransferError::CrcMismatch:     reason = "STORAGE_CRC_FAIL"; break;
+        case StorageTransferError::ReadFail:        reason = "STORAGE_READ_FAIL"; break;
+        case StorageTransferError::WriteFail:       reason = "STORAGE_WRITE_FAIL"; break;
+        case StorageTransferError::NoSpace:         reason = "STORAGE_NO_SPACE"; break;
+        case StorageTransferError::Aborted:         reason = "STORAGE_ABORTED"; break;
+        case StorageTransferError::None:            break;
+    }
+
+    if (operation == StorageTransferOperation::None) {
+        operation = transfer_.operation();
+        if (operation == StorageTransferOperation::None &&
+            transfer_.context().completion_valid) {
+            operation = transfer_.context().completion_operation;
+        }
+    }
+
+    const char* op = nullptr;
+    switch (operation) {
+        case StorageTransferOperation::List:     op = "LIST"; break;
+        case StorageTransferOperation::Load:     op = "LOAD"; break;
+        case StorageTransferOperation::Unload:   op = "UNLOAD"; break;
+        case StorageTransferOperation::Delete:   op = "DELETE"; break;
+        case StorageTransferOperation::Upload:   op = "UPLOAD"; break;
+        case StorageTransferOperation::Download: op = "DOWNLOAD"; break;
+        case StorageTransferOperation::None:     break;
+    }
+
+    if (op != nullptr && kv != nullptr && kv[0] != '\0') {
+        transport_.send_fmt("@ERROR %s OP=%s %s", reason, op, kv);
+    } else if (op != nullptr) {
+        transport_.send_fmt("@ERROR %s OP=%s", reason, op);
+    } else if (kv != nullptr && kv[0] != '\0') {
+        transport_.send_fmt("@ERROR %s %s", reason, kv);
+    } else {
+        transport_.send_fmt("@ERROR %s", reason);
+    }
+}
+
+void DesktopProtocol::abort_active_storage_transfer(bool clear_completion,
+                                                    bool delete_partial_upload_file,
+                                                    bool close_file) {
+    if (!transfer_.is_active()) {
+        if (clear_completion) {
+            transfer_.clear_completion();
+        }
+        return;
+    }
+
+    const auto operation = transfer_.operation();
+    const auto ctx = transfer_.context();
+    if (close_file && (operation == StorageTransferOperation::Upload ||
+                       operation == StorageTransferOperation::Download)) {
+        f_close(&transfer_.file());
+    }
+
+    if (delete_partial_upload_file && operation == StorageTransferOperation::Upload) {
+        char path[80];
+        std::snprintf(path, sizeof(path), "0:/%s", ctx.filename);
+        f_unlink(path);
+    }
+
+    transfer_.finish_operation();
+
+    if (clear_completion) {
+        transfer_.clear_completion();
+    }
+}
+
 void DesktopProtocol::reset_upload_completion() {
-    upload_.completion_valid = false;
-    upload_.completion_name[0] = '\0';
-    upload_.completion_size = 0;
-    upload_.completion_crc = 0;
-    upload_.completion_transfer_id = 0;
+    if (transfer_.context().completion_operation == StorageTransferOperation::Upload) {
+        transfer_.clear_completion();
+    }
 }
 
 void DesktopProtocol::reset_download_completion() {
-    download_.completion_valid = false;
-    download_.completion_name[0] = '\0';
-    download_.completion_crc = 0;
-    download_.completion_last_seq = 0;
-    download_.completion_transfer_id = 0;
+    if (transfer_.context().completion_operation == StorageTransferOperation::Download) {
+        transfer_.clear_completion();
+    }
 }
 
 void DesktopProtocol::send_upload_ready() {
+    const auto& ctx = transfer_.context();
     char encoded_name[192]{};
-    percent_encode_value(upload_.name, encoded_name, sizeof(encoded_name));
+    percent_encode_value(ctx.filename, encoded_name, sizeof(encoded_name));
     char kv[256];
     std::snprintf(kv, sizeof(kv), "NAME=%s SIZE=%lu ID=%u CHUNK=%u",
                   encoded_name,
-                  static_cast<unsigned long>(upload_.expected_size),
-                  static_cast<unsigned int>(upload_.transfer_id),
+                  static_cast<unsigned long>(ctx.expected_size),
+                  static_cast<unsigned int>(ctx.session_id),
                   static_cast<unsigned int>(kTransferRawChunkSize));
     emit_ok_kv("FILE_UPLOAD_READY", kv);
 }
@@ -269,59 +354,66 @@ void DesktopProtocol::send_upload_chunk_ack(uint32_t sequence, uint32_t bytes_co
     ack_payload[1] = static_cast<uint8_t>((bytes_committed >> 8) & 0xFFu);
     ack_payload[2] = static_cast<uint8_t>((bytes_committed >> 16) & 0xFFu);
     ack_payload[3] = static_cast<uint8_t>((bytes_committed >> 24) & 0xFFu);
-    transport_.send_frame(kUploadAckFrameType, upload_.transfer_id, sequence, ack_payload, sizeof(ack_payload));
+    transport_.send_frame(kUploadAckFrameType, transfer_.session_id(), sequence, ack_payload, sizeof(ack_payload));
 }
 
 void DesktopProtocol::send_upload_complete() {
+    const auto& ctx = transfer_.context();
     char encoded_name[192]{};
-    percent_encode_value(upload_.completion_name, encoded_name, sizeof(encoded_name));
+    percent_encode_value(ctx.completion_name, encoded_name, sizeof(encoded_name));
     transport_.send_fmt("@OK FILE_UPLOAD_END NAME=%s SIZE=%lu ID=%u",
                         encoded_name,
-                        static_cast<unsigned long>(upload_.completion_size),
-                        static_cast<unsigned int>(upload_.completion_transfer_id));
+                        static_cast<unsigned long>(ctx.completion_size),
+                        static_cast<unsigned int>(ctx.completion_session_id));
 }
 
 void DesktopProtocol::send_download_ready() {
+    const auto& ctx = transfer_.context();
     char encoded_name[192]{};
-    percent_encode_value(download_.name, encoded_name, sizeof(encoded_name));
+    percent_encode_value(ctx.filename, encoded_name, sizeof(encoded_name));
     char kv[256];
     std::snprintf(kv, sizeof(kv), "NAME=%s SIZE=%lu ID=%u CHUNK=%u",
                   encoded_name,
-                  static_cast<unsigned long>(download_.total_size),
-                  static_cast<unsigned int>(download_.transfer_id),
+                  static_cast<unsigned long>(ctx.expected_size),
+                  static_cast<unsigned int>(ctx.session_id),
                   static_cast<unsigned int>(kTransferRawChunkSize));
     emit_ok_kv("FILE_DOWNLOAD_READY", kv);
 }
 
 void DesktopProtocol::send_download_complete() {
+    const auto& ctx = transfer_.context();
     char encoded_name[192]{};
-    percent_encode_value(download_.completion_name, encoded_name, sizeof(encoded_name));
+    percent_encode_value(ctx.completion_name, encoded_name, sizeof(encoded_name));
     transport_.send_fmt("@OK FILE_DOWNLOAD_END NAME=%s CRC=%08lx ID=%u",
                         encoded_name,
-                        static_cast<unsigned long>(download_.completion_crc),
-                        static_cast<unsigned int>(download_.completion_transfer_id));
+                        static_cast<unsigned long>(ctx.completion_crc),
+                        static_cast<unsigned int>(ctx.completion_session_id));
 }
 
 void DesktopProtocol::resend_download_chunk() {
-    if (!download_.active || !download_.awaiting_ack || download_.last_chunk_len == 0) {
+    const auto& ctx = transfer_.context();
+    if (!transfer_.is_download() || !ctx.awaiting_ack || ctx.last_chunk_length == 0) {
         return;
     }
 
+    const uint32_t last_chunk_seq =
+        ctx.expected_sequence == 0 ? 0u : (ctx.expected_sequence - 1u);
     transport_.send_frame(kDownloadDataFrameType,
-                          download_.transfer_id,
-                          download_.last_chunk_seq,
+                          ctx.session_id,
+                          last_chunk_seq,
                           chunk_raw_,
-                          download_.last_chunk_len);
-    download_.last_send_ms = to_ms_since_boot(get_absolute_time());
+                          ctx.last_chunk_length);
+    transfer_.set_last_send_ms(to_ms_since_boot(get_absolute_time()));
 }
 
 void DesktopProtocol::tick_transfer_retries() {
-    if (!download_.active || !download_.awaiting_ack) {
+    const auto& ctx = transfer_.context();
+    if (!transfer_.is_download() || !ctx.awaiting_ack) {
         return;
     }
 
     const uint32_t now = to_ms_since_boot(get_absolute_time());
-    if ((now - download_.last_send_ms) >= kDownloadResendIntervalMs) {
+    if ((now - ctx.last_send_ms) >= kDownloadResendIntervalMs) {
         resend_download_chunk();
     }
 }
@@ -544,12 +636,13 @@ void DesktopProtocol::handle_override(const char* params) {
 }
 
 void DesktopProtocol::handle_file_list() {
-    if (transfer_active()) {
-        emit_error("TRANSFER_BUSY");
+    if (!transfer_.begin_listing(msm_.state())) {
+        emit_storage_error(transfer_.last_error(), StorageTransferOperation::List);
         return;
     }
     if (!msm_.sd_mounted()) {
-        emit_error("SD_NOT_MOUNTED");
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::SdNotMounted, StorageTransferOperation::List);
         return;
     }
 
@@ -557,7 +650,8 @@ void DesktopProtocol::handle_file_list() {
     FILINFO info;
     FRESULT fr = f_opendir(&dir, "0:/");
     if (fr != FR_OK) {
-        emit_error("SD_READ_FAIL");
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::ReadFail, StorageTransferOperation::List);
         return;
     }
 
@@ -593,11 +687,7 @@ void DesktopProtocol::handle_file_list() {
 
     transport_.send_fmt("@OK FILE_LIST_END COUNT=%d FREE=%llu",
                         count, (unsigned long long)free_bytes);
-}
-
-static bool is_sd_capable_state(MachineOperationState s) {
-    return s == MachineOperationState::Idle ||
-           s == MachineOperationState::TeensyDisconnected;
+    transfer_.finish_operation();
 }
 
 static bool is_safe_storage_name(const char* name) {
@@ -694,7 +784,7 @@ int16_t DesktopProtocol::find_job_index_by_name(const char* name) const {
 }
 
 bool DesktopProtocol::try_load_job_by_index(int16_t index) {
-    if (!is_sd_capable_state(msm_.state()) || !msm_.sd_mounted()) {
+    if (!storage_transfer_machine_state_is_allowed(msm_.state()) || !msm_.sd_mounted()) {
         return false;
     }
 
@@ -712,7 +802,7 @@ bool DesktopProtocol::try_load_job_by_index(int16_t index) {
 }
 
 bool DesktopProtocol::try_unload_job() {
-    if (!is_sd_capable_state(msm_.state()) || !jobs_.has_loaded_job()) {
+    if (!storage_transfer_machine_state_is_allowed(msm_.state()) || !jobs_.has_loaded_job()) {
         return false;
     }
 
@@ -725,32 +815,29 @@ bool DesktopProtocol::try_unload_job() {
 }
 
 void DesktopProtocol::handle_file_load(const char* params) {
-    if (transfer_active()) {
-        emit_error("TRANSFER_BUSY");
-        return;
-    }
-    if (!is_sd_capable_state(msm_.state())) {
-        emit_error("INVALID_STATE");
-        return;
-    }
-    if (!msm_.sd_mounted()) {
-        emit_error("SD_NOT_MOUNTED");
-        return;
-    }
-
     char name[64] = {};
     if (!param_get(params, "NAME", name, sizeof(name))) {
         emit_error("MISSING_PARAM");
         return;
     }
     if (!is_safe_storage_name(name)) {
-        emit_error("INVALID_FILENAME");
+        emit_storage_error(StorageTransferError::InvalidFilename, StorageTransferOperation::Load);
+        return;
+    }
+    if (!transfer_.begin_loading(msm_.state(), name)) {
+        emit_storage_error(transfer_.last_error(), StorageTransferOperation::Load);
+        return;
+    }
+    if (!msm_.sd_mounted()) {
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::SdNotMounted, StorageTransferOperation::Load);
         return;
     }
 
     const int16_t index = find_job_index_by_name(name);
     if (index < 0 || !load_job_by_index(index)) {
-        emit_error("FILE_NOT_FOUND");
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::FileNotFound, StorageTransferOperation::Load);
         return;
     }
 
@@ -759,43 +846,42 @@ void DesktopProtocol::handle_file_load(const char* params) {
     char kv[220];
     std::snprintf(kv, sizeof(kv), "NAME=%s", encoded_name);
     emit_ok_kv("FILE_LOAD", kv);
+    transfer_.finish_operation();
 }
 
 void DesktopProtocol::handle_file_unload() {
-    if (transfer_active()) {
-        emit_error("TRANSFER_BUSY");
-        return;
-    }
-    if (!is_sd_capable_state(msm_.state())) {
-        emit_error("INVALID_STATE");
+    if (!transfer_.begin_unload(msm_.state())) {
+        emit_storage_error(transfer_.last_error(), StorageTransferOperation::Unload);
         return;
     }
 
     if (!unload_job()) {
+        transfer_.finish_operation();
         emit_error("NO_JOB_LOADED");
         return;
     }
 
     emit_ok("FILE_UNLOAD");
+    transfer_.finish_operation();
 }
 
 void DesktopProtocol::handle_file_delete(const char* params) {
-    if (transfer_active()) {
-        emit_error("TRANSFER_BUSY");
-        return;
-    }
-    if (!msm_.sd_mounted()) {
-        emit_error("SD_NOT_MOUNTED");
-        return;
-    }
-
     char name[64] = {};
     if (!param_get(params, "NAME", name, sizeof(name))) {
         emit_error("MISSING_PARAM");
         return;
     }
     if (!is_safe_storage_name(name)) {
-        emit_error("INVALID_FILENAME");
+        emit_storage_error(StorageTransferError::InvalidFilename, StorageTransferOperation::Delete);
+        return;
+    }
+    if (!transfer_.begin_deleting(msm_.state(), name)) {
+        emit_storage_error(transfer_.last_error(), StorageTransferOperation::Delete);
+        return;
+    }
+    if (!msm_.sd_mounted()) {
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::SdNotMounted, StorageTransferOperation::Delete);
         return;
     }
 
@@ -822,8 +908,10 @@ void DesktopProtocol::handle_file_delete(const char* params) {
             emit_state_update();
             emit_job();
         }
+        transfer_.finish_operation();
     } else {
-        emit_error("FILE_NOT_FOUND");
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::FileNotFound, StorageTransferOperation::Delete);
     }
 }
 
@@ -831,36 +919,39 @@ void DesktopProtocol::handle_file_upload(const char* params) {
     if (transfer_active()) {
         char name[64] = {};
         const uint32_t size = param_get_u32(params, "SIZE", 0);
-        if (upload_.active &&
+        if (transfer_.is_upload() &&
             param_get(params, "NAME", name, sizeof(name)) &&
-            std::strcmp(name, upload_.name) == 0 &&
-            size == upload_.expected_size) {
+            std::strcmp(name, transfer_.filename()) == 0 &&
+            size == transfer_.expected_size()) {
             send_upload_ready();
             return;
         }
-        emit_error("UPLOAD_BUSY");
+        emit_storage_error(StorageTransferError::Busy, StorageTransferOperation::Upload);
         return;
     }
-    if (!is_sd_capable_state(msm_.state())) {
-        emit_error("UPLOAD_INVALID_STATE");
-        return;
-    }
-    if (!msm_.sd_mounted()) {
-        emit_error("UPLOAD_SD_NOT_MOUNTED");
-        return;
-    }
-
     char name[64] = {};
     if (!param_get(params, "NAME", name, sizeof(name))) {
         emit_error("UPLOAD_MISSING_PARAM");
         return;
     }
     if (!is_safe_storage_name(name)) {
-        emit_error("UPLOAD_INVALID_FILENAME");
+        emit_storage_error(StorageTransferError::InvalidFilename, StorageTransferOperation::Upload);
         return;
     }
 
     uint32_t size      = param_get_u32(params, "SIZE", 0);
+    const uint8_t transfer_id = next_transfer_id_;
+    if (!transfer_.begin_upload(msm_.state(), name, size, transfer_id)) {
+        emit_storage_error(transfer_.last_error(), StorageTransferOperation::Upload);
+        return;
+    }
+    next_transfer_id_++;
+    if (!msm_.sd_mounted()) {
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::SdNotMounted, StorageTransferOperation::Upload);
+        return;
+    }
+
     int      overwrite = param_get_int(params, "OVERWRITE", 0);
 
     char path[80];
@@ -870,6 +961,7 @@ void DesktopProtocol::handle_file_upload(const char* params) {
     FILINFO info;
     FRESULT stat_r = f_stat(path, &info);
     if (stat_r == FR_OK && !overwrite) {
+        transfer_.finish_operation();
         char encoded_name[192]{};
         percent_encode_value(name, encoded_name, sizeof(encoded_name));
         transport_.send_fmt("@ERROR UPLOAD_FILE_EXISTS NAME=%s", encoded_name);
@@ -887,103 +979,94 @@ void DesktopProtocol::handle_file_upload(const char* params) {
         free_bytes = (uint64_t)free_clust * fs->csize * 512u;
     }
     if (size > 0 && (uint64_t)size > free_bytes) {
-        transport_.send_fmt("@ERROR UPLOAD_SD_FULL FREE=%llu", (unsigned long long)free_bytes);
+        transfer_.finish_operation();
+        char kv[64];
+        std::snprintf(kv, sizeof(kv), "FREE=%llu", (unsigned long long)free_bytes);
+        emit_storage_error(StorageTransferError::NoSpace, StorageTransferOperation::Upload, kv);
         return;
     }
 
-    // Zero the FIL struct before (re)use -- f_open() expects a fresh object;
-    // stale fields from a previous close can cause undefined behaviour in FatFS.
-    upload_.file = FIL{};
+    reset_upload_completion();
+    transfer_.set_crc_running(0xFFFFFFFFu);
+    transfer_.file() = FIL{};
 
     // Open file for writing
-    FRESULT fr = f_open(&upload_.file, path, FA_WRITE | FA_CREATE_ALWAYS);
+    FRESULT fr = f_open(&transfer_.file(), path, FA_WRITE | FA_CREATE_ALWAYS);
     if (fr != FR_OK) {
-        emit_error("UPLOAD_SD_WRITE_FAIL");
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::WriteFail, StorageTransferOperation::Upload);
         return;
     }
 
-    // Initialise upload state
-    reset_upload_completion();
-    upload_.active        = true;
-    upload_.expected_size = size;
-    upload_.bytes_written = 0;
-    upload_.expected_seq  = 0;
-    upload_.crc_running   = 0xFFFFFFFFu;
-    upload_.transfer_id   = next_transfer_id_++;
-    upload_.last_ack_valid = false;
-    upload_.last_ack_seq = 0;
-    upload_.last_ack_bytes = 0;
-    std::strncpy(upload_.name, name, sizeof(upload_.name) - 1);
-    upload_.name[sizeof(upload_.name) - 1] = '\0';
+    transfer_.set_expected_sequence(0);
+    transfer_.set_last_ack_sequence(0);
+    transfer_.set_retry_count(0);
 
     state_changed_ = true;
     send_upload_ready();
 }
 
 void DesktopProtocol::handle_file_upload_end(const char* params) {
-    if (!upload_.active) {
+    const auto& ctx = transfer_.context();
+    if (!transfer_.is_upload()) {
         char crc_str[16] = {};
         if (param_get(params, "CRC", crc_str, sizeof(crc_str))) {
             const uint32_t expected_crc = static_cast<uint32_t>(std::strtoul(crc_str, nullptr, 16));
-            if (upload_.completion_valid && expected_crc == upload_.completion_crc) {
+            if (ctx.completion_valid &&
+                ctx.completion_operation == StorageTransferOperation::Upload &&
+                expected_crc == ctx.completion_crc) {
                 send_upload_complete();
                 return;
             }
         }
-        emit_error("UPLOAD_NO_SESSION");
+        emit_storage_error(StorageTransferError::InvalidSession, StorageTransferOperation::Upload);
         return;
     }
 
     char crc_str[16] = {};
     param_get(params, "CRC", crc_str, sizeof(crc_str));
 
-    // Close the file
-    f_close(&upload_.file);
-
-    if (upload_.expected_size > 0 && upload_.bytes_written != upload_.expected_size) {
-        char path[80];
-        std::snprintf(path, sizeof(path), "0:/%s", upload_.name);
-        f_unlink(path);
-        upload_.active = false;
+    if (ctx.expected_size > 0 && ctx.bytes_written != ctx.expected_size) {
+        abort_active_storage_transfer(false, true);
         state_changed_ = true;
-        emit_error("UPLOAD_SIZE_MISMATCH");
+        emit_storage_error(StorageTransferError::SizeMismatch, StorageTransferOperation::Upload);
         return;
     }
 
-    uint32_t final_crc = ~upload_.crc_running;
+    uint32_t final_crc = ~ctx.crc_running;
     uint32_t expected_crc = (uint32_t)std::strtoul(crc_str, nullptr, 16);
 
     char path[80];
-    std::snprintf(path, sizeof(path), "0:/%s", upload_.name);
+    std::snprintf(path, sizeof(path), "0:/%s", ctx.filename);
 
     if (final_crc != expected_crc) {
-        f_unlink(path);
-        upload_.active = false;
+        abort_active_storage_transfer(false, true);
         state_changed_ = true;
-        emit_error("UPLOAD_CRC_FAIL");
+        emit_storage_error(StorageTransferError::CrcMismatch, StorageTransferOperation::Upload);
         return;
     }
 
     char name_copy[64];
-    uint32_t bytes_copy = upload_.bytes_written;
-    std::strncpy(name_copy, upload_.name, sizeof(name_copy));
+    uint32_t bytes_copy = ctx.bytes_written;
+    std::strncpy(name_copy, ctx.filename, sizeof(name_copy));
     name_copy[sizeof(name_copy) - 1] = '\0';
+    const uint8_t session_id = ctx.session_id;
 
-    upload_.active = false;
-    upload_.completion_valid = true;
-    upload_.completion_size = bytes_copy;
-    upload_.completion_crc = final_crc;
-    upload_.completion_transfer_id = upload_.transfer_id;
-    std::strncpy(upload_.completion_name, name_copy, sizeof(upload_.completion_name) - 1);
-    upload_.completion_name[sizeof(upload_.completion_name) - 1] = '\0';
+    f_close(&transfer_.file());
+    transfer_.finish_operation();
+    transfer_.set_completion(StorageTransferOperation::Upload,
+                             name_copy,
+                             bytes_copy,
+                             final_crc,
+                             session_id,
+                             0);
     file_list_changed_ = true;
     state_changed_ = true;
     send_upload_complete();
 }
 
 void DesktopProtocol::handle_file_upload_abort() {
-    reset_upload_completion();
-    upload_abort_cleanup();
+    abort_active_storage_transfer(true, true);
     state_changed_ = true;
     emit_ok("FILE_UPLOAD_ABORT");
 }
@@ -993,212 +1076,235 @@ void DesktopProtocol::handle_file_upload_abort() {
 void DesktopProtocol::handle_file_download(const char* params) {
     if (transfer_active()) {
         char name[64] = {};
-        if (download_.active &&
+        if (transfer_.is_download() &&
             param_get(params, "NAME", name, sizeof(name)) &&
-            std::strcmp(name, download_.name) == 0) {
+            std::strcmp(name, transfer_.filename()) == 0) {
             send_download_ready();
-            if (download_.awaiting_ack) {
+            if (transfer_.awaiting_ack()) {
                 resend_download_chunk();
             }
             return;
         }
-        emit_error("DOWNLOAD_BUSY");
+        emit_storage_error(StorageTransferError::Busy, StorageTransferOperation::Download);
         return;
     }
-    if (!is_sd_capable_state(msm_.state())) { emit_error("DOWNLOAD_INVALID_STATE"); return; }
-    if (!msm_.sd_mounted()) { emit_error("DOWNLOAD_SD_NOT_MOUNTED"); return; }
-
     char name[64] = {};
     if (!param_get(params, "NAME", name, sizeof(name))) { emit_error("DOWNLOAD_MISSING_PARAM"); return; }
-    if (!is_safe_storage_name(name)) { emit_error("DOWNLOAD_INVALID_FILENAME"); return; }
+    if (!is_safe_storage_name(name)) {
+        emit_storage_error(StorageTransferError::InvalidFilename, StorageTransferOperation::Download);
+        return;
+    }
+
+    const uint8_t transfer_id = next_transfer_id_;
+    if (!transfer_.begin_download(msm_.state(), name, 0, transfer_id)) {
+        emit_storage_error(transfer_.last_error(), StorageTransferOperation::Download);
+        return;
+    }
+    next_transfer_id_++;
+    if (!msm_.sd_mounted()) {
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::SdNotMounted, StorageTransferOperation::Download);
+        return;
+    }
 
     char path[80];
     std::snprintf(path, sizeof(path), "0:/%s", name);
 
     FILINFO info;
-    if (f_stat(path, &info) != FR_OK) { emit_error("DOWNLOAD_FILE_NOT_FOUND"); return; }
-
-    download_.file = FIL{};
-    if (f_open(&download_.file, path, FA_READ) != FR_OK) { emit_error("DOWNLOAD_SD_READ_FAIL"); return; }
+    if (f_stat(path, &info) != FR_OK) {
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::FileNotFound, StorageTransferOperation::Download);
+        return;
+    }
 
     reset_download_completion();
-    download_.active        = true;
-    download_.total_size    = info.fsize;
-    download_.bytes_sent    = 0;
-    download_.crc_running   = 0xFFFFFFFFu;
-    download_.next_seq      = 0;
-    download_.transfer_id   = next_transfer_id_++;
-    download_.awaiting_ack  = false;
-    download_.last_chunk_seq = 0;
-    download_.last_chunk_len = 0;
-    download_.last_send_ms   = 0;
-    std::strncpy(download_.name, name, sizeof(download_.name) - 1);
-    download_.name[sizeof(download_.name) - 1] = '\0';
+    transfer_.set_expected_size(info.fsize);
+    transfer_.file() = FIL{};
+    if (f_open(&transfer_.file(), path, FA_READ) != FR_OK) {
+        transfer_.finish_operation();
+        emit_storage_error(StorageTransferError::ReadFail, StorageTransferOperation::Download);
+        return;
+    }
+
+    transfer_.set_expected_sequence(0);
+    transfer_.set_crc_running(0xFFFFFFFFu);
+    transfer_.set_retry_count(0);
+    transfer_.set_awaiting_ack(false);
+    transfer_.set_last_chunk_length(0);
+    transfer_.set_last_send_ms(0);
 
     send_download_ready();
     send_next_download_chunk();
 }
 
 void DesktopProtocol::handle_file_download_abort() {
-    if (!download_.active) {
+    if (!transfer_.is_download()) {
         emit_ok("FILE_DOWNLOAD_ABORT");
         return;
     }
 
-    f_close(&download_.file);
-    download_.active = false;
-    download_.awaiting_ack = false;
-    reset_download_completion();
+    abort_active_storage_transfer(true, false);
     emit_ok("FILE_DOWNLOAD_ABORT");
 }
 
 void DesktopProtocol::handle_file_download_ack(const char* params) {
     const uint32_t transfer_id = param_get_u32(params, "ID", 0);
     const uint32_t sequence = param_get_u32(params, "SEQ", 0xFFFFFFFFu);
+    const auto& ctx = transfer_.context();
+    const uint32_t expected_last_seq =
+        ctx.expected_sequence == 0 ? 0u : (ctx.expected_sequence - 1u);
 
-    if (!download_.active) {
-        if (download_.completion_valid &&
-            transfer_id == download_.completion_transfer_id &&
-            sequence == download_.completion_last_seq) {
+    if (!transfer_.is_download()) {
+        if (ctx.completion_valid &&
+            ctx.completion_operation == StorageTransferOperation::Download &&
+            transfer_id == ctx.completion_session_id &&
+            sequence == ctx.completion_last_seq) {
             send_download_complete();
         }
         return;
     }
 
-    if (transfer_id != download_.transfer_id) {
-        emit_error("DOWNLOAD_INVALID_SESSION");
+    if (transfer_id != ctx.session_id) {
+        emit_storage_error(StorageTransferError::InvalidSession, StorageTransferOperation::Download);
         return;
     }
 
-    if (!download_.awaiting_ack) {
+    if (!ctx.awaiting_ack) {
         return;
     }
 
-    if (sequence < download_.last_chunk_seq) {
+    if (sequence < expected_last_seq) {
         return;
     }
 
-    if (sequence != download_.last_chunk_seq) {
-        transport_.send_fmt("@ERROR DOWNLOAD_BAD_SEQUENCE SEQ=%lu EXPECTED=%lu",
-                            static_cast<unsigned long>(sequence),
-                            static_cast<unsigned long>(download_.last_chunk_seq));
+    if (sequence != expected_last_seq) {
+        char kv[64];
+        std::snprintf(kv, sizeof(kv), "SEQ=%lu EXPECTED=%lu",
+                      static_cast<unsigned long>(sequence),
+                      static_cast<unsigned long>(expected_last_seq));
+        emit_storage_error(StorageTransferError::BadSequence, StorageTransferOperation::Download, kv);
         return;
     }
 
-    download_.awaiting_ack = false;
+    transfer_.note_download_ack(sequence);
     send_next_download_chunk();
 }
 
 void DesktopProtocol::send_next_download_chunk() {
+    const auto& ctx = transfer_.context();
     UINT bytes_read = 0;
-    const FRESULT fr = f_read(&download_.file, chunk_raw_, sizeof(chunk_raw_), &bytes_read);
+    const FRESULT fr = f_read(&transfer_.file(), chunk_raw_, sizeof(chunk_raw_), &bytes_read);
     if (fr != FR_OK) {
-        f_close(&download_.file);
-        download_.active = false;
-        download_.awaiting_ack = false;
-        emit_error("DOWNLOAD_SD_READ_FAIL");
+        abort_active_storage_transfer(false, false);
+        emit_storage_error(StorageTransferError::ReadFail, StorageTransferOperation::Download);
         return;
     }
 
     if (bytes_read == 0) {
         // EOF -- send end
-        const uint32_t final_crc = ~download_.crc_running;
-        const uint32_t final_seq = download_.next_seq == 0 ? 0 : (download_.next_seq - 1);
-        f_close(&download_.file);
-        download_.active = false;
-        download_.awaiting_ack = false;
-        download_.completion_valid = true;
-        download_.completion_crc = final_crc;
-        download_.completion_last_seq = final_seq;
-        download_.completion_transfer_id = download_.transfer_id;
-        std::strncpy(download_.completion_name, download_.name, sizeof(download_.completion_name) - 1);
-        download_.completion_name[sizeof(download_.completion_name) - 1] = '\0';
+        const uint32_t final_crc = ~ctx.crc_running;
+        const uint32_t final_seq = ctx.expected_sequence == 0 ? 0u : (ctx.expected_sequence - 1u);
+        char name_copy[64]{};
+        std::strncpy(name_copy, ctx.filename, sizeof(name_copy) - 1);
+        const uint8_t session_id = ctx.session_id;
+        const uint32_t size = ctx.bytes_sent;
+        f_close(&transfer_.file());
+        transfer_.finish_operation();
+        transfer_.set_completion(StorageTransferOperation::Download,
+                                 name_copy,
+                                 size,
+                                 final_crc,
+                                 session_id,
+                                 final_seq);
         send_download_complete();
         return;
     }
 
-    download_.crc_running = crc32_update(download_.crc_running, chunk_raw_, bytes_read);
-    download_.bytes_sent += bytes_read;
-    download_.last_chunk_seq = download_.next_seq;
-    download_.last_chunk_len = static_cast<uint16_t>(bytes_read);
-    download_.awaiting_ack = true;
-    download_.last_send_ms = to_ms_since_boot(get_absolute_time());
+    const uint32_t next_seq = ctx.expected_sequence;
+    const uint32_t next_crc = crc32_update(ctx.crc_running, chunk_raw_, bytes_read);
+    const uint32_t bytes_sent = ctx.bytes_sent + bytes_read;
+    const uint32_t send_time = to_ms_since_boot(get_absolute_time());
 
     transport_.send_frame(kDownloadDataFrameType,
-                          download_.transfer_id,
-                          download_.last_chunk_seq,
+                          ctx.session_id,
+                          next_seq,
                           chunk_raw_,
                           static_cast<uint16_t>(bytes_read));
-    download_.next_seq++;
+    transfer_.note_download_chunk_sent(next_seq,
+                                       static_cast<uint16_t>(bytes_read),
+                                       bytes_sent,
+                                       next_crc,
+                                       send_time);
 }
 
 // -- Upload helpers -----------------------------------------------------------
 
 void DesktopProtocol::upload_abort_cleanup() {
-    if (!upload_.active) return;
-    f_close(&upload_.file);
-    char path[80];
-    std::snprintf(path, sizeof(path), "0:/%s", upload_.name);
-    f_unlink(path);
-    upload_.active = false;
-    upload_.last_ack_valid = false;
+    if (!transfer_.is_upload()) return;
+    abort_active_storage_transfer(false, true);
 }
 
 void DesktopProtocol::handle_upload_chunk_data(uint8_t transfer_id,
                                                uint32_t sequence,
                                                const uint8_t* payload,
                                                uint16_t payload_len) {
-    if (!upload_.active) {
-        if (upload_.completion_valid && transfer_id == upload_.completion_transfer_id) {
+    const auto& ctx = transfer_.context();
+    if (!transfer_.is_upload()) {
+        if (ctx.completion_valid &&
+            ctx.completion_operation == StorageTransferOperation::Upload &&
+            transfer_id == ctx.completion_session_id) {
             send_upload_complete();
         }
         return;
     }
-    if (transfer_id != upload_.transfer_id) {
-        emit_error("UPLOAD_INVALID_SESSION");
+    if (transfer_id != ctx.session_id) {
+        emit_storage_error(StorageTransferError::InvalidSession, StorageTransferOperation::Upload);
         return;
     }
-    if (upload_.last_ack_valid && sequence == upload_.last_ack_seq) {
-        send_upload_chunk_ack(upload_.last_ack_seq, upload_.last_ack_bytes);
+    if (ctx.expected_sequence > 0 && sequence == ctx.last_ack_sequence) {
+        send_upload_chunk_ack(ctx.last_ack_sequence, ctx.bytes_written);
         return;
     }
-    if (sequence != upload_.expected_seq) {
-        transport_.send_fmt("@ERROR UPLOAD_BAD_SEQUENCE SEQ=%lu EXPECTED=%lu",
-                            static_cast<unsigned long>(sequence),
-                            static_cast<unsigned long>(upload_.expected_seq));
+    if (sequence != ctx.expected_sequence) {
+        char kv[64];
+        std::snprintf(kv, sizeof(kv), "SEQ=%lu EXPECTED=%lu",
+                      static_cast<unsigned long>(sequence),
+                      static_cast<unsigned long>(ctx.expected_sequence));
+        emit_storage_error(StorageTransferError::BadSequence, StorageTransferOperation::Upload, kv);
         return;
     }
     if (payload == nullptr || payload_len == 0 || payload_len > kTransferRawChunkSize) {
-        transport_.send_fmt("@ERROR CHUNK SEQ=%lu REASON=BAD_LENGTH",
-                            static_cast<unsigned long>(sequence));
+        char kv[64];
+        std::snprintf(kv, sizeof(kv), "SEQ=%lu REASON=BAD_LENGTH",
+                      static_cast<unsigned long>(sequence));
+        emit_storage_error(StorageTransferError::WriteFail, StorageTransferOperation::Upload, kv);
         return;
     }
-    if (upload_.expected_size > 0 &&
-        upload_.bytes_written + payload_len > upload_.expected_size) {
+    if (ctx.expected_size > 0 &&
+        ctx.bytes_written + payload_len > ctx.expected_size) {
         upload_abort_cleanup();
-        transport_.send_fmt("@ERROR UPLOAD_SIZE_MISMATCH SEQ=%lu",
-                            static_cast<unsigned long>(sequence));
+        char kv[32];
+        std::snprintf(kv, sizeof(kv), "SEQ=%lu", static_cast<unsigned long>(sequence));
+        emit_storage_error(StorageTransferError::SizeMismatch, StorageTransferOperation::Upload, kv);
         state_changed_ = true;
         return;
     }
 
     UINT written = 0;
-    FRESULT fr = f_write(&upload_.file, payload, payload_len, &written);
+    FRESULT fr = f_write(&transfer_.file(), payload, payload_len, &written);
     if (fr != FR_OK || written != payload_len) {
         upload_abort_cleanup();
-        transport_.send_fmt("@ERROR UPLOAD_SD_WRITE_FAIL SEQ=%lu",
-                            static_cast<unsigned long>(sequence));
+        char kv[32];
+        std::snprintf(kv, sizeof(kv), "SEQ=%lu", static_cast<unsigned long>(sequence));
+        emit_storage_error(StorageTransferError::WriteFail, StorageTransferOperation::Upload, kv);
         state_changed_ = true;
         return;
     }
 
-    upload_.crc_running = crc32_update(upload_.crc_running, payload, payload_len);
-    upload_.bytes_written += payload_len;
-    upload_.expected_seq++;
-    upload_.last_ack_valid = true;
-    upload_.last_ack_seq = sequence;
-    upload_.last_ack_bytes = upload_.bytes_written;
-    send_upload_chunk_ack(sequence, upload_.bytes_written);
+    const uint32_t next_crc = crc32_update(ctx.crc_running, payload, payload_len);
+    const uint32_t bytes_written = ctx.bytes_written + payload_len;
+    transfer_.note_upload_chunk_committed(sequence, bytes_written, next_crc);
+    send_upload_chunk_ack(sequence, bytes_written);
 }
 
 // -- Storage callbacks --------------------------------------------------------
@@ -1210,18 +1316,14 @@ void DesktopProtocol::on_sd_mounted() {
 }
 
 void DesktopProtocol::on_sd_removed() {
-    if (upload_.active) {
-        reset_upload_completion();
-        upload_abort_cleanup();
-        emit_error("UPLOAD_SD_REMOVED");
+    if (transfer_.is_upload()) {
+        abort_active_storage_transfer(true, true);
+        emit_storage_error(StorageTransferError::SdNotMounted, StorageTransferOperation::Upload);
         state_changed_ = true;
     }
-    if (download_.active) {
-        f_close(&download_.file);
-        download_.active = false;
-        download_.awaiting_ack = false;
-        reset_download_completion();
-        emit_error("DOWNLOAD_SD_REMOVED");
+    if (transfer_.is_download()) {
+        abort_active_storage_transfer(true, false);
+        emit_storage_error(StorageTransferError::SdNotMounted, StorageTransferOperation::Download);
     }
     inject(MachineEvent::SdRemoved);
     jobs_.handle_event(JobEvent::ClearLoadedFile);

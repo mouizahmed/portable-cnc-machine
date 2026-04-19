@@ -58,6 +58,18 @@ public enum ConnectionStatus
     Error
 }
 
+public enum DesktopStorageState
+{
+    Idle,
+    Refreshing,
+    Uploading,
+    DownloadingPreview,
+    Deleting,
+    Loading,
+    Aborting,
+    Failed
+}
+
 // ── Temporary compatibility stubs — remove when MainWindowViewModel is reworked ──
 
 [Obsolete("Replace with MachineOperationState. Remove after Phase 2 MainWindowViewModel rework.")]

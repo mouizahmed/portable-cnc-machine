@@ -86,7 +86,7 @@ grblHAL on the Teensy defines these mutually exclusive states (from `grbl/system
 | `FAULT`               | GRBL alarm — `$X` unlock is the standard recovery                                  |
 | `COMMS_FAULT`         | Teensy UART lost during an active job — reconnect to recover                       |
 | `ESTOP`               | E-stop latched — hardware pin must be released, then soft reset to recover         |
-| `UPLOADING`           | Desktop file transfer in progress — all action caps suppressed until complete       |
+| `UPLOADING`           | Deprecated compatibility enum value. File transfer is now owned by the storage transfer FSM, not the machine FSM. |
 
 ---
 
@@ -178,7 +178,7 @@ If sensors are normal, safety drops to `SAFE`. If a sensor condition persists, s
 | `hold_complete_`        | bool | `@GRBL_STATE HOLD SUBSTATE=COMPLETE`  | Any non-HOLD state entered              |
 | `all_axes_homed_`       | bool | GRBL reports all axes homed           | GRBL alarm, soft reset, power cycle     |
 | `sd_mounted_`           | bool | `SdMounted` event                     | `SdRemoved` event                       |
-| `upload_active_`        | bool | `FileUploadCmd` accepted              | `UploadComplete`, `UploadAborted`, `UploadFailed` |
+| `upload_active_`        | bool | Deprecated machine-FSM coupling       | File transfer activity is owned by the storage transfer FSM |
 | `hw_estop_active_`      | bool | `PIN_ESTOP` GPIO asserted             | `PIN_ESTOP` GPIO deasserted             |
 
 > `job_session_active_` is true from the moment `StartCmd` is accepted through to job
@@ -200,8 +200,8 @@ most common source of stale-flag bugs.
 | `IDLE`                 | `job_session_active_`, `abort_pending_`, `job_stream_complete_`, `hold_complete_` |
 | `FAULT`                | `job_session_active_`, `abort_pending_`, `job_stream_complete_`, `hold_complete_`, `all_axes_homed_` |
 | `COMMS_FAULT`          | `job_session_active_`, `abort_pending_`, `job_stream_complete_`, `hold_complete_`, `all_axes_homed_` |
-| `ESTOP`                | `job_session_active_`, `abort_pending_`, `job_stream_complete_`, `hold_complete_`, `all_axes_homed_`, `upload_active_` |
-| `UPLOADING`            | *(none — `upload_active_` is set by the event, not cleared on entry)*             |
+| `ESTOP`                | `job_session_active_`, `abort_pending_`, `job_stream_complete_`, `hold_complete_`, `all_axes_homed_` |
+| `UPLOADING`            | Deprecated compatibility state; should not be entered by new storage transfer code |
 | `TEENSY_DISCONNECTED`  | `job_session_active_`, `abort_pending_`, `job_stream_complete_`, `hold_complete_`, `teensy_connected_`, `all_axes_homed_` |
 | `SYNCING`              | `hold_complete_` (re-evaluated on first `@GRBL_STATE`)             |
 
@@ -210,7 +210,7 @@ Additional rules:
 - `hw_estop_active_` is managed by GPIO ISR, not by state entry
 - `sd_mounted_` is managed by `StorageService`
 - `job_loaded_` is managed by the file-load protocol path and may be restored from persisted filename after boot or SD remount
-- `upload_active_` is managed by the upload protocol handler. It is set when `FileUploadCmd` is accepted and cleared when the upload terminates for any reason (complete, abort, or E-stop cleanup)
+- File upload/download activity is managed by the storage transfer FSM. `MachineFsm` should only answer whether storage is allowed in the current machine state.
 
 ---
 
@@ -250,11 +250,11 @@ Additional rules:
 | `SpindleOnCmd`   | User requests spindle on (manual)                        |
 | `SpindleOffCmd`  | User requests spindle off                                |
 | `OverrideCmd`    | User adjusts feed/spindle/rapid override                 |
-| `FileLoadCmd`    | Operator requests that an SD file become the loaded job  |
-| `FileUnloadCmd`  | Operator unloads the active job file                     |
-| `FileUploadCmd`  | Desktop begins file upload (`@FILE_UPLOAD NAME=...`)     |
-| `FileDownloadCmd`| Desktop requests an SD file for preview download         |
-| `UploadAbortCmd` | Desktop cancels upload (`@FILE_UPLOAD_ABORT`)            |
+| `FileLoadCmd`    | Routed to storage transfer FSM; may emit `JobLoaded` on success |
+| `FileUnloadCmd`  | Routed to storage transfer FSM; may emit `JobUnloaded` on success |
+| `FileUploadCmd`  | Routed to storage transfer FSM (`@FILE_UPLOAD NAME=...`) |
+| `FileDownloadCmd`| Routed to storage transfer FSM for preview download      |
+| `UploadAbortCmd` | Routed to storage transfer FSM (`@FILE_UPLOAD_ABORT`)    |
 
 ### From Pico hardware / services
 
@@ -270,9 +270,9 @@ Additional rules:
 | `BootTimeout`       | Timer                   | Motion controller did not send valid boot / handshake traffic within timeout |
 | `SyncTimeout`       | Timer                   | No machine-state traffic received after link-up |
 | `JobStreamComplete` | Streaming engine        | All lines sent and all `ok`s received         |
-| `UploadComplete`    | Upload protocol handler | `@FILE_UPLOAD_END` CRC verified, file written |
-| `UploadFailed`      | Upload protocol handler | CRC mismatch, SD write fail, or chunk timeout |
-| `UploadAborted`     | Upload protocol handler | Desktop sent `@FILE_UPLOAD_ABORT`, or USB disconnect cleanup |
+| `UploadComplete`    | Storage transfer FSM | `@FILE_UPLOAD_END` CRC verified, file written |
+| `UploadFailed`      | Storage transfer FSM | CRC mismatch, SD write fail, or chunk timeout |
+| `UploadAborted`     | Storage transfer FSM | Desktop sent `@FILE_UPLOAD_ABORT`, or USB disconnect cleanup |
 
 ---
 
@@ -329,9 +329,9 @@ No active job. Waiting for Teensy to come back online.
 |---------------------|------------|---------------------------------------------|-----------------------------------------------|
 | `HomeCmd`           | stay       | Send `$H` to Teensy                        | `teensy_connected_`                           |
 | `JogCmd`            | stay       | Send `$J=<params>` to Teensy               | `teensy_connected_`                           |
-| `FileLoadCmd`       | stay       | Load SD file as active job, emit `@JOB`    | `sd_mounted_`                                 |
-| `FileUnloadCmd`     | stay       | Clear active job, emit `@JOB NAME=NONE`    | `job_loaded_`                                 |
-| `FileDownloadCmd`   | stay       | Stream SD file for desktop preview         | `sd_mounted_`                                 |
+| `FileLoadCmd`       | stay       | Storage transfer FSM loads SD file as active job, emits `@JOB` on success | `sd_mounted_` |
+| `FileUnloadCmd`     | stay       | Storage transfer FSM clears active job, emits `@JOB NAME=NONE` on success | `job_loaded_` |
+| `FileDownloadCmd`   | stay       | Storage transfer FSM streams SD file for desktop preview | `sd_mounted_` |
 | `StartCmd`          | `STARTING` | Set `job_session_active_`, begin streaming  | `job_loaded_` ∧ `teensy_connected_` ∧ `sd_mounted_` ∧ `all_axes_homed_` |
 | `SpindleOnCmd`      | stay       | Send spindle command to Teensy              | `teensy_connected_`                           |
 | `SpindleOffCmd`     | stay       | Send spindle stop to Teensy                 | `teensy_connected_`                           |
@@ -352,7 +352,7 @@ No active job. Waiting for Teensy to come back online.
 | `JobLoaded`         | stay       | Set `job_loaded_`, recompute caps           |                                               |
 | `JobUnloaded`       | stay       | Clear `job_loaded_`, recompute caps         |                                               |
 | `JobRestored`       | stay       | Set `job_loaded_`, recompute caps           |                                               |
-| `FileUploadCmd`     | `UPLOADING`| Set `upload_active_`, open SD file for write, respond `@OK FILE_UPLOAD_READY` | `sd_mounted_` |
+| `FileUploadCmd`     | stay       | Storage transfer FSM opens SD file and responds `@OK FILE_UPLOAD_READY` | `sd_mounted_` |
 
 > `HomeCmd` and `JogCmd` do not immediately change state. GRBL's confirmation (`GrblHoming`,
 > `GrblJog`) drives the transition. If GRBL rejects the command, no state change occurs.
@@ -558,6 +558,13 @@ Hardware E-stop latched. GRBL is in `STATE_ESTOP` and/or Pico's `PIN_ESTOP` is a
 
 ### `UPLOADING`
 
+Deprecated compatibility enum value. New file transfer behavior must not enter this
+machine state. Upload, download, list, load, unload, and delete are owned by the storage
+transfer FSM documented in `STORAGE_TRANSFER_FSM.md`.
+
+Legacy notes below describe the previous machine-FSM-coupled upload design and are kept
+only as historical context until the enum is removed.
+
 Desktop file transfer in progress. Entered from `IDLE` when `@FILE_UPLOAD` is received and
 accepted. All action capability flags are 0. The GRBL/Teensy link is unaffected — the Pico
 continues to monitor Teensy state passively, but no motion commands are issued.
@@ -628,8 +635,8 @@ The desktop binds these directly to UI controls — no local logic or state deri
 | `OVERRIDES`   | `RUNNING` or `HOLD`                                                   | Feed, spindle, rapid override sliders |
 | `RESET`       | `FAULT` or (`ESTOP` ∧ `!hw_estop_active_`)                          | Unlock / soft reset button            |
 
-> All caps are 0 in `UPLOADING`. No machine commands may be issued while a file transfer
-> is in progress.
+> File transfer no longer changes `MachineFsm` capability computation by entering `UPLOADING`.
+> Storage operations are accepted/rejected by the storage transfer FSM using the storage access gate.
 
 > `MOTION` and `PROBE` have different guards: all motion is available from `IDLE`, but
 > probing additionally requires `all_axes_homed_` since probe results are meaningless
@@ -804,11 +811,18 @@ Accept `$H`, `$X`, `$J=...` and route to `system_execute_line()`.
 Managed by `StorageService`. Independent of machine operation. Notifies state machine
 on storage mount/unmount so `FILE_LOAD` and `JOB_START` caps stay accurate.
 
+### StorageTransferState
+Managed by the storage transfer FSM. Independent of machine operation and separate from
+SD mount health. Owns file list, load, unload, delete, upload, download, transfer session,
+chunk sequence, CRC, abort, and storage-transfer error state.
+
+See `STORAGE_TRANSFER_FSM.md` for the state/event/error contract.
+
 ### UI Preview Selection
 Desktop and TFT preview selection are separate UI state. They are not represented in
 `MachineFsm` and are not sent over the protocol. The Pico only owns the currently loaded
-job file. Desktop SD-file preview downloads (`@FILE_DOWNLOAD` / `@ACK` / `@CHUNK`) are
-transport activity only and do not change `MachineFsm` state or the loaded job.
+job file. Desktop SD-file preview downloads (`@FILE_DOWNLOAD` plus binary transfer frames)
+are storage transfer activity only and do not change `MachineFsm` state or the loaded job.
 The loaded job is persisted by filename in Pico flash and may be restored after boot or
 SD remount if that filename still exists in the refreshed file list.
 
@@ -832,7 +846,7 @@ as follow-up cleanup, not as greenfield work.
 
 | Item | Status |
 |------|--------|
-| Unified `MachineStateMachine` with 13 operation states | Implemented |
+| Unified `MachineStateMachine` with operation states (`UPLOADING` is deprecated compatibility) | Implemented |
 | Safety level tracking inside state machine | Implemented |
 | Internal flags (`job_session_active_`, `abort_pending_`, `hold_complete_`, etc.) | Implemented |
 | `compute_caps()` method with 10 flags | Implemented |
@@ -842,7 +856,8 @@ as follow-up cleanup, not as greenfield work.
 | Desktop `@STATUS` snapshot-only sync (connect/resync/manual refresh) | Implemented |
 | Desktop transport-based disconnect handling (no default heartbeat loop) | Implemented |
 | Desktop/TFT local preview selection kept out of protocol/state machine | Implemented |
-| Desktop SD preview download path (`@FILE_DOWNLOAD`, `@ACK`, `@CHUNK`) | Implemented |
+| Storage transfer FSM state/event/error vocabulary | Defined |
+| Desktop SD preview download path (`@FILE_DOWNLOAD` plus binary transfer frames) | Implemented |
 | Pico UART1 driver (GP20/GP21, 115200) | Implemented |
 | Pico motion-link silence/probe disconnect tracking | Implemented |
 | Pico push of `@STATE` / `@JOB` / `@POS` / `@EVENT TEENSY_*` on UART-side changes | Implemented |

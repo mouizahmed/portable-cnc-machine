@@ -7,6 +7,7 @@
 #include "app/job/loaded_job_storage.h"
 #include "app/job/job_state_machine.h"
 #include "app/machine/machine_fsm.h"
+#include "app/storage/storage_transfer_fsm.h"
 #include "app/storage/storage_service.h"
 #include "drivers/sd_spi_card.h"
 #include "protocol/usb_cdc_transport.h"
@@ -36,10 +37,10 @@ public:
 
     // Returns true (and clears the flag) if a protocol-driven FSM state change
     // occurred since the last call. Used by the main loop to trigger a screen re-render.
-    bool upload_active() const { return upload_.active; }
-    uint32_t upload_bytes_written() const { return upload_.bytes_written; }
-    uint32_t upload_expected_size() const { return upload_.expected_size; }
-    const char* upload_name() const { return upload_.name; }
+    bool upload_active() const { return transfer_.is_upload(); }
+    uint32_t upload_bytes_written() const { return transfer_.bytes_written(); }
+    uint32_t upload_expected_size() const { return transfer_.expected_size(); }
+    const char* upload_name() const { return transfer_.filename(); }
 
     bool consume_state_changed() {
         if (!state_changed_) return false;
@@ -123,48 +124,9 @@ private:
     bool state_changed_ = false;
     bool file_list_changed_ = false;
 
-    // -- Upload state ----------------------------------------------------------
-    struct UploadState {
-        bool     active         = false;
-        char     name[64]       = {};
-        uint32_t expected_size  = 0;
-        uint32_t bytes_written  = 0;
-        uint32_t expected_seq   = 0;
-        uint32_t crc_running    = 0xFFFFFFFFu;
-        uint8_t  transfer_id    = 0;
-        bool     last_ack_valid = false;
-        uint32_t last_ack_seq   = 0;
-        uint32_t last_ack_bytes = 0;
-        FIL      file           = {};
-        bool     completion_valid = false;
-        char     completion_name[64] = {};
-        uint32_t completion_size = 0;
-        uint32_t completion_crc  = 0;
-        uint8_t  completion_transfer_id = 0;
-    } upload_;
-
-// Download state
-    struct DownloadState {
-        bool     active         = false;
-        char     name[64]       = {};
-        uint32_t total_size     = 0;
-        uint32_t bytes_sent     = 0;
-        uint32_t crc_running    = 0xFFFFFFFFu;
-        uint32_t next_seq       = 0;
-        uint8_t  transfer_id    = 0;
-        FIL      file           = {};
-        bool     awaiting_ack   = false;
-        uint32_t last_chunk_seq = 0;
-        uint16_t last_chunk_len = 0;
-        uint32_t last_send_ms   = 0;
-        bool     completion_valid = false;
-        char     completion_name[64] = {};
-        uint32_t completion_crc  = 0;
-        uint32_t completion_last_seq = 0;
-        uint8_t  completion_transfer_id = 0;
-    } download_;
+    StorageTransferStateMachine transfer_;
     uint8_t next_transfer_id_ = 1;
-    bool transfer_active() const { return upload_.active || download_.active; }
+    bool transfer_active() const { return transfer_.is_active(); }
 
 // Command dispatch
     void dispatch(const char* line);
@@ -220,6 +182,12 @@ private:
     void send_download_ready();
     void send_download_complete();
     void resend_download_chunk();
+    void abort_active_storage_transfer(bool clear_completion,
+                                       bool delete_partial_upload_file,
+                                       bool close_file = true);
+    void emit_storage_error(StorageTransferError error,
+                            StorageTransferOperation operation = StorageTransferOperation::None,
+                            const char* kv = nullptr);
 
 // Encoding helpers
     static uint32_t crc32_update(uint32_t crc, const uint8_t* data, size_t len);

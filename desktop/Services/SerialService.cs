@@ -16,7 +16,9 @@ public sealed class SerialService : IDisposable
     private const byte TransferFrameEscape = 0x7D;
     private const byte TransferFrameEscapeXor = 0x20;
     private const int TransferFrameHeaderSize = 9;
-    private const int MaxTransferPayloadSize = 256;
+    private const int MaxTransferPayloadSize = 1024;
+    private const int MaxTransferRawFrameSize = TransferFrameHeaderSize + MaxTransferPayloadSize + sizeof(uint);
+    private const int MaxTransferEncodedFrameSize = MaxTransferRawFrameSize + ((MaxTransferRawFrameSize + 253) / 254);
 
     public readonly record struct TransferFrame(byte FrameType, byte TransferId, byte Flags, uint Sequence, byte[] Payload);
 
@@ -33,8 +35,8 @@ public sealed class SerialService : IDisposable
     private readonly object _writeSync = new();
     private SerialPort? _port;
     private readonly StringBuilder _lineBuffer = new();
-    private readonly byte[] _framePacket = new byte[TransferFrameHeaderSize + MaxTransferPayloadSize + sizeof(uint) + 4];
-    private readonly byte[] _decodedFrame = new byte[TransferFrameHeaderSize + MaxTransferPayloadSize + sizeof(uint)];
+    private readonly byte[] _framePacket = new byte[MaxTransferEncodedFrameSize];
+    private readonly byte[] _decodedFrame = new byte[MaxTransferRawFrameSize];
     private DateTime _connectedAtUtc = DateTime.MinValue;
     private ReceiveMode _receiveMode = ReceiveMode.Idle;
     private int _framePacketBytesRead;
@@ -117,8 +119,8 @@ public sealed class SerialService : IDisposable
 
         try
         {
-            byte[] buffer = new byte[1 + TransferFrameHeaderSize + payload.Length + sizeof(uint)];
-            byte[] encoded = new byte[TransferFrameHeaderSize + payload.Length + sizeof(uint) + 4];
+            byte[] buffer = new byte[TransferFrameHeaderSize + payload.Length + sizeof(uint)];
+            byte[] encoded = new byte[buffer.Length + ((buffer.Length + 253) / 254)];
             int rawOffset = 0;
             buffer[rawOffset++] = frameType;
             buffer[rawOffset++] = transferId;
@@ -131,6 +133,8 @@ public sealed class SerialService : IDisposable
             WriteUInt32LittleEndian(buffer, ref rawOffset, crc);
 
             int encodedLength = CobsEncode(buffer.AsSpan(0, rawOffset), encoded);
+            if (encodedLength <= 0)
+                throw new InvalidOperationException("Failed to encode transfer frame.");
             byte[] wire = new byte[1 + (encodedLength * 2) + 1];
             int offset = 0;
             wire[offset++] = TransferFrameMarker;
@@ -433,6 +437,8 @@ public sealed class SerialService : IDisposable
         {
             if (input[read] == 0)
             {
+                if (codeIndex >= output.Length || write >= output.Length)
+                    return -1;
                 output[codeIndex] = code;
                 code = 1;
                 codeIndex = write++;
@@ -440,16 +446,22 @@ public sealed class SerialService : IDisposable
                 continue;
             }
 
+            if (write >= output.Length)
+                return -1;
             output[write++] = input[read++];
             code++;
             if (code == 0xFF)
             {
+                if (codeIndex >= output.Length || write >= output.Length)
+                    return -1;
                 output[codeIndex] = code;
                 code = 1;
                 codeIndex = write++;
             }
         }
 
+        if (codeIndex >= output.Length)
+            return -1;
         output[codeIndex] = code;
         return write;
     }

@@ -10,7 +10,11 @@ public:
     static constexpr uint8_t kTransferFrameEscape = 0x7D;
     static constexpr uint8_t kTransferFrameEscapeXor = 0x20;
     static constexpr size_t kTransferFrameHeaderSize = 9;
-    static constexpr size_t kMaxTransferPayloadSize = 256;
+    static constexpr size_t kMaxTransferPayloadSize = 1024;
+    static constexpr size_t kMaxTransferRawFrameSize =
+        kTransferFrameHeaderSize + kMaxTransferPayloadSize + sizeof(uint32_t);
+    static constexpr size_t kMaxTransferEncodedFrameSize =
+        kMaxTransferRawFrameSize + ((kMaxTransferRawFrameSize + 253) / 254);
 
     enum class PacketKind
     {
@@ -48,9 +52,12 @@ private:
     ReceiveMode mode_ = ReceiveMode::Idle;
     char line_[2048]{};
     size_t line_len_ = 0;
-    uint8_t frame_packet_[kTransferFrameHeaderSize + kMaxTransferPayloadSize + sizeof(uint32_t) + 4]{};
+    uint8_t frame_packet_[kMaxTransferEncodedFrameSize]{};
     size_t frame_packet_len_ = 0;
-    uint8_t decoded_frame_[kTransferFrameHeaderSize + kMaxTransferPayloadSize + sizeof(uint32_t)]{};
+    uint8_t decoded_frame_[kMaxTransferRawFrameSize]{};
+    uint8_t tx_raw_[kMaxTransferRawFrameSize]{};
+    uint8_t tx_encoded_[kMaxTransferEncodedFrameSize]{};
+    uint8_t tx_wire_[1 + (kMaxTransferEncodedFrameSize * 2) + 1]{};
 
     static void write_u16_le(uint8_t* out, uint16_t value);
     static void write_u32_le(uint8_t* out, uint32_t value);

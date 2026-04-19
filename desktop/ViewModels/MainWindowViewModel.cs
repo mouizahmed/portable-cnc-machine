@@ -961,7 +961,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     private bool HasActiveProtocolOperation()
-        => FilesVm.IsUploading || FilesVm.IsPreviewDownloadActive;
+        => FilesVm.HasActiveStorageOperation;
 
     private void HandleProtocolEvent(string name, IReadOnlyDictionary<string, string> kv)
     {
