@@ -3,6 +3,12 @@
 #include "config.h"
 #include "pico/stdlib.h"
 
+namespace {
+// Dev shortcut: skip the blocking touch calibration workflow during firmware iteration.
+// Set false to restore normal persisted calibration / calibration UI behavior.
+constexpr bool kSkipTouchCalibrationForDev = true;
+}
+
 PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_card, CalibrationStorage& storage)
     : touch_(touch),
       storage_service_(sd_card),
@@ -112,10 +118,12 @@ void PortableCncApp::run() {
 }
 
 void PortableCncApp::run_startup_sequence() {
-    TouchCalibration calibration{};
-    controller_.begin_calibration();
-    calibration_app_.ensure_calibration(calibration);
-    controller_.complete_calibration();
+    if (!kSkipTouchCalibrationForDev) {
+        TouchCalibration calibration{};
+        controller_.begin_calibration();
+        calibration_app_.ensure_calibration(calibration);
+        controller_.complete_calibration();
+    }
     storage_service_.initialize(job_state_machine_);
 
     while (storage_service_.state() == StorageState::Mounting) {
@@ -160,7 +168,7 @@ bool PortableCncApp::poll_event(UiEvent& event) {
 }
 
 void PortableCncApp::handle_event(const UiEvent& event) {
-    if (controller_.machine_state() == MachineOperationState::Uploading) {
+    if (desktop_protocol_.upload_active()) {
         if (event.type == UiEventType::TouchPressed &&
             upload_screen_.hit_test_abort(event.touch)) {
             desktop_protocol_.abort_upload();
@@ -242,7 +250,7 @@ void PortableCncApp::render_storage_change() {
 }
 
 void PortableCncApp::render_current_screen(bool full) {
-    if (controller_.machine_state() == MachineOperationState::Uploading) {
+    if (desktop_protocol_.upload_active()) {
         upload_screen_.render(
             desktop_protocol_.upload_bytes_written(),
             desktop_protocol_.upload_expected_size(),

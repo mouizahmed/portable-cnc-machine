@@ -18,8 +18,18 @@ namespace PortableCncApp.ViewModels;
 
 public sealed class FilesViewModel : PageViewModelBase
 {
-    private const int PreviewMaxLines  = 200;
-    private const int UploadChunkSize  = 192;   // raw bytes per chunk → 256 base64 chars
+    private const int PreviewMaxLines = 200;
+
+    // SD transfer protocol is stop-and-wait in both directions:
+    // - upload/download are session-based
+    // - binary frames carry chunk data and chunk acks
+    // - text control lines only start/end/abort the transfer
+    // Keep one shared chunk size and timeout policy for both flows.
+    private static readonly int TransferRawChunkSize = PicoProtocolService.BinaryTransferChunkSize;
+    private static readonly TimeSpan TransferInitTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan TransferChunkTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan TransferFinalizeTimeout = TimeSpan.FromSeconds(10);
+    private const int TransferMaxRetries = 3;
 
     // ── Preview fields ────────────────────────────────────────────────────────
     private CancellationTokenSource? _parseCancellation;
@@ -37,6 +47,7 @@ public sealed class FilesViewModel : PageViewModelBase
 
     // ── SD-list fields ────────────────────────────────────────────────────────
     private readonly List<GCodeFileInfo> _pendingFileList = new();
+    private readonly SemaphoreSlim _storageOperationGate = new(1, 1);
     private GCodeFileInfo? _selectedFile;
     private long    _sdFreeBytes = -1;
 
@@ -59,11 +70,12 @@ public sealed class FilesViewModel : PageViewModelBase
 
     // Upload ACK discriminated union
     private enum UploadAckType { Ready, ChunkOk, Complete, Aborted, Failed, FileExists }
-    private record UploadAck(UploadAckType Type, int Seq = 0, string Name = "",
-                              long Size = 0, string Reason = "");
+    private record UploadAck(UploadAckType Type, uint Seq = 0, string Name = "",
+                              long Size = 0, string Reason = "", byte TransferId = 0, int ChunkSize = 0,
+                              uint BytesCommitted = 0);
 
     private enum DownloadPacketType { Ready, Chunk, Complete, Failed }
-    private record DownloadPacket(DownloadPacketType Type, int Seq = 0, string Name = "", long Size = 0, string Data = "", string Reason = "");
+    private record DownloadPacket(DownloadPacketType Type, uint Seq = 0, string Name = "", long Size = 0, byte[]? Data = null, string Reason = "", byte TransferId = 0, int ChunkSize = 0);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Constructor
@@ -82,7 +94,7 @@ public sealed class FilesViewModel : PageViewModelBase
         CancelUploadCommand       = new RelayCommand(CancelUpload,           () => IsUploading);
         PreviewLocalCommand       = new RelayCommand(PreviewLocalFile,       () => !IsUploading);
         UploadLocalPreviewCommand = new RelayCommand(StartUploadLocalPreview, CanUploadLocalPreview);
-        RefreshCommand            = new RelayCommand(RefreshFileList,        () => !IsUploading);
+        RefreshCommand            = new RelayCommand(RefreshFileList,        () => !IsUploading && !IsPreviewDownloadActive);
         LoadSelectedFileCommand   = new RelayCommand(LoadSelectedFile,       CanLoadSelectedFile);
         UnloadLoadedFileCommand   = new RelayCommand(UnloadLoadedFile,       CanUnloadLoadedFile);
         DeleteCommand             = new RelayCommand<GCodeFileInfo>(DeleteFile);
@@ -376,17 +388,18 @@ public sealed class FilesViewModel : PageViewModelBase
         MainVm.Protocol.EventReceived         += HandleProtocolEvent;
 
         // Upload ACKs — all routed into the channel so DoUploadAsync can await them
-        MainVm.Protocol.UploadReadyReceived      += name         => RouteUpload(new UploadAck(UploadAckType.Ready,      Name: name));
-        MainVm.Protocol.ChunkAckReceived         += seq          => RouteUpload(new UploadAck(UploadAckType.ChunkOk,    Seq: seq));
-        MainVm.Protocol.UploadCompleteReceived   += (name, size) => RouteUpload(new UploadAck(UploadAckType.Complete,  Name: name, Size: size));
+        MainVm.Protocol.UploadReadyReceived      += ready        => RouteUpload(new UploadAck(UploadAckType.Ready, Name: ready.Name, Size: ready.Size, TransferId: ready.TransferId, ChunkSize: ready.ChunkSize));
+        MainVm.Protocol.UploadChunkAckReceived   += (transferId, seq, bytesCommitted) => RouteUpload(new UploadAck(UploadAckType.ChunkOk, Seq: seq, TransferId: transferId, BytesCommitted: bytesCommitted));
+        MainVm.Protocol.UploadCompleteReceived   += complete     => RouteUpload(new UploadAck(UploadAckType.Complete,  Name: complete.Name, Size: complete.Size, TransferId: complete.TransferId));
         MainVm.Protocol.UploadAbortedReceived    += ()           => RouteUpload(new UploadAck(UploadAckType.Aborted));
         MainVm.Protocol.UploadFailedReceived     += reason       => RouteUpload(new UploadAck(UploadAckType.Failed,    Reason: reason));
         MainVm.Protocol.UploadFileExistsReceived += name         => RouteUpload(new UploadAck(UploadAckType.FileExists, Name: name));
 
         // Download packets for SD-file preview
-        MainVm.Protocol.DownloadReadyReceived    += (name, size) => RouteDownload(new DownloadPacket(DownloadPacketType.Ready, Name: name, Size: size));
-        MainVm.Protocol.DownloadChunkReceived    += (seq, data)  => RouteDownload(new DownloadPacket(DownloadPacketType.Chunk, Seq: seq, Data: data));
-        MainVm.Protocol.DownloadCompleteReceived += (name, crc)  => RouteDownload(new DownloadPacket(DownloadPacketType.Complete, Name: name, Reason: crc));
+        MainVm.Protocol.DownloadReadyReceived    += ready        => RouteDownload(new DownloadPacket(DownloadPacketType.Ready, Name: ready.Name, Size: ready.Size, TransferId: ready.TransferId, ChunkSize: ready.ChunkSize));
+        MainVm.Protocol.DownloadChunkReceived    += (transferId, seq, data)  => RouteDownload(new DownloadPacket(DownloadPacketType.Chunk, Seq: seq, Data: data, TransferId: transferId));
+        MainVm.Protocol.DownloadCompleteReceived += complete     => RouteDownload(new DownloadPacket(DownloadPacketType.Complete, Name: complete.Name, Reason: complete.Crc32Hex, TransferId: complete.TransferId));
+        MainVm.Protocol.DownloadAbortedReceived  += ()           => RouteDownload(new DownloadPacket(DownloadPacketType.Failed, Reason: "DOWNLOAD_ABORTED"));
         MainVm.Protocol.DownloadFailedReceived   += reason       => RouteDownload(new DownloadPacket(DownloadPacketType.Failed, Reason: reason));
 
         // File operation confirmations
@@ -438,9 +451,22 @@ public sealed class FilesViewModel : PageViewModelBase
         if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
             return;
 
-        _pendingFileList.Clear();
-        var result = await MainVm.SendCommandAndWaitAsync("FILE_LIST_END", MainVm.Protocol.SendFileList, TimeSpan.FromSeconds(3));
-        MainVm.ApplyCommandResult(result, "File list refresh failed");
+        await StopPreviewDownloadBeforeStorageCommandAsync();
+        await _storageOperationGate.WaitAsync();
+        try
+        {
+            _pendingFileList.Clear();
+            var result = await MainVm.SendCommandAndWaitAsync(
+                "FILE_LIST_END",
+                MainVm.Protocol.SendFileList,
+                TimeSpan.FromSeconds(5),
+                disconnectOnTimeout: false);
+            MainVm.ApplyCommandResult(result, "File list refresh failed");
+        }
+        finally
+        {
+            _storageOperationGate.Release();
+        }
     }
 
     private void HandleFileListEntry(string name, long sizeBytes)
@@ -494,6 +520,7 @@ public sealed class FilesViewModel : PageViewModelBase
 
     private bool CanLoadSelectedFile()
         => !IsUploading &&
+           !IsPreviewDownloadActive &&
            MainVm?.PiConnectionStatus == ConnectionStatus.Connected &&
            SelectedFile != null &&
            !IsSelectedFileLoaded;
@@ -516,17 +543,28 @@ public sealed class FilesViewModel : PageViewModelBase
                 return;
         }
 
-        MainVm.StatusMessage = $"Loading: {SelectedFile.Name}";
-        MainVm.IsStatusError = false;
-        var result = await MainVm.SendCommandAndWaitAsync(
-            "FILE_LOAD",
-            () => MainVm.Protocol.SendFileLoad(SelectedFile.Name),
-            TimeSpan.FromSeconds(3));
-        MainVm.ApplyCommandResult(result, "Load failed");
+        await StopPreviewDownloadBeforeStorageCommandAsync();
+        await _storageOperationGate.WaitAsync();
+        try
+        {
+            MainVm.StatusMessage = $"Loading: {SelectedFile.Name}";
+            MainVm.IsStatusError = false;
+            var result = await MainVm.SendCommandAndWaitAsync(
+                "FILE_LOAD",
+                () => MainVm.Protocol.SendFileLoad(SelectedFile.Name),
+                TimeSpan.FromSeconds(3),
+                disconnectOnTimeout: false);
+            MainVm.ApplyCommandResult(result, "Load failed");
+        }
+        finally
+        {
+            _storageOperationGate.Release();
+        }
     }
 
     private bool CanUnloadLoadedFile()
         => !IsUploading &&
+           !IsPreviewDownloadActive &&
            MainVm?.PiConnectionStatus == ConnectionStatus.Connected &&
            !string.IsNullOrWhiteSpace(MainVm.CurrentFileName);
 
@@ -535,26 +573,49 @@ public sealed class FilesViewModel : PageViewModelBase
         if (!CanUnloadLoadedFile() || MainVm == null)
             return;
 
-        MainVm.StatusMessage = "Unloading active job";
-        MainVm.IsStatusError = false;
-        var result = await MainVm.SendCommandAndWaitAsync("FILE_UNLOAD", MainVm.Protocol.SendFileUnload, TimeSpan.FromSeconds(3));
-        MainVm.ApplyCommandResult(result, "Unload failed");
+        await StopPreviewDownloadBeforeStorageCommandAsync();
+        await _storageOperationGate.WaitAsync();
+        try
+        {
+            MainVm.StatusMessage = "Unloading active job";
+            MainVm.IsStatusError = false;
+            var result = await MainVm.SendCommandAndWaitAsync(
+                "FILE_UNLOAD",
+                MainVm.Protocol.SendFileUnload,
+                TimeSpan.FromSeconds(3),
+                disconnectOnTimeout: false);
+            MainVm.ApplyCommandResult(result, "Unload failed");
+        }
+        finally
+        {
+            _storageOperationGate.Release();
+        }
     }
 
     private async void DeleteFile(GCodeFileInfo? file)
     {
         if (file == null || MainVm == null) return;
-        _pendingDeletes[file.Name] = file;
-        if (SelectedFile == file)
-            SelectedFile = null;
-        var result = await MainVm.SendCommandAndWaitAsync(
-            "FILE_DELETE",
-            () => MainVm.Protocol.SendFileDelete(file.Name),
-            TimeSpan.FromSeconds(3));
-        if (!result.Success)
+        await StopPreviewDownloadBeforeStorageCommandAsync();
+        await _storageOperationGate.WaitAsync();
+        try
         {
-            _pendingDeletes.Remove(file.Name);
-            MainVm.ApplyCommandResult(result, "Delete failed");
+            _pendingDeletes[file.Name] = file;
+            if (SelectedFile == file)
+                SelectedFile = null;
+            var result = await MainVm.SendCommandAndWaitAsync(
+                "FILE_DELETE",
+                () => MainVm.Protocol.SendFileDelete(file.Name),
+                TimeSpan.FromSeconds(3),
+                disconnectOnTimeout: false);
+            if (!result.Success)
+            {
+                _pendingDeletes.Remove(file.Name);
+                MainVm.ApplyCommandResult(result, "Delete failed");
+            }
+        }
+        finally
+        {
+            _storageOperationGate.Release();
         }
     }
 
@@ -573,53 +634,133 @@ public sealed class FilesViewModel : PageViewModelBase
             return null;
 
         CancelPendingPreviewDownload();
+        await AbortRemotePreviewDownloadAsync();
         CleanupDownloadedPreviewFile();
+
+        await _storageOperationGate.WaitAsync();
 
         _previewDownloadCancellation = new CancellationTokenSource();
         var ct = _previewDownloadCancellation.Token;
-        _downloadChannel = Channel.CreateBounded<DownloadPacket>(new BoundedChannelOptions(32)
+        var localCancellation = _previewDownloadCancellation;
+        RaisePropertyChanged(nameof(IsPreviewDownloadActive));
+        RaiseCanExecuteAll();
+        // Preview downloads can legitimately produce hundreds of chunk packets for
+        // mid-sized files. Dropping old packets corrupts the stream and eventually
+        // turns into CRC mismatches or timeouts. Keep the full packet sequence.
+        _downloadChannel = Channel.CreateUnbounded<DownloadPacket>(new UnboundedChannelOptions
         {
             SingleReader = true,
-            FullMode = BoundedChannelFullMode.DropOldest
+            SingleWriter = false,
+            AllowSynchronousContinuations = false
         });
+        var localChannel = _downloadChannel;
 
         ToolpathStatusMessage = $"Downloading preview: {fileName}";
         UpdateToolpathState(hasGeometry: false, hasError: false);
         ClearWarnings();
+        string? tempPath = null;
 
         try
         {
-            MainVm.Protocol.SendFileDownload(fileName);
-
-            var ready = await ReadDownloadPacketAsync(TimeSpan.FromSeconds(3), ct);
+            DownloadPacket ready = new(DownloadPacketType.Failed, Reason: "Preview download was not accepted.");
+            for (int attempt = 0; attempt < TransferMaxRetries; attempt++)
+            {
+                MainVm.Protocol.SendFileDownload(fileName);
+                try
+                {
+                    ready = await ReadDownloadPacketAsync(localChannel, TransferInitTimeout, ct);
+                    if (ready.Type == DownloadPacketType.Failed &&
+                        (IsTransferBusyReason(ready.Reason) ||
+                         string.Equals(ready.Reason, "DOWNLOAD_ABORTED", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        await AbortRemotePreviewDownloadAsync();
+                        ToolpathStatusMessage = $"Downloading preview: {fileName} (clearing stale session)";
+                        continue;
+                    }
+                    break;
+                }
+                catch (TimeoutException) when (attempt + 1 < TransferMaxRetries)
+                {
+                    await AbortRemotePreviewDownloadAsync();
+                    ToolpathStatusMessage = $"Downloading preview: {fileName} (retrying session)";
+                }
+            }
             if (ready.Type != DownloadPacketType.Ready)
                 throw new IOException(ready.Reason.Length > 0 ? ready.Reason : "Preview download was not accepted.");
+            byte transferId = ready.TransferId;
+            long totalBytes = ready.Size;
+            long bytesReceived = 0;
+            uint expectedSeq = 0;
 
-            using var stream = new MemoryStream();
+            tempPath = Path.Combine(
+                Path.GetTempPath(),
+                $"portable-cnc-preview-{Guid.NewGuid():N}-{fileName}");
+            uint downloadCrc = 0xFFFFFFFFu;
+
+            await using var stream = new FileStream(
+                tempPath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                useAsync: true);
+            int consecutiveTimeouts = 0;
             while (true)
             {
-                var packet = await ReadDownloadPacketAsync(TimeSpan.FromSeconds(5), ct);
+                DownloadPacket packet;
+                try
+                {
+                    packet = await ReadDownloadPacketAsync(localChannel, TransferChunkTimeout, ct);
+                }
+                catch (TimeoutException)
+                {
+                    ++consecutiveTimeouts;
+                    await AbortRemotePreviewDownloadAsync();
+                    throw new TimeoutException(
+                        $"Preview download timed out waiting for chunk {expectedSeq} after {consecutiveTimeouts} attempt(s).");
+                }
+                consecutiveTimeouts = 0;
                 switch (packet.Type)
                 {
                     case DownloadPacketType.Chunk:
                     {
-                        var bytes = Convert.FromBase64String(packet.Data);
+                        if (packet.TransferId != transferId || packet.Data == null)
+                            continue;
+
+                        if (packet.Seq < expectedSeq)
+                        {
+                            MainVm.Protocol.SendDownloadAck(transferId, packet.Seq);
+                            break;
+                        }
+
+                        if (packet.Seq > expectedSeq)
+                            break;
+
+                        var bytes = packet.Data;
                         await stream.WriteAsync(bytes, ct);
-                        MainVm.Protocol.SendDownloadAck(packet.Seq);
+                        downloadCrc = UpdateCrc32(downloadCrc, bytes, bytes.Length);
+                        bytesReceived += bytes.Length;
+                        expectedSeq++;
+                        ToolpathStatusMessage = totalBytes > 0
+                            ? $"Downloading preview: {fileName} ({(int)(100.0 * bytesReceived / totalBytes)}%)"
+                            : $"Downloading preview: {fileName}";
+                        MainVm.Protocol.SendDownloadAck(transferId, packet.Seq);
                         break;
                     }
 
                     case DownloadPacketType.Complete:
                     {
-                        var downloadedBytes = stream.ToArray();
-                        var actualCrc = ComputeCrc32(downloadedBytes).ToString("x8");
+                        if (packet.TransferId != transferId)
+                            continue;
+
+                        await stream.FlushAsync(ct);
+                        if (bytesReceived != totalBytes)
+                            throw new IOException($"Preview download ended early ({bytesReceived}/{totalBytes} bytes).");
+                        var actualCrc = FinalizeCrc32(downloadCrc).ToString("x8");
                         if (!string.Equals(actualCrc, packet.Reason, StringComparison.OrdinalIgnoreCase))
                             throw new IOException("Preview download CRC mismatch.");
 
-                        _downloadPreviewPath = Path.Combine(
-                            Path.GetTempPath(),
-                            $"portable-cnc-preview-{Guid.NewGuid():N}-{fileName}");
-                        await File.WriteAllBytesAsync(_downloadPreviewPath, downloadedBytes, ct);
+                        _downloadPreviewPath = tempPath;
                         return _downloadPreviewPath;
                     }
 
@@ -630,10 +771,22 @@ public sealed class FilesViewModel : PageViewModelBase
         }
         catch (OperationCanceledException)
         {
+            if (MainVm?.PiConnectionStatus == ConnectionStatus.Connected)
+                MainVm.Protocol.SendFileDownloadAbort();
+            if (tempPath != null && File.Exists(tempPath))
+                File.Delete(tempPath);
+            return null;
+        }
+        catch (ChannelClosedException)
+        {
+            if (tempPath != null && File.Exists(tempPath))
+                File.Delete(tempPath);
             return null;
         }
         catch (Exception ex)
         {
+            if (tempPath != null && File.Exists(tempPath))
+                File.Delete(tempPath);
             UpdateToolpathState(hasGeometry: false, hasError: true);
             ToolpathStatusMessage = "Source preview could not be loaded.";
             if (MainVm != null)
@@ -643,27 +796,23 @@ public sealed class FilesViewModel : PageViewModelBase
         }
         finally
         {
-            _downloadChannel?.Writer.TryComplete();
-            _downloadChannel = null;
-            _previewDownloadCancellation?.Dispose();
-            _previewDownloadCancellation = null;
+            localChannel?.Writer.TryComplete();
+            if (ReferenceEquals(_downloadChannel, localChannel))
+                _downloadChannel = null;
+
+            if (ReferenceEquals(_previewDownloadCancellation, localCancellation))
+            {
+                _previewDownloadCancellation?.Dispose();
+                _previewDownloadCancellation = null;
+                RaisePropertyChanged(nameof(IsPreviewDownloadActive));
+                RaiseCanExecuteAll();
+            }
+            _storageOperationGate.Release();
         }
     }
 
-    private async Task<DownloadPacket> ReadDownloadPacketAsync(TimeSpan timeout, CancellationToken ct)
-    {
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        linked.CancelAfter(timeout);
-        try
-        {
-            return await _downloadChannel!.Reader.ReadAsync(linked.Token);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            MainVm?.NotifyControllerUnresponsive();
-            throw new TimeoutException("Preview download timed out.");
-        }
-    }
+    private async Task<DownloadPacket> ReadDownloadPacketAsync(Channel<DownloadPacket> channel, TimeSpan timeout, CancellationToken ct)
+        => await ReadChannelMessageAsync(channel.Reader, timeout, ct, "Preview download timed out.");
 
     // ─────────────────────────────────────────────────────────────────────────
     // Local preview
@@ -781,10 +930,10 @@ public sealed class FilesViewModel : PageViewModelBase
     // ─────────────────────────────────────────────────────────────────────────
 
     private bool CanUpload()
-        => !IsUploading && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
+        => !IsUploading && !IsPreviewDownloadActive && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
 
     private bool CanUploadLocalPreview()
-        => IsLocalPreviewFile && !IsUploading && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
+        => IsLocalPreviewFile && !IsUploading && !IsPreviewDownloadActive && MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
 
     private async void StartUpload()
     {
@@ -820,30 +969,38 @@ public sealed class FilesViewModel : PageViewModelBase
     {
         if (IsUploading || MainVm?.PiConnectionStatus != ConnectionStatus.Connected) return;
 
+        await StopPreviewDownloadBeforeStorageCommandAsync();
+        await _storageOperationGate.WaitAsync();
+
         _uploadCancellation = new CancellationTokenSource();
         var ct = _uploadCancellation.Token;
 
-        _uploadChannel = Channel.CreateBounded<UploadAck>(new BoundedChannelOptions(16)
+        // Upload acknowledgements are sequential, but they can still arrive in
+        // bursts around chunk retries/finalize. Never drop them.
+        _uploadChannel = Channel.CreateUnbounded<UploadAck>(new UnboundedChannelOptions
         {
             SingleReader = true,
-            FullMode     = BoundedChannelFullMode.DropOldest
+            SingleWriter = false,
+            AllowSynchronousContinuations = false
         });
+        var localUploadCancellation = _uploadCancellation;
+        var localUploadChannel = _uploadChannel;
 
         var name = Path.GetFileName(filePath);
+        var uploadSucceeded = false;
         IsUploading      = true;
         UploadProgress   = 0;
         UploadStatusText = $"Reading {name}…";
 
         try
         {
-            var bytes = await File.ReadAllBytesAsync(filePath, ct);
-            var crc   = ComputeCrc32(bytes);
+            var fileInfo = new FileInfo(filePath);
+            long fileSize = fileInfo.Length;
+            uint uploadCrc = 0xFFFFFFFFu;
 
             // ── Phase 1: initiate ──────────────────────────────────────────
             UploadStatusText = $"Connecting: {name}";
-            MainVm!.Protocol.SendFileUpload(name, bytes.Length, overwrite);
-
-            var initAck = await ReadAckAsync(TimeSpan.FromSeconds(3), ct);
+            var initAck = await BeginUploadSessionAsync(localUploadChannel, name, fileSize, overwrite, ct);
 
             if (initAck.Type == UploadAckType.FileExists)
             {
@@ -863,68 +1020,71 @@ public sealed class FilesViewModel : PageViewModelBase
                 }
 
                 // Resend with overwrite flag
-                MainVm!.Protocol.SendFileUpload(name, bytes.Length, overwrite: true);
-                initAck = await ReadAckAsync(TimeSpan.FromSeconds(3), ct);
+                initAck = await BeginUploadSessionAsync(localUploadChannel, name, fileSize, overwrite: true, ct);
             }
 
             if (initAck.Type == UploadAckType.Failed)
                 throw new InvalidOperationException(initAck.Reason);
             if (initAck.Type != UploadAckType.Ready)
                 throw new InvalidOperationException("Upload not accepted by Pico");
+            byte transferId = initAck.TransferId;
+            int negotiatedChunkSize = initAck.ChunkSize > 0 ? initAck.ChunkSize : TransferRawChunkSize;
 
             // ── Phase 2: chunks ────────────────────────────────────────────
-            int totalChunks = (bytes.Length + UploadChunkSize - 1) / UploadChunkSize;
+            int totalChunks = (int)((fileSize + negotiatedChunkSize - 1) / negotiatedChunkSize);
+            var buffer = new byte[negotiatedChunkSize];
+            await using var fileStream = new FileStream(
+                filePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 81920,
+                useAsync: true);
 
             for (int seq = 0; seq < totalChunks; seq++)
             {
                 ct.ThrowIfCancellationRequested();
 
-                int offset = seq * UploadChunkSize;
-                int length = Math.Min(UploadChunkSize, bytes.Length - offset);
-                var base64 = Convert.ToBase64String(bytes, offset, length);
+                int length = await fileStream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct);
+                if (length <= 0)
+                    throw new IOException($"Upload stream ended early at chunk {seq}.");
+
+                uploadCrc = UpdateCrc32(uploadCrc, buffer, length);
 
                 int retries = 0;
+                UploadAck chunkAck;
                 while (true)
                 {
-                    MainVm!.Protocol.SendChunk(seq, base64);
-
-                    UploadAck chunkAck;
+                    MainVm!.Protocol.SendUploadChunk(transferId, (uint)seq, buffer.AsSpan(0, length));
                     try
                     {
-                        chunkAck = await ReadAckAsync(TimeSpan.FromSeconds(5), ct);
+                        chunkAck = await ReadUploadChunkAckAsync(localUploadChannel, TransferChunkTimeout, ct, transferId, (uint)seq);
                     }
                     catch (TimeoutException)
                     {
-                        if (++retries >= 3)
-                            throw new IOException($"Chunk {seq} timed out after 3 retries.");
+                        if (++retries >= TransferMaxRetries)
+                            throw new IOException($"Chunk {seq} timed out after {TransferMaxRetries} retries.");
                         UploadStatusText = $"Chunk {seq} timeout — retry {retries}/3…";
                         continue;
                     }
 
-                    if (chunkAck.Type == UploadAckType.ChunkOk && chunkAck.Seq == seq)
-                        break;
-
                     // Unrecoverable SD errors — abort immediately
-                    if (chunkAck.Type == UploadAckType.Failed &&
-                        (chunkAck.Reason.Contains("SD_WRITE_FAIL") ||
-                         chunkAck.Reason.Contains("UPLOAD_SD_REMOVED") ||
-                         chunkAck.Reason.Contains("UNKNOWN")))
-                        throw new IOException($"SD write failed at chunk {seq}: {chunkAck.Reason}");
+                    if (chunkAck.Type == UploadAckType.Failed || chunkAck.Type == UploadAckType.Aborted)
+                        throw new IOException($"Upload failed at chunk {seq}: {chunkAck.Reason}");
 
-                    if (++retries >= 3)
-                        throw new IOException($"Chunk {seq} failed after 3 retries.");
+                    break;
                 }
 
-                UploadProgress   = (double)(seq + 1) / totalChunks;
+                UploadProgress   = fileSize == 0 ? 1.0 : (double)chunkAck.BytesCommitted / fileSize;
                 UploadStatusText = $"Uploading {name}: {(int)(UploadProgress * 100)}%";
             }
 
             // ── Phase 3: finalise ──────────────────────────────────────────
             UploadStatusText = "Verifying…";
-            MainVm!.Protocol.SendFileUploadEnd($"{crc:x8}");
+            MainVm!.Protocol.SendFileUploadEnd($"{FinalizeCrc32(uploadCrc):x8}");
 
-            var finalAck = await ReadAckAsync(TimeSpan.FromSeconds(5), ct);
-            if (finalAck.Type != UploadAckType.Complete)
+            var finalAck = await ReadAckAsync(localUploadChannel, TransferFinalizeTimeout, ct);
+            if (finalAck.Type != UploadAckType.Complete || finalAck.TransferId != transferId)
                 throw new IOException($"Upload verification failed: {finalAck.Reason}");
 
             // Success
@@ -933,6 +1093,7 @@ public sealed class FilesViewModel : PageViewModelBase
             IsLocalPreviewFile    = false;           // file is now on SD
             MainVm!.StatusMessage = $"Uploaded: {name}";
             MainVm.IsStatusError  = false;
+            uploadSucceeded       = true;
             _ = RequestFileListAsync();
         }
         catch (OperationCanceledException)
@@ -955,31 +1116,86 @@ public sealed class FilesViewModel : PageViewModelBase
         }
         finally
         {
-            _uploadChannel?.Writer.TryComplete();
-            _uploadChannel = null;
-            _uploadCancellation?.Dispose();
-            _uploadCancellation = null;
+            localUploadChannel?.Writer.TryComplete();
+            if (ReferenceEquals(_uploadChannel, localUploadChannel))
+                _uploadChannel = null;
+            if (ReferenceEquals(_uploadCancellation, localUploadCancellation))
+            {
+                _uploadCancellation?.Dispose();
+                _uploadCancellation = null;
+            }
             _overwriteTcs?.TrySetResult(false);
             _overwriteTcs  = null;
             IsUploading    = false;
-            UploadProgress = 0;
+            if (!uploadSucceeded)
+                UploadProgress = 0;
+            _storageOperationGate.Release();
         }
     }
 
-    private async Task<UploadAck> ReadAckAsync(TimeSpan timeout, CancellationToken ct)
+    private async Task<UploadAck> BeginUploadSessionAsync(
+        Channel<UploadAck> channel,
+        string name,
+        long fileSize,
+        bool overwrite,
+        CancellationToken ct)
+    {
+        for (int attempt = 0; attempt < TransferMaxRetries; attempt++)
+        {
+            MainVm!.Protocol.SendFileUpload(name, fileSize, overwrite);
+            var ack = await ReadAckAsync(channel, TransferInitTimeout, ct);
+            if (ack.Type != UploadAckType.Failed || !IsTransferBusyReason(ack.Reason))
+                return ack;
+
+            MainVm.Protocol.SendFileDownloadAbort();
+            UploadStatusText = "Storage busy; cancelling preview transfer and retrying...";
+            await Task.Delay(250, ct);
+        }
+
+        return new UploadAck(UploadAckType.Failed, Reason: "Storage transfer is busy.");
+    }
+
+    private async Task<UploadAck> ReadAckAsync(Channel<UploadAck> channel, TimeSpan timeout, CancellationToken ct)
+        => await ReadChannelMessageAsync(channel.Reader, timeout, ct, "Storage transfer timed out.");
+
+    private async Task<UploadAck> ReadUploadChunkAckAsync(Channel<UploadAck> channel, TimeSpan timeout, CancellationToken ct, byte transferId, uint sequence)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (true)
+        {
+            var remaining = deadline - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                throw new TimeoutException("Storage transfer timed out.");
+            }
+
+            var ack = await ReadChannelMessageAsync(channel.Reader, remaining, ct, "Storage transfer timed out.");
+            if (ack.Type == UploadAckType.Failed || ack.Type == UploadAckType.Aborted)
+                return ack;
+
+            if (ack.Type == UploadAckType.ChunkOk && ack.TransferId == transferId && ack.Seq == sequence)
+                return ack;
+        }
+    }
+
+    private async Task<T> ReadChannelMessageAsync<T>(ChannelReader<T> reader, TimeSpan timeout, CancellationToken ct, string timeoutMessage)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
         linked.CancelAfter(timeout);
         try
         {
-            return await _uploadChannel!.Reader.ReadAsync(linked.Token);
+            return await reader.ReadAsync(linked.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            MainVm?.NotifyControllerUnresponsive();
-            throw new TimeoutException("Pico did not respond within the timeout period.");
+            throw new TimeoutException(timeoutMessage);
         }
     }
+
+    private static bool IsTransferBusyReason(string reason)
+        => reason.Contains("BUSY", StringComparison.OrdinalIgnoreCase) ||
+           reason.Contains("TRANSFER", StringComparison.OrdinalIgnoreCase);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Toolpath parsing
@@ -1136,6 +1352,22 @@ public sealed class FilesViewModel : PageViewModelBase
         IsParsingToolpath  = false;
     }
 
+    private async Task StopPreviewDownloadBeforeStorageCommandAsync()
+    {
+        await AbortRemotePreviewDownloadAsync();
+        CancelPendingPreviewDownload();
+    }
+
+    private async Task AbortRemotePreviewDownloadAsync()
+    {
+        if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
+            return;
+
+        MainVm.Protocol.SendFileDownloadAbort();
+        await Task.Delay(250);
+        DrainDownloadChannel();
+    }
+
     private void CancelPendingPreviewDownload()
     {
         if (_previewDownloadCancellation == null)
@@ -1146,6 +1378,18 @@ public sealed class FilesViewModel : PageViewModelBase
         _previewDownloadCancellation = null;
         _downloadChannel?.Writer.TryComplete();
         _downloadChannel = null;
+        RaisePropertyChanged(nameof(IsPreviewDownloadActive));
+        RaiseCanExecuteAll();
+    }
+
+    private void DrainDownloadChannel()
+    {
+        if (_downloadChannel == null)
+            return;
+
+        while (_downloadChannel.Reader.TryRead(out _))
+        {
+        }
     }
 
     private void ClearDeviceFileStateOnDisconnect()
@@ -1305,16 +1549,22 @@ public sealed class FilesViewModel : PageViewModelBase
 
     /// <summary>CRC-32 (ISO 3309 / zlib polynomial) of raw bytes.</summary>
     private static uint ComputeCrc32(byte[] data)
+        => FinalizeCrc32(UpdateCrc32(0xFFFFFFFFu, data, data.Length));
+
+    private static uint UpdateCrc32(uint crc, byte[] data, int length)
     {
-        uint crc = 0xFFFFFFFF;
-        foreach (byte b in data)
+        for (int index = 0; index < length; index++)
         {
+            byte b = data[index];
             crc ^= b;
             for (int i = 0; i < 8; i++)
                 crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
         }
-        return ~crc;
+
+        return crc;
     }
+
+    private static uint FinalizeCrc32(uint crc) => ~crc;
 
     private void HandleThemeChanged(object? sender, EventArgs e)
     {

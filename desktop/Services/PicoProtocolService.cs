@@ -11,6 +11,11 @@ public record struct PicoPos(double MX, double MY, double MZ, double WX, double 
 /// <summary>Device info from @INFO response.</summary>
 public record PicoInfo(string Firmware, string Board, bool TeensyConnected);
 
+/// <summary>Transfer session metadata from FILE_UPLOAD_READY / FILE_DOWNLOAD_READY.</summary>
+public readonly record struct FileTransferReady(string Name, long Size, byte TransferId, int ChunkSize);
+public readonly record struct FileTransferComplete(byte TransferId, string Name, long Size);
+public readonly record struct FileDownloadComplete(byte TransferId, string Name, string Crc32Hex);
+
 /// <summary>
 /// Parses the Pico @-protocol from SerialService and fires typed events.
 /// Exposes typed Send*() methods for all outbound commands.
@@ -18,6 +23,14 @@ public record PicoInfo(string Firmware, string Board, bool TeensyConnected);
 /// </summary>
 public sealed class PicoProtocolService
 {
+    public const int FileTransferChunkSize = 96;
+    public const int BinaryTransferChunkSize = FileTransferChunkSize;
+
+    private const byte UploadDataFrameType = 1;
+    private const byte UploadAckFrameType = 2;
+    private const byte DownloadDataFrameType = 3;
+    private const byte DownloadAckFrameType = 4;
+
     private readonly SerialService _serial;
 
     // ── Incoming events ──────────────────────────────────────────────────────
@@ -66,13 +79,13 @@ public sealed class PicoProtocolService
     public event Action<int, long>? FileListEndReceived;
 
     /// <summary>Fired when @OK FILE_UPLOAD_READY is received — Pico ready to accept chunks.</summary>
-    public event Action<string>? UploadReadyReceived;
+    public event Action<FileTransferReady>? UploadReadyReceived;
 
-    /// <summary>Fired when @OK CHUNK SEQ=n is received. Arg is the acknowledged sequence number.</summary>
-    public event Action<int>? ChunkAckReceived;
+    /// <summary>Fired when a binary upload-ack frame is received.</summary>
+    public event Action<byte, uint, uint>? UploadChunkAckReceived;
 
     /// <summary>Fired when @OK FILE_UPLOAD_END is received — upload complete and verified. Args: name, final size.</summary>
-    public event Action<string, long>? UploadCompleteReceived;
+    public event Action<FileTransferComplete>? UploadCompleteReceived;
 
     /// <summary>Fired when @OK FILE_UPLOAD_ABORT is received.</summary>
     public event Action? UploadAbortedReceived;
@@ -88,13 +101,16 @@ public sealed class PicoProtocolService
     public event Action<string>? UploadFailedReceived;
 
     /// <summary>Fired when @OK FILE_DOWNLOAD_READY is received. Args: name, size in bytes.</summary>
-    public event Action<string, long>? DownloadReadyReceived;
+    public event Action<FileTransferReady>? DownloadReadyReceived;
 
-    /// <summary>Fired when @CHUNK SEQ=n DATA=... is received during a file download.</summary>
-    public event Action<int, string>? DownloadChunkReceived;
+    /// <summary>Fired when a download data chunk is received.</summary>
+    public event Action<byte, uint, byte[]>? DownloadChunkReceived;
 
     /// <summary>Fired when @OK FILE_DOWNLOAD_END is received. Args: name, crc32 hex.</summary>
-    public event Action<string, string>? DownloadCompleteReceived;
+    public event Action<FileDownloadComplete>? DownloadCompleteReceived;
+
+    /// <summary>Fired when @OK FILE_DOWNLOAD_ABORT is received.</summary>
+    public event Action? DownloadAbortedReceived;
 
     /// <summary>Fired when the Pico rejects or aborts a file download.</summary>
     public event Action<string>? DownloadFailedReceived;
@@ -115,6 +131,7 @@ public sealed class PicoProtocolService
     {
         _serial = serial;
         _serial.LineReceived += OnLineReceived;
+        _serial.FrameReceived += OnFrameReceived;
     }
 
     // ── Outbound commands ────────────────────────────────────────────────────
@@ -138,28 +155,34 @@ public sealed class PicoProtocolService
     public void SendZero(string axes) => Send($"@ZERO AXIS={axes}");
 
     public void SendFileList()              => Send("@FILE_LIST");
-    public void SendFileLoad(string name)   => Send($"@FILE_LOAD NAME={name}");
+    public void SendFileLoad(string name)   => Send($"@FILE_LOAD NAME={EncodeValue(name)}");
     public void SendFileUnload()            => Send("@FILE_UNLOAD");
-    public void SendFileDelete(string name) => Send($"@FILE_DELETE NAME={name}");
-    public void SendFileDownload(string name) => Send($"@FILE_DOWNLOAD NAME={name}");
-    public void SendDownloadAck(int seq)      => Send($"@ACK SEQ={seq}");
-
+    public void SendFileDelete(string name) => Send($"@FILE_DELETE NAME={EncodeValue(name)}");
+    public void SendFileDownload(string name) => Send($"@FILE_DOWNLOAD NAME={EncodeValue(name)}");
     /// <param name="overwrite">Set true if user confirmed overwrite of an existing file.</param>
     public void SendFileUpload(string name, long sizeBytes, bool overwrite = false)
         => Send(overwrite
-            ? $"@FILE_UPLOAD NAME={name} SIZE={sizeBytes} OVERWRITE=1"
-            : $"@FILE_UPLOAD NAME={name} SIZE={sizeBytes}");
-
-    /// <param name="seq">Zero-based chunk sequence number.</param>
-    /// <param name="base64Data">Up to 256 base64 characters (192 raw bytes).</param>
-    public void SendChunk(int seq, string base64Data)
-        => Send($"@CHUNK SEQ={seq} DATA={base64Data}");
+            ? $"@FILE_UPLOAD NAME={EncodeValue(name)} SIZE={sizeBytes} OVERWRITE=1"
+            : $"@FILE_UPLOAD NAME={EncodeValue(name)} SIZE={sizeBytes}");
 
     /// <param name="crc32Hex">CRC-32 of the full raw file, 8 lowercase hex digits.</param>
     public void SendFileUploadEnd(string crc32Hex)
         => Send($"@FILE_UPLOAD_END CRC={crc32Hex}");
 
     public void SendFileUploadAbort() => Send("@FILE_UPLOAD_ABORT");
+    public void SendFileDownloadAbort() => Send("@FILE_DOWNLOAD_ABORT");
+
+    public void SendUploadDataFrame(byte transferId, uint sequence, ReadOnlySpan<byte> payload)
+        => _serial.SendFrame(UploadDataFrameType, transferId, sequence, payload);
+
+    public void SendUploadChunk(byte transferId, uint sequence, ReadOnlySpan<byte> payload)
+        => Send(FormattableString.Invariant($"@FILE_UPLOAD_CHUNK ID={transferId} SEQ={sequence} HEX={Convert.ToHexString(payload)}"));
+
+    public void SendDownloadAckFrame(byte transferId, uint sequence)
+        => _serial.SendFrame(DownloadAckFrameType, transferId, sequence, ReadOnlySpan<byte>.Empty);
+
+    public void SendDownloadAck(byte transferId, uint sequence)
+        => Send(FormattableString.Invariant($"@FILE_DOWNLOAD_ACK ID={transferId} SEQ={sequence}"));
 
     public void SendJobStart()  => Send("@START");
     public void SendJobPause()  => Send("@PAUSE");
@@ -202,12 +225,29 @@ public sealed class PicoProtocolService
             case "@OK":     ParseOk(parts);        break;
             case "@INFO":   ParseInfo(parts);      break;
             case "@JOB":    ParseJob(parts);       break;
-            case "@CHUNK":  ParseChunk(parts);     break;
             case "@ERROR":  ParseError(parts);     break;
             case "@FILE":   ParseFileEntry(parts); break;
+            case "@FILE_DOWNLOAD_CHUNK": ParseDownloadChunk(parts); break;
             case "@WAIT":   ParseWait(parts);      break;
             default:
                 UnknownLineReceived?.Invoke(line);
+                break;
+        }
+    }
+
+    private void OnFrameReceived(SerialService.TransferFrame frame)
+    {
+        switch (frame.FrameType)
+        {
+            case UploadAckFrameType:
+                UploadChunkAckReceived?.Invoke(
+                    frame.TransferId,
+                    frame.Sequence,
+                    frame.Payload.Length >= sizeof(uint) ? ReadUInt32LittleEndian(frame.Payload, 0) : 0u);
+                break;
+
+            case DownloadDataFrameType:
+                DownloadChunkReceived?.Invoke(frame.TransferId, frame.Sequence, frame.Payload);
                 break;
         }
     }
@@ -286,32 +326,57 @@ public sealed class PicoProtocolService
                 break;
 
             case "FILE_UPLOAD_READY":
-                UploadReadyReceived?.Invoke(kv.GetValueOrDefault("NAME", ""));
-                break;
-
-            case "CHUNK":
-                int.TryParse(kv.GetValueOrDefault("SEQ", "-1"), out var seq);
-                ChunkAckReceived?.Invoke(seq);
+                long.TryParse(kv.GetValueOrDefault("SIZE", "0"), out var uploadSize);
+                byte.TryParse(kv.GetValueOrDefault("ID", "0"), out var uploadTransferId);
+                int.TryParse(kv.GetValueOrDefault("CHUNK", "0"), out var uploadChunkSize);
+                UploadReadyReceived?.Invoke(new FileTransferReady(
+                    kv.GetValueOrDefault("NAME", ""),
+                    uploadSize,
+                    uploadTransferId,
+                    uploadChunkSize));
                 break;
 
             case "FILE_UPLOAD_END":
                 long.TryParse(kv.GetValueOrDefault("SIZE", "0"), out var uploadedSize);
-                UploadCompleteReceived?.Invoke(kv.GetValueOrDefault("NAME", ""), uploadedSize);
+                byte.TryParse(kv.GetValueOrDefault("ID", "0"), out var uploadCompleteTransferId);
+                UploadCompleteReceived?.Invoke(new FileTransferComplete(
+                    uploadCompleteTransferId,
+                    kv.GetValueOrDefault("NAME", ""),
+                    uploadedSize));
                 break;
 
             case "FILE_UPLOAD_ABORT":
                 UploadAbortedReceived?.Invoke();
                 break;
 
+            case "FILE_UPLOAD_CHUNK":
+                byte.TryParse(kv.GetValueOrDefault("ID", "0"), out var uploadChunkTransferId);
+                uint.TryParse(kv.GetValueOrDefault("SEQ", "0"), out var uploadChunkSeq);
+                uint.TryParse(kv.GetValueOrDefault("BYTES", "0"), out var uploadBytesCommitted);
+                UploadChunkAckReceived?.Invoke(uploadChunkTransferId, uploadChunkSeq, uploadBytesCommitted);
+                break;
+
             case "FILE_DOWNLOAD_READY":
                 long.TryParse(kv.GetValueOrDefault("SIZE", "0"), out var downloadSize);
-                DownloadReadyReceived?.Invoke(kv.GetValueOrDefault("NAME", ""), downloadSize);
+                byte.TryParse(kv.GetValueOrDefault("ID", "0"), out var downloadTransferId);
+                int.TryParse(kv.GetValueOrDefault("CHUNK", "0"), out var downloadChunkSize);
+                DownloadReadyReceived?.Invoke(new FileTransferReady(
+                    kv.GetValueOrDefault("NAME", ""),
+                    downloadSize,
+                    downloadTransferId,
+                    downloadChunkSize));
                 break;
 
             case "FILE_DOWNLOAD_END":
-                DownloadCompleteReceived?.Invoke(
+                byte.TryParse(kv.GetValueOrDefault("ID", "0"), out var downloadCompleteTransferId);
+                DownloadCompleteReceived?.Invoke(new FileDownloadComplete(
+                    downloadCompleteTransferId,
                     kv.GetValueOrDefault("NAME", ""),
-                    kv.GetValueOrDefault("CRC", ""));
+                    kv.GetValueOrDefault("CRC", "")));
+                break;
+
+            case "FILE_DOWNLOAD_ABORT":
+                DownloadAbortedReceived?.Invoke();
                 break;
 
             case "FILE_DELETE":
@@ -323,10 +388,24 @@ public sealed class PicoProtocolService
     private void ParseFileEntry(string[] parts)
     {
         if (parts.Length < 2) return;
-        var name = parts[1];
-        var kv   = ParseKeyValues(parts, startIndex: 2);
+        var kv = ParseKeyValues(parts, startIndex: 1);
+        var name = kv.GetValueOrDefault("NAME", parts.Length > 1 ? DecodeValue(parts[1]) : "");
         long.TryParse(kv.GetValueOrDefault("SIZE", "0"), out var size);
         FileListEntryReceived?.Invoke(name, size);
+    }
+
+    private void ParseDownloadChunk(string[] parts)
+    {
+        var kv = ParseKeyValues(parts, startIndex: 1);
+        if (!byte.TryParse(kv.GetValueOrDefault("ID", "0"), out var transferId) ||
+            !uint.TryParse(kv.GetValueOrDefault("SEQ", "0"), out var sequence) ||
+            !TryDecodeHex(kv.GetValueOrDefault("HEX", ""), out var payload))
+        {
+            DownloadFailedReceived?.Invoke("DOWNLOAD_BAD_CHUNK");
+            return;
+        }
+
+        DownloadChunkReceived?.Invoke(transferId, sequence, payload);
     }
 
     private void ParseInfo(string[] parts)
@@ -346,13 +425,6 @@ public sealed class PicoProtocolService
         JobChanged?.Invoke(string.Equals(name, "NONE", StringComparison.OrdinalIgnoreCase) ? null : name);
     }
 
-    private void ParseChunk(string[] parts)
-    {
-        var kv = ParseKeyValues(parts, startIndex: 1);
-        int.TryParse(kv.GetValueOrDefault("SEQ", "-1"), out var seq);
-        DownloadChunkReceived?.Invoke(seq, kv.GetValueOrDefault("DATA", ""));
-    }
-
     private void ParseError(string[] parts)
     {
         if (parts.Length < 2) { ErrorReceived?.Invoke("UNKNOWN"); return; }
@@ -363,11 +435,14 @@ public sealed class PicoProtocolService
         {
             // Upload-specific errors routed to dedicated events so the upload
             // state machine can handle them without touching the generic error path.
-            case "FILE_EXISTS":
+            case "UPLOAD_FILE_EXISTS":
                 UploadFileExistsReceived?.Invoke(errorKv.GetValueOrDefault("NAME", ""));
                 return;
 
             case "FILE_UPLOAD_CRC_FAIL":
+            case "UPLOAD_CRC_FAIL":
+            case "UPLOAD_SIZE_MISMATCH":
+            case "UPLOAD_SD_WRITE_FAIL":
             case "UPLOAD_SD_REMOVED":
                 // Pico has already cleaned up — desktop just resets upload state.
                 UploadFailedReceived?.Invoke(parts[1]);
@@ -381,6 +456,7 @@ public sealed class PicoProtocolService
                 return;
 
             case "SD_FULL":
+            case "UPLOAD_SD_FULL":
             {
                 long.TryParse(errorKv.GetValueOrDefault("FREE", "0"), out var sdFree);
                 var msg = sdFree > 0
@@ -391,22 +467,61 @@ public sealed class PicoProtocolService
             }
 
             case "SD_NOT_MOUNTED":
+            case "UPLOAD_SD_NOT_MOUNTED":
                 UploadFailedReceived?.Invoke("SD card not present");
+                ErrorReceived?.Invoke(parts[1]);
                 return;
 
             case "SD_READ_FAIL":
+                ErrorReceived?.Invoke(parts[1]);
                 DownloadFailedReceived?.Invoke(parts[1]);
+                return;
+
+            case "DOWNLOAD_SD_NOT_MOUNTED":
+            case "DOWNLOAD_SD_READ_FAIL":
+            case "DOWNLOAD_FILE_NOT_FOUND":
+            case "DOWNLOAD_INVALID_STATE":
+            case "DOWNLOAD_BUSY":
+            case "DOWNLOAD_BAD_SEQUENCE":
+            case "DOWNLOAD_INVALID_SESSION":
+            case "DOWNLOAD_SD_REMOVED":
+                DownloadFailedReceived?.Invoke(parts[1]);
+                return;
+
+            case "TRANSFER_BUSY":
+            case "INVALID_TRANSFER":
+            case "UPLOAD_BUSY":
+            case "UPLOAD_INVALID_STATE":
+            case "UPLOAD_BAD_SEQUENCE":
+            case "UPLOAD_INVALID_SESSION":
+            case "UPLOAD_NO_SESSION":
+                UploadFailedReceived?.Invoke(parts[1]);
+                DownloadFailedReceived?.Invoke(parts[1]);
+                ErrorReceived?.Invoke(parts[1]);
                 return;
         }
 
         // Check for upload-fatal errors that can arrive mid-stream.
-        if (parts[1] is "SD_WRITE_FAIL" or "UPLOAD_BUSY" or "INVALID_STATE")
+        if (parts[1] is "SD_WRITE_FAIL" or "INVALID_STATE" or "FILE_UPLOAD_SIZE_MISMATCH")
+        {
+            UploadFailedReceived?.Invoke(parts[1]);
+            DownloadFailedReceived?.Invoke(parts[1]);
+            return;
+        }
+
+        if (parts[1] is "FILE_NOT_FOUND")
+        {
+            DownloadFailedReceived?.Invoke(parts[1]);
+            return;
+        }
+
+        if (parts[1].StartsWith("UPLOAD_", StringComparison.OrdinalIgnoreCase))
         {
             UploadFailedReceived?.Invoke(parts[1]);
             return;
         }
 
-        if (parts[1] is "FILE_NOT_FOUND")
+        if (parts[1].StartsWith("DOWNLOAD_", StringComparison.OrdinalIgnoreCase))
         {
             DownloadFailedReceived?.Invoke(parts[1]);
             return;
@@ -425,9 +540,51 @@ public sealed class PicoProtocolService
         {
             int eq = parts[i].IndexOf('=');
             if (eq > 0)
-                dict[parts[i][..eq]] = parts[i][(eq + 1)..];
+                dict[parts[i][..eq]] = DecodeValue(parts[i][(eq + 1)..]);
         }
         return dict;
+    }
+
+    private static string EncodeValue(string value) => Uri.EscapeDataString(value);
+
+    private static string DecodeValue(string value)
+    {
+        try
+        {
+            return Uri.UnescapeDataString(value);
+        }
+        catch
+        {
+            return value;
+        }
+    }
+
+    private static bool TryDecodeHex(string hex, out byte[] payload)
+    {
+        payload = Array.Empty<byte>();
+        if (hex.Length % 2 != 0)
+            return false;
+
+        var bytes = new byte[hex.Length / 2];
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            int hi = HexValue(hex[i * 2]);
+            int lo = HexValue(hex[i * 2 + 1]);
+            if (hi < 0 || lo < 0)
+                return false;
+            bytes[i] = (byte)((hi << 4) | lo);
+        }
+
+        payload = bytes;
+        return true;
+    }
+
+    private static int HexValue(char c)
+    {
+        if (c is >= '0' and <= '9') return c - '0';
+        if (c is >= 'A' and <= 'F') return c - 'A' + 10;
+        if (c is >= 'a' and <= 'f') return c - 'a' + 10;
+        return -1;
     }
 
     private static bool GetBool(Dictionary<string, string> kv, string key)
@@ -475,4 +632,10 @@ public sealed class PicoProtocolService
     private static bool Fail<T>(out T result)          { result = default!; return false; }
 
     private void Send(string cmd) => _serial.SendCommand(cmd);
+
+    private static uint ReadUInt32LittleEndian(byte[] buffer, int offset)
+        => (uint)(buffer[offset]
+                | (buffer[offset + 1] << 8)
+                | (buffer[offset + 2] << 16)
+                | (buffer[offset + 3] << 24));
 }

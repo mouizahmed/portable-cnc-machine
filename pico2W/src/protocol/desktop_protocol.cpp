@@ -1,11 +1,16 @@
-#include "protocol/desktop_protocol.h"
+﻿#include "protocol/desktop_protocol.h"
 
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <cstdarg>
 
-// â”€â”€ Constructor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#include "pico/stdlib.h"
+
+static void percent_decode_in_place(char* text);
+static void percent_encode_value(const char* input, char* output, size_t output_size);
+
+// -- Constructor --------------------------------------------------------------
 
 DesktopProtocol::DesktopProtocol(UsbCdcTransport& transport,
                                  MachineFsm& msm,
@@ -22,11 +27,21 @@ DesktopProtocol::DesktopProtocol(UsbCdcTransport& transport,
       storage_(storage),
       sd_(sd) {}
 
-// â”€â”€ poll / dispatch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Poll / dispatch ----------------------------------------------------------
 
 void DesktopProtocol::poll() {
-    while (transport_.poll_line(line_, sizeof(line_))) {
-        dispatch(line_);
+    UsbCdcTransport::FramePacket frame{};
+    while (true) {
+        const auto kind = transport_.poll(line_, sizeof(line_), frame);
+        if (kind == UsbCdcTransport::PacketKind::None) {
+            tick_transfer_retries();
+            return;
+        }
+        if (kind == UsbCdcTransport::PacketKind::Line) {
+            dispatch(line_);
+        } else if (kind == UsbCdcTransport::PacketKind::Frame) {
+            dispatch_frame(frame);
+        }
     }
 }
 
@@ -70,15 +85,52 @@ void DesktopProtocol::dispatch(const char* line) {
     else if (std::strcmp(verb, "@FILE_UNLOAD") == 0) { handle_file_unload(); }
     else if (std::strcmp(verb, "@FILE_DELETE")   == 0) { handle_file_delete(params); }
     else if (std::strcmp(verb, "@FILE_UPLOAD") == 0) { handle_file_upload(params); }
-    else if (std::strcmp(verb, "@CHUNK")       == 0) { handle_chunk(params); }
+    else if (std::strcmp(verb, "@FILE_UPLOAD_CHUNK") == 0) { handle_file_upload_chunk(params); }
     else if (std::strcmp(verb, "@FILE_UPLOAD_END")   == 0) { handle_file_upload_end(params); }
     else if (std::strcmp(verb, "@FILE_UPLOAD_ABORT") == 0) { handle_file_upload_abort(); }
     else if (std::strcmp(verb, "@FILE_DOWNLOAD") == 0) { handle_file_download(params); }
-    else if (std::strcmp(verb, "@ACK")           == 0) { handle_download_ack(params); }
+    else if (std::strcmp(verb, "@FILE_DOWNLOAD_ACK") == 0) { handle_file_download_ack(params); }
+    else if (std::strcmp(verb, "@FILE_DOWNLOAD_ABORT") == 0) { handle_file_download_abort(); }
     // Unknown verbs are silently ignored
 }
 
-// â”€â”€ Outbound helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+void DesktopProtocol::dispatch_frame(const UsbCdcTransport::FramePacket& frame) {
+    if (frame.type == kUploadDataFrameType) {
+        handle_upload_chunk_data(frame.transfer_id, frame.seq, frame.payload, frame.payload_len);
+        return;
+    }
+
+    if (frame.type == kDownloadAckFrameType) {
+        if (!download_.active) {
+            if (download_.completion_valid &&
+                frame.transfer_id == download_.completion_transfer_id &&
+                frame.seq == download_.completion_last_seq) {
+                send_download_complete();
+            }
+            return;
+        }
+        if (frame.transfer_id != download_.transfer_id) {
+            emit_error("DOWNLOAD_INVALID_SESSION");
+            return;
+        }
+        if (!download_.awaiting_ack) {
+            return;
+        }
+        if (frame.seq < download_.last_chunk_seq) {
+            return;
+        }
+        if (frame.seq != download_.last_chunk_seq) {
+            transport_.send_fmt("@ERROR DOWNLOAD_BAD_SEQUENCE SEQ=%lu EXPECTED=%lu",
+                                static_cast<unsigned long>(frame.seq),
+                                static_cast<unsigned long>(download_.last_chunk_seq));
+            return;
+        }
+        download_.awaiting_ack = false;
+        send_next_download_chunk();
+    }
+}
+
+// -- Outbound helpers ---------------------------------------------------------
 
 void DesktopProtocol::emit_state() {
     const char* s = "UNKNOWN";
@@ -139,7 +191,9 @@ void DesktopProtocol::emit_state_update(bool mark_changed) {
 
 void DesktopProtocol::emit_job() {
     if (const FileEntry* loaded = jobs_.loaded_entry()) {
-        transport_.send_fmt("@JOB NAME=%s", loaded->name);
+        char encoded_name[192]{};
+        percent_encode_value(loaded->name, encoded_name, sizeof(encoded_name));
+        transport_.send_fmt("@JOB NAME=%s", encoded_name);
         return;
     }
 
@@ -180,6 +234,103 @@ void DesktopProtocol::emit_ok_kv(const char* token, const char* kv) {
 
 void DesktopProtocol::emit_error(const char* reason) {
     transport_.send_fmt("@ERROR %s", reason);
+}
+
+void DesktopProtocol::reset_upload_completion() {
+    upload_.completion_valid = false;
+    upload_.completion_name[0] = '\0';
+    upload_.completion_size = 0;
+    upload_.completion_crc = 0;
+    upload_.completion_transfer_id = 0;
+}
+
+void DesktopProtocol::reset_download_completion() {
+    download_.completion_valid = false;
+    download_.completion_name[0] = '\0';
+    download_.completion_crc = 0;
+    download_.completion_last_seq = 0;
+    download_.completion_transfer_id = 0;
+}
+
+void DesktopProtocol::send_upload_ready() {
+    char encoded_name[192]{};
+    percent_encode_value(upload_.name, encoded_name, sizeof(encoded_name));
+    char kv[256];
+    std::snprintf(kv, sizeof(kv), "NAME=%s SIZE=%lu ID=%u CHUNK=%u",
+                  encoded_name,
+                  static_cast<unsigned long>(upload_.expected_size),
+                  static_cast<unsigned int>(upload_.transfer_id),
+                  static_cast<unsigned int>(kTransferRawChunkSize));
+    emit_ok_kv("FILE_UPLOAD_READY", kv);
+}
+
+void DesktopProtocol::send_upload_chunk_ack(uint32_t sequence, uint32_t bytes_committed) {
+    transport_.send_fmt("@OK FILE_UPLOAD_CHUNK ID=%u SEQ=%lu BYTES=%lu",
+                        static_cast<unsigned int>(upload_.transfer_id),
+                        static_cast<unsigned long>(sequence),
+                        static_cast<unsigned long>(bytes_committed));
+}
+
+void DesktopProtocol::send_upload_complete() {
+    char encoded_name[192]{};
+    percent_encode_value(upload_.completion_name, encoded_name, sizeof(encoded_name));
+    transport_.send_fmt("@OK FILE_UPLOAD_END NAME=%s SIZE=%lu ID=%u",
+                        encoded_name,
+                        static_cast<unsigned long>(upload_.completion_size),
+                        static_cast<unsigned int>(upload_.completion_transfer_id));
+}
+
+void DesktopProtocol::send_download_ready() {
+    char encoded_name[192]{};
+    percent_encode_value(download_.name, encoded_name, sizeof(encoded_name));
+    char kv[256];
+    std::snprintf(kv, sizeof(kv), "NAME=%s SIZE=%lu ID=%u CHUNK=%u",
+                  encoded_name,
+                  static_cast<unsigned long>(download_.total_size),
+                  static_cast<unsigned int>(download_.transfer_id),
+                  static_cast<unsigned int>(kTransferRawChunkSize));
+    emit_ok_kv("FILE_DOWNLOAD_READY", kv);
+}
+
+void DesktopProtocol::send_download_complete() {
+    char encoded_name[192]{};
+    percent_encode_value(download_.completion_name, encoded_name, sizeof(encoded_name));
+    transport_.send_fmt("@OK FILE_DOWNLOAD_END NAME=%s CRC=%08lx ID=%u",
+                        encoded_name,
+                        static_cast<unsigned long>(download_.completion_crc),
+                        static_cast<unsigned int>(download_.completion_transfer_id));
+}
+
+void DesktopProtocol::resend_download_chunk() {
+    if (!download_.active || !download_.awaiting_ack || download_.last_chunk_len == 0) {
+        return;
+    }
+
+    send_download_chunk_line();
+    download_.last_send_ms = to_ms_since_boot(get_absolute_time());
+}
+
+void DesktopProtocol::send_download_chunk_line() {
+    if (download_.last_chunk_len == 0) {
+        return;
+    }
+
+    hex_encode(chunk_raw_, download_.last_chunk_len, chunk_hex_, sizeof(chunk_hex_));
+    transport_.send_fmt("@FILE_DOWNLOAD_CHUNK ID=%u SEQ=%lu HEX=%s",
+                        static_cast<unsigned int>(download_.transfer_id),
+                        static_cast<unsigned long>(download_.last_chunk_seq),
+                        chunk_hex_);
+}
+
+void DesktopProtocol::tick_transfer_retries() {
+    if (!download_.active || !download_.awaiting_ack) {
+        return;
+    }
+
+    const uint32_t now = to_ms_since_boot(get_absolute_time());
+    if ((now - download_.last_send_ms) >= kDownloadResendIntervalMs) {
+        resend_download_chunk();
+    }
 }
 
 bool DesktopProtocol::load_job_by_index(int16_t index) {
@@ -229,13 +380,13 @@ bool DesktopProtocol::restore_persisted_job() {
     return true;
 }
 
-// â”€â”€ inject helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Inject helper ------------------------------------------------------------
 
 void DesktopProtocol::inject(MachineEvent ev) {
     msm_.handle_event(ev);
 }
 
-// â”€â”€ Command handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Command handlers ---------------------------------------------------------
 
 void DesktopProtocol::handle_ping() {
     emit_ok("PONG");
@@ -279,7 +430,7 @@ void DesktopProtocol::handle_jog(const char* params) {
         emit_error("INVALID_STATE");
         return;
     }
-    // params contains AXIS=X DIST=10.0 FEED=500 etc. â€” passed through for future use
+    // params contains AXIS=X DIST=10.0 FEED=500 etc. -- passed through for future use
     (void)params;
     inject(MachineEvent::JogCmd);
     emit_ok_kv("JOG", "");
@@ -400,6 +551,10 @@ void DesktopProtocol::handle_override(const char* params) {
 }
 
 void DesktopProtocol::handle_file_list() {
+    if (transfer_active()) {
+        emit_error("TRANSFER_BUSY");
+        return;
+    }
     if (!msm_.sd_mounted()) {
         emit_error("SD_NOT_MOUNTED");
         return;
@@ -428,7 +583,9 @@ void DesktopProtocol::handle_file_list() {
             std::strcmp(dot, ".tap")   != 0 && std::strcmp(dot, ".TAP")   != 0 &&
             std::strcmp(dot, ".gc")    != 0 && std::strcmp(dot, ".GC")    != 0) continue;
 
-        transport_.send_fmt("@FILE %s SIZE=%lu", info.fname, (unsigned long)info.fsize);
+        char encoded_name[192]{};
+        percent_encode_value(info.fname, encoded_name, sizeof(encoded_name));
+        transport_.send_fmt("@FILE NAME=%s SIZE=%lu", encoded_name, (unsigned long)info.fsize);
         count++;
     }
     f_closedir(&dir);
@@ -448,6 +605,85 @@ void DesktopProtocol::handle_file_list() {
 static bool is_sd_capable_state(MachineOperationState s) {
     return s == MachineOperationState::Idle ||
            s == MachineOperationState::TeensyDisconnected;
+}
+
+static bool is_safe_storage_name(const char* name) {
+    if (name == nullptr || name[0] == '\0') {
+        return false;
+    }
+
+    for (const char* p = name; *p != '\0'; ++p) {
+        const char c = *p;
+        if (c == '/' || c == '\\' || c == ':' || c < 0x20) {
+            return false;
+        }
+    }
+
+    return std::strlen(name) < 64;
+}
+
+static int from_hex(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+
+static void percent_decode_in_place(char* text) {
+    if (text == nullptr) {
+        return;
+    }
+
+    char* write = text;
+    for (char* read = text; *read != '\0'; ++read) {
+        if (*read == '%' && read[1] != '\0' && read[2] != '\0') {
+            const int hi = from_hex(read[1]);
+            const int lo = from_hex(read[2]);
+            if (hi >= 0 && lo >= 0) {
+                *write++ = static_cast<char>((hi << 4) | lo);
+                read += 2;
+                continue;
+            }
+        }
+
+        *write++ = *read;
+    }
+    *write = '\0';
+}
+
+static bool should_escape_value_char(char c) {
+    const unsigned char u = static_cast<unsigned char>(c);
+    if ((u >= 'A' && u <= 'Z') || (u >= 'a' && u <= 'z') || (u >= '0' && u <= '9')) {
+        return false;
+    }
+    return c != '-' && c != '_' && c != '.' && c != '~';
+}
+
+static void percent_encode_value(const char* input, char* output, size_t output_size) {
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    if (output == nullptr || output_size == 0) {
+        return;
+    }
+    output[0] = '\0';
+    if (input == nullptr) {
+        return;
+    }
+
+    size_t write = 0;
+    for (const char* read = input; *read != '\0' && write + 1 < output_size; ++read) {
+        const unsigned char c = static_cast<unsigned char>(*read);
+        if (should_escape_value_char(static_cast<char>(c))) {
+            if (write + 3 >= output_size) {
+                break;
+            }
+            output[write++] = '%';
+            output[write++] = kHex[(c >> 4) & 0x0F];
+            output[write++] = kHex[c & 0x0F];
+            continue;
+        }
+        output[write++] = static_cast<char>(c);
+    }
+    output[write] = '\0';
 }
 
 int16_t DesktopProtocol::find_job_index_by_name(const char* name) const {
@@ -496,6 +732,10 @@ bool DesktopProtocol::try_unload_job() {
 }
 
 void DesktopProtocol::handle_file_load(const char* params) {
+    if (transfer_active()) {
+        emit_error("TRANSFER_BUSY");
+        return;
+    }
     if (!is_sd_capable_state(msm_.state())) {
         emit_error("INVALID_STATE");
         return;
@@ -510,6 +750,10 @@ void DesktopProtocol::handle_file_load(const char* params) {
         emit_error("MISSING_PARAM");
         return;
     }
+    if (!is_safe_storage_name(name)) {
+        emit_error("INVALID_FILENAME");
+        return;
+    }
 
     const int16_t index = find_job_index_by_name(name);
     if (index < 0 || !load_job_by_index(index)) {
@@ -517,12 +761,18 @@ void DesktopProtocol::handle_file_load(const char* params) {
         return;
     }
 
-    char kv[80];
-    std::snprintf(kv, sizeof(kv), "NAME=%s", name);
+    char encoded_name[192]{};
+    percent_encode_value(name, encoded_name, sizeof(encoded_name));
+    char kv[220];
+    std::snprintf(kv, sizeof(kv), "NAME=%s", encoded_name);
     emit_ok_kv("FILE_LOAD", kv);
 }
 
 void DesktopProtocol::handle_file_unload() {
+    if (transfer_active()) {
+        emit_error("TRANSFER_BUSY");
+        return;
+    }
     if (!is_sd_capable_state(msm_.state())) {
         emit_error("INVALID_STATE");
         return;
@@ -537,6 +787,10 @@ void DesktopProtocol::handle_file_unload() {
 }
 
 void DesktopProtocol::handle_file_delete(const char* params) {
+    if (transfer_active()) {
+        emit_error("TRANSFER_BUSY");
+        return;
+    }
     if (!msm_.sd_mounted()) {
         emit_error("SD_NOT_MOUNTED");
         return;
@@ -545,6 +799,10 @@ void DesktopProtocol::handle_file_delete(const char* params) {
     char name[64] = {};
     if (!param_get(params, "NAME", name, sizeof(name))) {
         emit_error("MISSING_PARAM");
+        return;
+    }
+    if (!is_safe_storage_name(name)) {
+        emit_error("INVALID_FILENAME");
         return;
     }
 
@@ -562,8 +820,10 @@ void DesktopProtocol::handle_file_delete(const char* params) {
         }
 
         file_list_changed_ = true;
-        char kv[80];
-        std::snprintf(kv, sizeof(kv), "NAME=%s", name);
+        char encoded_name[192]{};
+        percent_encode_value(name, encoded_name, sizeof(encoded_name));
+        char kv[220];
+        std::snprintf(kv, sizeof(kv), "NAME=%s", encoded_name);
         emit_ok_kv("FILE_DELETE", kv);
         if (deleted_loaded_job) {
             emit_state_update();
@@ -575,18 +835,35 @@ void DesktopProtocol::handle_file_delete(const char* params) {
 }
 
 void DesktopProtocol::handle_file_upload(const char* params) {
+    if (transfer_active()) {
+        char name[64] = {};
+        const uint32_t size = param_get_u32(params, "SIZE", 0);
+        if (upload_.active &&
+            param_get(params, "NAME", name, sizeof(name)) &&
+            std::strcmp(name, upload_.name) == 0 &&
+            size == upload_.expected_size) {
+            send_upload_ready();
+            return;
+        }
+        emit_error("UPLOAD_BUSY");
+        return;
+    }
     if (!is_sd_capable_state(msm_.state())) {
-        emit_error("INVALID_STATE");
+        emit_error("UPLOAD_INVALID_STATE");
         return;
     }
     if (!msm_.sd_mounted()) {
-        emit_error("SD_NOT_MOUNTED");
+        emit_error("UPLOAD_SD_NOT_MOUNTED");
         return;
     }
 
     char name[64] = {};
     if (!param_get(params, "NAME", name, sizeof(name))) {
-        emit_error("MISSING_PARAM");
+        emit_error("UPLOAD_MISSING_PARAM");
+        return;
+    }
+    if (!is_safe_storage_name(name)) {
+        emit_error("UPLOAD_INVALID_FILENAME");
         return;
     }
 
@@ -600,7 +877,9 @@ void DesktopProtocol::handle_file_upload(const char* params) {
     FILINFO info;
     FRESULT stat_r = f_stat(path, &info);
     if (stat_r == FR_OK && !overwrite) {
-        transport_.send_fmt("@ERROR FILE_EXISTS NAME=%s", name);
+        char encoded_name[192]{};
+        percent_encode_value(name, encoded_name, sizeof(encoded_name));
+        transport_.send_fmt("@ERROR UPLOAD_FILE_EXISTS NAME=%s", encoded_name);
         return;
     }
     if (stat_r == FR_OK && overwrite) {
@@ -615,88 +894,66 @@ void DesktopProtocol::handle_file_upload(const char* params) {
         free_bytes = (uint64_t)free_clust * fs->csize * 512u;
     }
     if (size > 0 && (uint64_t)size > free_bytes) {
-        transport_.send_fmt("@ERROR SD_FULL FREE=%llu", (unsigned long long)free_bytes);
+        transport_.send_fmt("@ERROR UPLOAD_SD_FULL FREE=%llu", (unsigned long long)free_bytes);
         return;
     }
 
-    // Zero the FIL struct before (re)use â€” f_open() expects a fresh object;
+    // Zero the FIL struct before (re)use -- f_open() expects a fresh object;
     // stale fields from a previous close can cause undefined behaviour in FatFS.
     upload_.file = FIL{};
 
     // Open file for writing
     FRESULT fr = f_open(&upload_.file, path, FA_WRITE | FA_CREATE_ALWAYS);
     if (fr != FR_OK) {
-        emit_error("SD_WRITE_FAIL");
+        emit_error("UPLOAD_SD_WRITE_FAIL");
         return;
     }
 
     // Initialise upload state
+    reset_upload_completion();
     upload_.active        = true;
     upload_.expected_size = size;
     upload_.bytes_written = 0;
     upload_.expected_seq  = 0;
     upload_.crc_running   = 0xFFFFFFFFu;
+    upload_.transfer_id   = next_transfer_id_++;
+    upload_.last_ack_valid = false;
+    upload_.last_ack_seq = 0;
+    upload_.last_ack_bytes = 0;
     std::strncpy(upload_.name, name, sizeof(upload_.name) - 1);
     upload_.name[sizeof(upload_.name) - 1] = '\0';
 
-    inject(MachineEvent::FileUploadCmd);
-    emit_state_update();
-
-    char kv[80];
-    std::snprintf(kv, sizeof(kv), "NAME=%s", name);
-    emit_ok_kv("FILE_UPLOAD_READY", kv);
+    state_changed_ = true;
+    send_upload_ready();
 }
 
-void DesktopProtocol::handle_chunk(const char* params) {
-    if (!upload_.active) {
-        emit_error("INVALID_STATE");
+void DesktopProtocol::handle_file_upload_chunk(const char* params) {
+    const uint32_t transfer_id = param_get_u32(params, "ID", 0);
+    const uint32_t sequence = param_get_u32(params, "SEQ", 0xFFFFFFFFu);
+    char hex[kTransferRawChunkSize * 2 + 1] = {};
+    uint16_t payload_len = 0;
+
+    if (!param_get(params, "HEX", hex, sizeof(hex)) ||
+        !hex_decode(hex, chunk_raw_, sizeof(chunk_raw_), &payload_len)) {
+        transport_.send_fmt("@ERROR CHUNK SEQ=%lu REASON=BAD_HEX",
+                            static_cast<unsigned long>(sequence));
         return;
     }
 
-    int seq = param_get_int(params, "SEQ", -1);
-    if (seq < 0) {
-        emit_error("MISSING_PARAM");
-        return;
-    }
-
-    if (seq != upload_.expected_seq) {
-        transport_.send_fmt("@ERROR CHUNK SEQ=%d REASON=BAD_SEQ", seq);
-        return;
-    }
-
-    chunk_b64_[0] = '\0';
-    if (!param_get(params, "DATA", chunk_b64_, sizeof(chunk_b64_))) {
-        transport_.send_fmt("@ERROR CHUNK SEQ=%d REASON=MISSING_DATA", seq);
-        return;
-    }
-
-    // Decode base64
-    size_t decoded_len = 0;
-    if (!base64_decode(chunk_b64_, chunk_decoded_, &decoded_len, sizeof(chunk_decoded_))) {
-        transport_.send_fmt("@ERROR CHUNK SEQ=%d REASON=BAD_BASE64", seq);
-        return;
-    }
-
-    // Write to file
-    UINT written = 0;
-    FRESULT fr = f_write(&upload_.file, chunk_decoded_, (UINT)decoded_len, &written);
-    if (fr != FR_OK || written != (UINT)decoded_len) {
-        upload_abort_cleanup();
-        transport_.send_fmt("@ERROR CHUNK SEQ=%d REASON=SD_WRITE_FAIL", seq);
-        return;
-    }
-
-    // Update CRC and counters
-    upload_.crc_running = crc32_update(upload_.crc_running, chunk_decoded_, decoded_len);
-    upload_.bytes_written += (uint32_t)decoded_len;
-    upload_.expected_seq++;
-
-    transport_.send_fmt("@OK CHUNK SEQ=%d", seq);
+    handle_upload_chunk_data(static_cast<uint8_t>(transfer_id), sequence, chunk_raw_, payload_len);
 }
 
 void DesktopProtocol::handle_file_upload_end(const char* params) {
     if (!upload_.active) {
-        emit_error("INVALID_STATE");
+        char crc_str[16] = {};
+        if (param_get(params, "CRC", crc_str, sizeof(crc_str))) {
+            const uint32_t expected_crc = static_cast<uint32_t>(std::strtoul(crc_str, nullptr, 16));
+            if (upload_.completion_valid && expected_crc == upload_.completion_crc) {
+                send_upload_complete();
+                return;
+            }
+        }
+        emit_error("UPLOAD_NO_SESSION");
         return;
     }
 
@@ -705,6 +962,16 @@ void DesktopProtocol::handle_file_upload_end(const char* params) {
 
     // Close the file
     f_close(&upload_.file);
+
+    if (upload_.expected_size > 0 && upload_.bytes_written != upload_.expected_size) {
+        char path[80];
+        std::snprintf(path, sizeof(path), "0:/%s", upload_.name);
+        f_unlink(path);
+        upload_.active = false;
+        state_changed_ = true;
+        emit_error("UPLOAD_SIZE_MISMATCH");
+        return;
+    }
 
     uint32_t final_crc = ~upload_.crc_running;
     uint32_t expected_crc = (uint32_t)std::strtoul(crc_str, nullptr, 16);
@@ -715,9 +982,8 @@ void DesktopProtocol::handle_file_upload_end(const char* params) {
     if (final_crc != expected_crc) {
         f_unlink(path);
         upload_.active = false;
-        inject(MachineEvent::UploadFailed);
-        emit_state_update();
-        emit_error("FILE_UPLOAD_CRC_FAIL");
+        state_changed_ = true;
+        emit_error("UPLOAD_CRC_FAIL");
         return;
     }
 
@@ -727,57 +993,122 @@ void DesktopProtocol::handle_file_upload_end(const char* params) {
     name_copy[sizeof(name_copy) - 1] = '\0';
 
     upload_.active = false;
+    upload_.completion_valid = true;
+    upload_.completion_size = bytes_copy;
+    upload_.completion_crc = final_crc;
+    upload_.completion_transfer_id = upload_.transfer_id;
+    std::strncpy(upload_.completion_name, name_copy, sizeof(upload_.completion_name) - 1);
+    upload_.completion_name[sizeof(upload_.completion_name) - 1] = '\0';
     file_list_changed_ = true;
-    inject(MachineEvent::UploadComplete);
-    emit_state_update();
-    transport_.send_fmt("@OK FILE_UPLOAD_END NAME=%s SIZE=%lu",
-                        name_copy, (unsigned long)bytes_copy);
+    state_changed_ = true;
+    send_upload_complete();
 }
 
 void DesktopProtocol::handle_file_upload_abort() {
+    reset_upload_completion();
     upload_abort_cleanup();
-    inject(MachineEvent::UploadAborted);
-    emit_state_update();
+    state_changed_ = true;
     emit_ok("FILE_UPLOAD_ABORT");
 }
 
-// â”€â”€ Download handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Download handlers --------------------------------------------------------
 
 void DesktopProtocol::handle_file_download(const char* params) {
-    if (!is_sd_capable_state(msm_.state())) { emit_error("INVALID_STATE"); return; }
-    if (!msm_.sd_mounted()) { emit_error("SD_NOT_MOUNTED"); return; }
+    if (transfer_active()) {
+        char name[64] = {};
+        if (download_.active &&
+            param_get(params, "NAME", name, sizeof(name)) &&
+            std::strcmp(name, download_.name) == 0) {
+            send_download_ready();
+            if (download_.awaiting_ack) {
+                resend_download_chunk();
+            }
+            return;
+        }
+        emit_error("DOWNLOAD_BUSY");
+        return;
+    }
+    if (!is_sd_capable_state(msm_.state())) { emit_error("DOWNLOAD_INVALID_STATE"); return; }
+    if (!msm_.sd_mounted()) { emit_error("DOWNLOAD_SD_NOT_MOUNTED"); return; }
 
     char name[64] = {};
-    if (!param_get(params, "NAME", name, sizeof(name))) { emit_error("MISSING_PARAM"); return; }
+    if (!param_get(params, "NAME", name, sizeof(name))) { emit_error("DOWNLOAD_MISSING_PARAM"); return; }
+    if (!is_safe_storage_name(name)) { emit_error("DOWNLOAD_INVALID_FILENAME"); return; }
 
     char path[80];
     std::snprintf(path, sizeof(path), "0:/%s", name);
 
     FILINFO info;
-    if (f_stat(path, &info) != FR_OK) { emit_error("FILE_NOT_FOUND"); return; }
+    if (f_stat(path, &info) != FR_OK) { emit_error("DOWNLOAD_FILE_NOT_FOUND"); return; }
 
     download_.file = FIL{};
-    if (f_open(&download_.file, path, FA_READ) != FR_OK) { emit_error("SD_READ_FAIL"); return; }
+    if (f_open(&download_.file, path, FA_READ) != FR_OK) { emit_error("DOWNLOAD_SD_READ_FAIL"); return; }
 
-    download_.active      = true;
-    download_.total_size  = info.fsize;
-    download_.bytes_sent  = 0;
-    download_.crc_running = 0xFFFFFFFFu;
-    download_.next_seq    = 0;
+    reset_download_completion();
+    download_.active        = true;
+    download_.total_size    = info.fsize;
+    download_.bytes_sent    = 0;
+    download_.crc_running   = 0xFFFFFFFFu;
+    download_.next_seq      = 0;
+    download_.transfer_id   = next_transfer_id_++;
+    download_.awaiting_ack  = false;
+    download_.last_chunk_seq = 0;
+    download_.last_chunk_len = 0;
+    download_.last_send_ms   = 0;
     std::strncpy(download_.name, name, sizeof(download_.name) - 1);
     download_.name[sizeof(download_.name) - 1] = '\0';
 
-    char kv[80];
-    std::snprintf(kv, sizeof(kv), "NAME=%s SIZE=%lu", name, (unsigned long)info.fsize);
-    emit_ok_kv("FILE_DOWNLOAD_READY", kv);
-
+    send_download_ready();
     send_next_download_chunk();
 }
 
-void DesktopProtocol::handle_download_ack(const char* params) {
-    if (!download_.active) return;
-    const int seq = param_get_int(params, "SEQ", -1);
-    if (seq != download_.next_seq - 1) return;  // stale or out-of-order, ignore
+void DesktopProtocol::handle_file_download_abort() {
+    if (!download_.active) {
+        emit_ok("FILE_DOWNLOAD_ABORT");
+        return;
+    }
+
+    f_close(&download_.file);
+    download_.active = false;
+    download_.awaiting_ack = false;
+    reset_download_completion();
+    emit_ok("FILE_DOWNLOAD_ABORT");
+}
+
+void DesktopProtocol::handle_file_download_ack(const char* params) {
+    const uint32_t transfer_id = param_get_u32(params, "ID", 0);
+    const uint32_t sequence = param_get_u32(params, "SEQ", 0xFFFFFFFFu);
+
+    if (!download_.active) {
+        if (download_.completion_valid &&
+            transfer_id == download_.completion_transfer_id &&
+            sequence == download_.completion_last_seq) {
+            send_download_complete();
+        }
+        return;
+    }
+
+    if (transfer_id != download_.transfer_id) {
+        emit_error("DOWNLOAD_INVALID_SESSION");
+        return;
+    }
+
+    if (!download_.awaiting_ack) {
+        return;
+    }
+
+    if (sequence < download_.last_chunk_seq) {
+        return;
+    }
+
+    if (sequence != download_.last_chunk_seq) {
+        transport_.send_fmt("@ERROR DOWNLOAD_BAD_SEQUENCE SEQ=%lu EXPECTED=%lu",
+                            static_cast<unsigned long>(sequence),
+                            static_cast<unsigned long>(download_.last_chunk_seq));
+        return;
+    }
+
+    download_.awaiting_ack = false;
     send_next_download_chunk();
 }
 
@@ -787,29 +1118,40 @@ void DesktopProtocol::send_next_download_chunk() {
     if (fr != FR_OK) {
         f_close(&download_.file);
         download_.active = false;
-        emit_error("SD_READ_FAIL");
+        download_.awaiting_ack = false;
+        emit_error("DOWNLOAD_SD_READ_FAIL");
         return;
     }
 
     if (bytes_read == 0) {
-        // EOF â€” send end
+        // EOF -- send end
         const uint32_t final_crc = ~download_.crc_running;
+        const uint32_t final_seq = download_.next_seq == 0 ? 0 : (download_.next_seq - 1);
         f_close(&download_.file);
         download_.active = false;
-        transport_.send_fmt("@OK FILE_DOWNLOAD_END NAME=%s CRC=%08lx",
-                            download_.name, (unsigned long)final_crc);
+        download_.awaiting_ack = false;
+        download_.completion_valid = true;
+        download_.completion_crc = final_crc;
+        download_.completion_last_seq = final_seq;
+        download_.completion_transfer_id = download_.transfer_id;
+        std::strncpy(download_.completion_name, download_.name, sizeof(download_.completion_name) - 1);
+        download_.completion_name[sizeof(download_.completion_name) - 1] = '\0';
+        send_download_complete();
         return;
     }
 
     download_.crc_running = crc32_update(download_.crc_running, chunk_raw_, bytes_read);
     download_.bytes_sent += bytes_read;
+    download_.last_chunk_seq = download_.next_seq;
+    download_.last_chunk_len = static_cast<uint16_t>(bytes_read);
+    download_.awaiting_ack = true;
+    download_.last_send_ms = to_ms_since_boot(get_absolute_time());
 
-    base64_encode(chunk_raw_, bytes_read, chunk_encode_, sizeof(chunk_encode_));
-    transport_.send_fmt("@CHUNK SEQ=%d DATA=%s", download_.next_seq, chunk_encode_);
+    send_download_chunk_line();
     download_.next_seq++;
 }
 
-// â”€â”€ Upload helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Upload helpers -----------------------------------------------------------
 
 void DesktopProtocol::upload_abort_cleanup() {
     if (!upload_.active) return;
@@ -818,9 +1160,67 @@ void DesktopProtocol::upload_abort_cleanup() {
     std::snprintf(path, sizeof(path), "0:/%s", upload_.name);
     f_unlink(path);
     upload_.active = false;
+    upload_.last_ack_valid = false;
 }
 
-// â”€â”€ Storage callbacks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+void DesktopProtocol::handle_upload_chunk_data(uint8_t transfer_id,
+                                               uint32_t sequence,
+                                               const uint8_t* payload,
+                                               uint16_t payload_len) {
+    if (!upload_.active) {
+        if (upload_.completion_valid && transfer_id == upload_.completion_transfer_id) {
+            send_upload_complete();
+        }
+        return;
+    }
+    if (transfer_id != upload_.transfer_id) {
+        emit_error("UPLOAD_INVALID_SESSION");
+        return;
+    }
+    if (upload_.last_ack_valid && sequence == upload_.last_ack_seq) {
+        send_upload_chunk_ack(upload_.last_ack_seq, upload_.last_ack_bytes);
+        return;
+    }
+    if (sequence != upload_.expected_seq) {
+        transport_.send_fmt("@ERROR UPLOAD_BAD_SEQUENCE SEQ=%lu EXPECTED=%lu",
+                            static_cast<unsigned long>(sequence),
+                            static_cast<unsigned long>(upload_.expected_seq));
+        return;
+    }
+    if (payload == nullptr || payload_len == 0 || payload_len > kTransferRawChunkSize) {
+        transport_.send_fmt("@ERROR CHUNK SEQ=%lu REASON=BAD_LENGTH",
+                            static_cast<unsigned long>(sequence));
+        return;
+    }
+    if (upload_.expected_size > 0 &&
+        upload_.bytes_written + payload_len > upload_.expected_size) {
+        upload_abort_cleanup();
+        transport_.send_fmt("@ERROR UPLOAD_SIZE_MISMATCH SEQ=%lu",
+                            static_cast<unsigned long>(sequence));
+        state_changed_ = true;
+        return;
+    }
+
+    UINT written = 0;
+    FRESULT fr = f_write(&upload_.file, payload, payload_len, &written);
+    if (fr != FR_OK || written != payload_len) {
+        upload_abort_cleanup();
+        transport_.send_fmt("@ERROR UPLOAD_SD_WRITE_FAIL SEQ=%lu",
+                            static_cast<unsigned long>(sequence));
+        state_changed_ = true;
+        return;
+    }
+
+    upload_.crc_running = crc32_update(upload_.crc_running, payload, payload_len);
+    upload_.bytes_written += payload_len;
+    upload_.expected_seq++;
+    upload_.last_ack_valid = true;
+    upload_.last_ack_seq = sequence;
+    upload_.last_ack_bytes = upload_.bytes_written;
+    send_upload_chunk_ack(sequence, upload_.bytes_written);
+}
+
+// -- Storage callbacks --------------------------------------------------------
 
 void DesktopProtocol::on_sd_mounted() {
     inject(MachineEvent::SdMounted);
@@ -830,7 +1230,17 @@ void DesktopProtocol::on_sd_mounted() {
 
 void DesktopProtocol::on_sd_removed() {
     if (upload_.active) {
+        reset_upload_completion();
         upload_abort_cleanup();
+        emit_error("UPLOAD_SD_REMOVED");
+        state_changed_ = true;
+    }
+    if (download_.active) {
+        f_close(&download_.file);
+        download_.active = false;
+        download_.awaiting_ack = false;
+        reset_download_completion();
+        emit_error("DOWNLOAD_SD_REMOVED");
     }
     inject(MachineEvent::SdRemoved);
     jobs_.handle_event(JobEvent::ClearLoadedFile);
@@ -839,7 +1249,7 @@ void DesktopProtocol::on_sd_removed() {
     emit_event("SD_REMOVED");
 }
 
-// â”€â”€ Param helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Param helpers ------------------------------------------------------------
 
 bool DesktopProtocol::param_get(const char* params, const char* key,
                                  char* out, size_t max) {
@@ -863,6 +1273,7 @@ bool DesktopProtocol::param_get(const char* params, const char* key,
             size_t copy = (val_len < max - 1) ? val_len : (max - 1);
             std::memcpy(out, val_start, copy);
             out[copy] = '\0';
+            percent_decode_in_place(out);
             return true;
         }
 
@@ -885,67 +1296,7 @@ int DesktopProtocol::param_get_int(const char* params, const char* key, int def)
     return std::atoi(buf);
 }
 
-// â”€â”€ Encoding helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-void DesktopProtocol::base64_encode(const uint8_t* in, size_t len,
-                                     char* out, size_t out_cap) {
-    static const char kTable[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    size_t o = 0;
-    for (size_t i = 0; i < len; i += 3) {
-        if (o + 4 >= out_cap) break;
-        const uint8_t b0 = in[i];
-        const uint8_t b1 = (i + 1 < len) ? in[i + 1] : 0u;
-        const uint8_t b2 = (i + 2 < len) ? in[i + 2] : 0u;
-        out[o++] = kTable[b0 >> 2];
-        out[o++] = kTable[((b0 & 0x03) << 4) | (b1 >> 4)];
-        out[o++] = (i + 1 < len) ? kTable[((b1 & 0x0F) << 2) | (b2 >> 6)] : '=';
-        out[o++] = (i + 2 < len) ? kTable[b2 & 0x3F] : '=';
-    }
-    if (o < out_cap) out[o] = '\0';
-}
-
-bool DesktopProtocol::base64_decode(const char* in, uint8_t* out,
-                                     size_t* out_len, size_t out_cap) {
-    static const char table[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    auto index_of = [](char c) -> int {
-        if (c >= 'A' && c <= 'Z') return c - 'A';
-        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-        if (c >= '0' && c <= '9') return c - '0' + 52;
-        if (c == '+') return 62;
-        if (c == '/') return 63;
-        return -1;
-    };
-    (void)table;
-
-    size_t in_len = std::strlen(in);
-    *out_len = 0;
-
-    // Input length must be a multiple of 4
-    if (in_len % 4 != 0) return false;
-
-    for (size_t i = 0; i < in_len; i += 4) {
-        int a = index_of(in[i]);
-        int b = index_of(in[i + 1]);
-        int c = (in[i + 2] == '=') ? 0 : index_of(in[i + 2]);
-        int d = (in[i + 3] == '=') ? 0 : index_of(in[i + 3]);
-
-        if (a < 0 || b < 0) return false;
-        if (in[i + 2] != '=' && c < 0) return false;
-        if (in[i + 3] != '=' && d < 0) return false;
-
-        if (*out_len < out_cap) out[(*out_len)++] = (uint8_t)((a << 2) | (b >> 4));
-        if (in[i + 2] != '=') {
-            if (*out_len < out_cap) out[(*out_len)++] = (uint8_t)((b << 4) | (c >> 2));
-        }
-        if (in[i + 3] != '=') {
-            if (*out_len < out_cap) out[(*out_len)++] = (uint8_t)((c << 6) | d);
-        }
-    }
-    return true;
-}
+// -- Encoding helpers ---------------------------------------------------------
 
 uint32_t DesktopProtocol::crc32_update(uint32_t crc, const uint8_t* data, size_t len) {
     for (size_t i = 0; i < len; i++) {
@@ -954,4 +1305,45 @@ uint32_t DesktopProtocol::crc32_update(uint32_t crc, const uint8_t* data, size_t
             crc = (crc & 1u) ? (crc >> 1) ^ 0xEDB88320u : (crc >> 1);
     }
     return crc;
+}
+
+void DesktopProtocol::hex_encode(const uint8_t* data, size_t len, char* out, size_t out_size) {
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    if (out == nullptr || out_size == 0) {
+        return;
+    }
+
+    size_t write = 0;
+    for (size_t i = 0; data != nullptr && i < len && write + 2 < out_size; ++i) {
+        out[write++] = kHex[(data[i] >> 4) & 0x0F];
+        out[write++] = kHex[data[i] & 0x0F];
+    }
+    out[write] = '\0';
+}
+
+bool DesktopProtocol::hex_decode(const char* hex, uint8_t* out, size_t out_size, uint16_t* out_len) {
+    if (out_len != nullptr) {
+        *out_len = 0;
+    }
+    if (hex == nullptr || out == nullptr || out_len == nullptr) {
+        return false;
+    }
+
+    const size_t len = std::strlen(hex);
+    if ((len % 2) != 0 || (len / 2) > out_size) {
+        return false;
+    }
+
+    size_t write = 0;
+    for (size_t i = 0; i < len; i += 2) {
+        const int hi = from_hex(hex[i]);
+        const int lo = from_hex(hex[i + 1]);
+        if (hi < 0 || lo < 0) {
+            return false;
+        }
+        out[write++] = static_cast<uint8_t>((hi << 4) | lo);
+    }
+
+    *out_len = static_cast<uint16_t>(write);
+    return true;
 }

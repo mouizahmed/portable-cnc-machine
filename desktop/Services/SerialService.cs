@@ -12,16 +12,42 @@ namespace PortableCncApp.Services;
 /// </summary>
 public sealed class SerialService : IDisposable
 {
+    private const byte TransferFrameMarker = 0x7E;
+    private const int TransferFrameHeaderSize = 9;
+    private const int MaxTransferPayloadSize = 256;
+
+    public readonly record struct TransferFrame(byte FrameType, byte TransferId, byte Flags, uint Sequence, byte[] Payload);
+
+    private enum ReceiveMode
+    {
+        Idle,
+        Line,
+        FrameHeader,
+        FrameBody
+    }
+
     private static readonly TimeSpan StartupErrorGracePeriod = TimeSpan.FromSeconds(2);
+    private readonly object _readSync = new();
+    private readonly object _writeSync = new();
     private SerialPort? _port;
     private readonly StringBuilder _lineBuffer = new();
+    private readonly byte[] _frameHeader = new byte[TransferFrameHeaderSize];
+    private readonly byte[] _frameBody = new byte[MaxTransferPayloadSize + sizeof(uint)];
     private DateTime _connectedAtUtc = DateTime.MinValue;
+    private ReceiveMode _receiveMode = ReceiveMode.Idle;
+    private int _frameHeaderBytesRead;
+    private int _frameBodyBytesRead;
+    private int _frameExpectedBodyBytes;
+    private ushort _framePayloadLength;
 
     public bool IsConnected => _port?.IsOpen == true;
     public string? PortName => _port?.PortName;
 
     /// <summary>Fired on the UI thread for every complete line received from the device.</summary>
     public event Action<string>? LineReceived;
+
+    /// <summary>Fired on the UI thread for each validated transfer frame received from the device.</summary>
+    public event Action<TransferFrame>? FrameReceived;
 
     /// <summary>Fired on the UI thread when a serial error occurs.</summary>
     public event Action<string>? ErrorOccurred;
@@ -39,7 +65,7 @@ public sealed class SerialService : IDisposable
                 // but forcing RTS high has proven destabilizing on reopen.
                 DtrEnable = true,
                 RtsEnable = false,
-                WriteTimeout = 1000
+                WriteTimeout = 5000
             };
 
             _port.DataReceived += OnDataReceived;
@@ -72,7 +98,44 @@ public sealed class SerialService : IDisposable
         if (!IsConnected) return;
         try
         {
-            _port!.Write(command + "\n");
+            lock (_writeSync)
+            {
+                _port!.Write(command + "\n");
+            }
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.Message;
+            Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke(msg));
+        }
+    }
+
+    public void SendFrame(byte frameType, byte transferId, uint sequence, ReadOnlySpan<byte> payload)
+    {
+        if (!IsConnected) return;
+        if (payload.Length > MaxTransferPayloadSize)
+            throw new ArgumentOutOfRangeException(nameof(payload), $"Payload exceeds {MaxTransferPayloadSize} bytes.");
+
+        try
+        {
+            byte[] buffer = new byte[1 + TransferFrameHeaderSize + payload.Length + sizeof(uint)];
+            int offset = 0;
+            buffer[offset++] = TransferFrameMarker;
+            buffer[offset++] = frameType;
+            buffer[offset++] = transferId;
+            buffer[offset++] = 0; // flags/reserved
+            WriteUInt32LittleEndian(buffer, ref offset, sequence);
+            WriteUInt16LittleEndian(buffer, ref offset, (ushort)payload.Length);
+            payload.CopyTo(buffer.AsSpan(offset, payload.Length));
+            offset += payload.Length;
+            uint crc = ComputeCrc32(buffer.AsSpan(1, TransferFrameHeaderSize + payload.Length));
+            WriteUInt32LittleEndian(buffer, ref offset, crc);
+
+            lock (_writeSync)
+            {
+                _port!.BaseStream.Write(buffer, 0, buffer.Length);
+                _port.BaseStream.Flush();
+            }
         }
         catch (Exception ex)
         {
@@ -87,7 +150,10 @@ public sealed class SerialService : IDisposable
         if (!IsConnected) return;
         try
         {
-            _port!.BaseStream.WriteByte(b);
+            lock (_writeSync)
+            {
+                _port!.BaseStream.WriteByte(b);
+            }
         }
         catch (Exception ex)
         {
@@ -100,22 +166,17 @@ public sealed class SerialService : IDisposable
     {
         try
         {
-            var data = _port!.ReadExisting();
-            foreach (var ch in data)
+            lock (_readSync)
             {
-                if (ch == '\n')
+                int bytesToRead = _port!.BytesToRead;
+                if (bytesToRead <= 0)
+                    return;
+
+                byte[] buffer = new byte[bytesToRead];
+                int read = _port.Read(buffer, 0, buffer.Length);
+                for (int index = 0; index < read; index++)
                 {
-                    var line = _lineBuffer.ToString().TrimEnd('\r');
-                    _lineBuffer.Clear();
-                    if (line.Length > 0)
-                    {
-                        var captured = line;
-                        Dispatcher.UIThread.Post(() => LineReceived?.Invoke(captured));
-                    }
-                }
-                else
-                {
-                    _lineBuffer.Append(ch);
+                    ProcessIncomingByte(buffer[index]);
                 }
             }
         }
@@ -124,6 +185,124 @@ public sealed class SerialService : IDisposable
             var msg = ex.Message;
             Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke(msg));
         }
+    }
+
+    private void ProcessIncomingByte(byte value)
+    {
+        switch (_receiveMode)
+        {
+            case ReceiveMode.Idle:
+                if (value == TransferFrameMarker)
+                {
+                    ResetFrameParse();
+                    _receiveMode = ReceiveMode.FrameHeader;
+                }
+                else if (value == (byte)'@')
+                {
+                    _lineBuffer.Clear();
+                    _lineBuffer.Append('@');
+                    _receiveMode = ReceiveMode.Line;
+                }
+                break;
+
+            case ReceiveMode.Line:
+                if (value == (byte)'\r')
+                {
+                    return;
+                }
+                if (value == (byte)'\n')
+                {
+                    var line = _lineBuffer.ToString();
+                    _lineBuffer.Clear();
+                    _receiveMode = ReceiveMode.Idle;
+                    if (line.Length > 0)
+                    {
+                        Dispatcher.UIThread.Post(() => LineReceived?.Invoke(line));
+                    }
+                    return;
+                }
+
+                _lineBuffer.Append((char)value);
+                break;
+
+            case ReceiveMode.FrameHeader:
+                _frameHeader[_frameHeaderBytesRead++] = value;
+                if (_frameHeaderBytesRead < TransferFrameHeaderSize)
+                    return;
+
+                _framePayloadLength = ReadUInt16LittleEndian(_frameHeader, 7);
+                if (_framePayloadLength > MaxTransferPayloadSize)
+                {
+                    ResetReceiveState();
+                    return;
+                }
+
+                _frameExpectedBodyBytes = _framePayloadLength + sizeof(uint);
+                _frameBodyBytesRead = 0;
+                _receiveMode = ReceiveMode.FrameBody;
+                break;
+
+            case ReceiveMode.FrameBody:
+                if (_frameBodyBytesRead >= _frameBody.Length)
+                {
+                    ResetReceiveState();
+                    return;
+                }
+
+                _frameBody[_frameBodyBytesRead++] = value;
+                if (_frameBodyBytesRead < _frameExpectedBodyBytes)
+                    return;
+
+                CompleteFrame();
+                break;
+        }
+    }
+
+    private void CompleteFrame()
+    {
+        uint expectedCrc = ReadUInt32LittleEndian(_frameBody, _framePayloadLength);
+
+        byte[] crcBuffer = new byte[TransferFrameHeaderSize + _framePayloadLength];
+        Buffer.BlockCopy(_frameHeader, 0, crcBuffer, 0, TransferFrameHeaderSize);
+        if (_framePayloadLength > 0)
+        {
+            Buffer.BlockCopy(_frameBody, 0, crcBuffer, TransferFrameHeaderSize, _framePayloadLength);
+        }
+
+        if (ComputeCrc32(crcBuffer) == expectedCrc)
+        {
+            byte[] payload = new byte[_framePayloadLength];
+            if (_framePayloadLength > 0)
+            {
+                Buffer.BlockCopy(_frameBody, 0, payload, 0, _framePayloadLength);
+            }
+
+            var frame = new TransferFrame(
+                FrameType: _frameHeader[0],
+                TransferId: _frameHeader[1],
+                Flags: _frameHeader[2],
+                Sequence: ReadUInt32LittleEndian(_frameHeader, 3),
+                Payload: payload);
+
+            Dispatcher.UIThread.Post(() => FrameReceived?.Invoke(frame));
+        }
+
+        ResetReceiveState();
+    }
+
+    private void ResetFrameParse()
+    {
+        _frameHeaderBytesRead = 0;
+        _frameBodyBytesRead = 0;
+        _frameExpectedBodyBytes = 0;
+        _framePayloadLength = 0;
+    }
+
+    private void ResetReceiveState()
+    {
+        _receiveMode = ReceiveMode.Idle;
+        _lineBuffer.Clear();
+        ResetFrameParse();
     }
 
     public void NotifyPortRemoved(string portName)
@@ -152,7 +331,7 @@ public sealed class SerialService : IDisposable
             _port = null;
         }
         _connectedAtUtc = DateTime.MinValue;
-        _lineBuffer.Clear();
+        ResetReceiveState();
     }
 
     private bool IsWithinStartupErrorGrace()
@@ -177,4 +356,39 @@ public sealed class SerialService : IDisposable
     }
 
     public void Dispose() => CleanupPort();
+
+    private static void WriteUInt16LittleEndian(byte[] buffer, ref int offset, ushort value)
+    {
+        buffer[offset++] = (byte)(value & 0xFF);
+        buffer[offset++] = (byte)(value >> 8);
+    }
+
+    private static void WriteUInt32LittleEndian(byte[] buffer, ref int offset, uint value)
+    {
+        buffer[offset++] = (byte)(value & 0xFF);
+        buffer[offset++] = (byte)((value >> 8) & 0xFF);
+        buffer[offset++] = (byte)((value >> 16) & 0xFF);
+        buffer[offset++] = (byte)((value >> 24) & 0xFF);
+    }
+
+    private static ushort ReadUInt16LittleEndian(byte[] buffer, int offset)
+        => (ushort)(buffer[offset] | (buffer[offset + 1] << 8));
+
+    private static uint ReadUInt32LittleEndian(byte[] buffer, int offset)
+        => (uint)(buffer[offset]
+                | (buffer[offset + 1] << 8)
+                | (buffer[offset + 2] << 16)
+                | (buffer[offset + 3] << 24));
+
+    private static uint ComputeCrc32(ReadOnlySpan<byte> data)
+    {
+        uint crc = 0xFFFFFFFFu;
+        for (int index = 0; index < data.Length; index++)
+        {
+            crc ^= data[index];
+            for (int bit = 0; bit < 8; bit++)
+                crc = (crc & 1u) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+        }
+        return ~crc;
+    }
 }

@@ -1,4 +1,4 @@
-#include "app/machine/machine_fsm.h"
+﻿#include "app/machine/machine_fsm.h"
 
 MachineFsm::MachineFsm() = default;
 
@@ -65,10 +65,10 @@ bool MachineFsm::handle_grbl_idle() {
         return transition(MachineOperationState::Idle);
     }
     if (job_stream_complete_) {
-        // job complete â€” caller will emit @EVENT JOB_COMPLETE
+// job complete caller will emit @EVENT JOB_COMPLETE
         return transition(MachineOperationState::Idle);
     }
-    // Between motion segments â€” stay
+// Between motion segments stay
     return false;
 }
 
@@ -122,7 +122,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
         return changed;
     }
 
-    // E-stop GPIO â€” handled in almost any state
+// E-stop GPIO handled in almost any state
     if (ev == MachineEvent::HwEstopAsserted) {
         hw_estop_active_ = true;
         if (state_ != MachineOperationState::Estop)
@@ -137,7 +137,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
 
     switch (state_) {
 
-        // â”€â”€ BOOTING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// BOOTING
         case MachineOperationState::Booting:
             switch (ev) {
                 case MachineEvent::TeensyConnected:
@@ -154,7 +154,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ SYNCING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// SYNCING
         case MachineOperationState::Syncing:
             switch (ev) {
                 case MachineEvent::GrblIdle:        return transition(MachineOperationState::Idle);
@@ -183,16 +183,12 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ TEENSY_DISCONNECTED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// TEENSY_DISCONNECTED
         case MachineOperationState::TeensyDisconnected:
             switch (ev) {
                 case MachineEvent::TeensyConnected:
                     teensy_connected_ = true;
                     return transition(MachineOperationState::Syncing);
-                case MachineEvent::FileUploadCmd:
-                    if (!sd_mounted_) return false;
-                    upload_active_ = true;
-                    return transition(MachineOperationState::Uploading);
                 case MachineEvent::JobLoaded:
                     if (job_loaded_) return false;
                     job_loaded_ = true; return true;
@@ -202,7 +198,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ IDLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// IDLE
         case MachineOperationState::Idle:
             switch (ev) {
                 case MachineEvent::HomeCmd:
@@ -214,10 +210,6 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                     if (!job_loaded_ || !teensy_connected_ || !all_axes_homed_) return false;
                     job_session_active_ = true;
                     return transition(MachineOperationState::Starting);
-                case MachineEvent::FileUploadCmd:
-                    if (!sd_mounted_) return false;
-                    upload_active_ = true;
-                    return transition(MachineOperationState::Uploading);
                 case MachineEvent::TeensyDisconnected:
                     teensy_connected_ = false;
                     return transition(MachineOperationState::TeensyDisconnected);
@@ -234,7 +226,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ HOMING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// HOMING
         case MachineOperationState::Homing:
             switch (ev) {
                 case MachineEvent::GrblIdle:
@@ -254,7 +246,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ JOG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// JOG
         case MachineOperationState::Jog:
             switch (ev) {
                 case MachineEvent::GrblIdle:
@@ -273,7 +265,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ STARTING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// STARTING
         case MachineOperationState::Starting:
             switch (ev) {
                 case MachineEvent::GrblCycle:
@@ -297,7 +289,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ RUNNING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// RUNNING
         case MachineOperationState::Running:
             switch (ev) {
                 case MachineEvent::GrblIdle:
@@ -328,7 +320,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ HOLD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// HOLD
         case MachineOperationState::Hold:
             switch (ev) {
                 case MachineEvent::GrblHoldComplete:
@@ -356,7 +348,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ FAULT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// FAULT
         case MachineOperationState::Fault:
             switch (ev) {
                 case MachineEvent::ResetCmd:
@@ -377,7 +369,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ COMMS_FAULT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// COMMS_FAULT
         case MachineOperationState::CommsFault:
             switch (ev) {
                 case MachineEvent::TeensyConnected:
@@ -386,7 +378,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ ESTOP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ESTOP
         case MachineOperationState::Estop:
             switch (ev) {
                 case MachineEvent::ResetCmd:
@@ -404,7 +396,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                 default: return false;
             }
 
-        // â”€â”€ UPLOADING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// UPLOADING
         case MachineOperationState::Uploading:
             switch (ev) {
                 case MachineEvent::UploadComplete:
@@ -415,7 +407,7 @@ bool MachineFsm::handle_event(MachineEvent ev) {
                         return transition(MachineOperationState::TeensyDisconnected);
                     return transition(MachineOperationState::Idle);
                 case MachineEvent::SdRemoved:
-                    // SD removed during upload â€” forced abort
+// SD removed during upload forced abort
                     upload_active_ = false;
                     sd_mounted_    = false;
                     job_loaded_  = false;

@@ -1086,7 +1086,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         string okToken,
         Action send,
         TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool disconnectOnTimeout = true)
     {
         if (PiConnectionStatus != ConnectionStatus.Connected)
             return new ControllerCommandResult(ControllerCommandResultKind.Error, "Controller is disconnected.");
@@ -1126,7 +1127,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                NotifyControllerUnresponsive();
+                if (disconnectOnTimeout)
+                    NotifyControllerUnresponsive();
                 return new ControllerCommandResult(
                     ControllerCommandResultKind.Timeout,
                     "Controller did not respond within the timeout period.");

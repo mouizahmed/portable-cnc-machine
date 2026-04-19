@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "core/state_types.h"
 
 class MachineFsm {
@@ -42,7 +42,7 @@ private:
     bool upload_active_       = false;
     bool hw_estop_active_     = false;
 
-    // Transition helpers â€” return true if state actually changed
+// Transition helpers return true if state actually changed
     bool transition(MachineOperationState next);
 
     // Per-state entry cleanup (clears stale flags per STATE_MACHINE.md)

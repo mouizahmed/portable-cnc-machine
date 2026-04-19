@@ -1,5 +1,6 @@
-#pragma once
+﻿#pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "app/jog/jog_state_machine.h"
@@ -16,6 +17,12 @@ extern "C" {
 
 class DesktopProtocol {
 public:
+    static constexpr size_t kTransferRawChunkSize = 96;
+    static constexpr uint8_t kUploadDataFrameType = 1;
+    static constexpr uint8_t kUploadAckFrameType = 2;
+    static constexpr uint8_t kDownloadDataFrameType = 3;
+    static constexpr uint8_t kDownloadAckFrameType = 4;
+
     DesktopProtocol(UsbCdcTransport& transport,
                     MachineFsm& msm,
                     JogStateMachine& jogs,
@@ -49,7 +56,7 @@ public:
         return true;
     }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Outbound protocol messages Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // -- Outbound protocol messages -------------------------------------------
 
     // Emit current @STATE, @CAPS, @SAFETY (call after any MSM transition)
     void emit_state_update(bool mark_changed = true);
@@ -88,11 +95,13 @@ public:
     bool unload_job();
     bool restore_persisted_job();
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Storage event callbacks (called by PortableCncApp) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // -- Storage event callbacks (called by PortableCncApp) -------------------
     void on_sd_mounted();
     void on_sd_removed();
 
 private:
+    static constexpr uint32_t kDownloadResendIntervalMs = 750;
+
     UsbCdcTransport& transport_;
     MachineFsm& msm_;
     JogStateMachine& jogs_;
@@ -101,57 +110,77 @@ private:
     StorageService& storage_;
     SdSpiCard& sd_;
 
-    char line_[512];  // must fit largest line: @CHUNK SEQ=n DATA=<256 base64 chars> ~280 chars
+    char line_[256];
 
-    // Chunk decode buffers Ã¢â‚¬â€ kept as members (not stack locals) to avoid
+    // Chunk decode buffers -- kept as members (not stack locals) to avoid
     // overflowing the default 2 KB Pico stack inside the deep f_write() call chain.
-    char     chunk_b64_[512];
-    uint8_t  chunk_decoded_[384];
 
-    // Download encode buffers Ã¢â‚¬â€ kept as members to avoid stack pressure.
-    char     chunk_encode_[260];   // base64 output: 192 raw bytes Ã¢â€ â€™ 256 chars + null
-    uint8_t  chunk_raw_[192];      // raw file read buffer
+    // Download encode buffers -- kept as members to avoid stack pressure.
+    uint8_t  chunk_raw_[kTransferRawChunkSize];
+    char     chunk_hex_[kTransferRawChunkSize * 2 + 1];
 
     // Set to true whenever emit_state_update() is called so the main loop can
     // trigger a touch screen re-render on protocol-driven state changes.
     bool state_changed_ = false;
     bool file_list_changed_ = false;
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Upload state Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // -- Upload state ----------------------------------------------------------
     struct UploadState {
         bool     active         = false;
         char     name[64]       = {};
         uint32_t expected_size  = 0;
         uint32_t bytes_written  = 0;
-        int      expected_seq   = 0;
+        uint32_t expected_seq   = 0;
         uint32_t crc_running    = 0xFFFFFFFFu;
+        uint8_t  transfer_id    = 0;
+        bool     last_ack_valid = false;
+        uint32_t last_ack_seq   = 0;
+        uint32_t last_ack_bytes = 0;
         FIL      file           = {};
+        bool     completion_valid = false;
+        char     completion_name[64] = {};
+        uint32_t completion_size = 0;
+        uint32_t completion_crc  = 0;
+        uint8_t  completion_transfer_id = 0;
     } upload_;
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Download state Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Download state
     struct DownloadState {
-        bool     active       = false;
-        char     name[64]     = {};
-        uint32_t total_size   = 0;
-        uint32_t bytes_sent   = 0;
-        uint32_t crc_running  = 0xFFFFFFFFu;
-        int      next_seq     = 0;
-        FIL      file         = {};
+        bool     active         = false;
+        char     name[64]       = {};
+        uint32_t total_size     = 0;
+        uint32_t bytes_sent     = 0;
+        uint32_t crc_running    = 0xFFFFFFFFu;
+        uint32_t next_seq       = 0;
+        uint8_t  transfer_id    = 0;
+        FIL      file           = {};
+        bool     awaiting_ack   = false;
+        uint32_t last_chunk_seq = 0;
+        uint16_t last_chunk_len = 0;
+        uint32_t last_send_ms   = 0;
+        bool     completion_valid = false;
+        char     completion_name[64] = {};
+        uint32_t completion_crc  = 0;
+        uint32_t completion_last_seq = 0;
+        uint8_t  completion_transfer_id = 0;
     } download_;
+    uint8_t next_transfer_id_ = 1;
+    bool transfer_active() const { return upload_.active || download_.active; }
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Command dispatch Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Command dispatch
     void dispatch(const char* line);
+    void dispatch_frame(const UsbCdcTransport::FramePacket& frame);
     int16_t find_job_index_by_name(const char* name) const;
     bool try_load_job_by_index(int16_t index);
     bool try_unload_job();
 
-    // Param helpers Ã¢â‚¬â€ find "KEY=VALUE" in space-separated params string
+    // Param helpers -- find "KEY=VALUE" in space-separated params string
     // Writes value into out (null-terminated). Returns true if found.
     static bool param_get(const char* params, const char* key, char* out, size_t max);
     static uint32_t param_get_u32(const char* params, const char* key, uint32_t def = 0);
     static int      param_get_int(const char* params, const char* key, int def = 0);
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Command handlers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Command handlers
     void handle_ping();
     void handle_info();
     void handle_status();
@@ -173,20 +202,32 @@ private:
     void handle_file_unload();
     void handle_file_delete(const char* params);
     void handle_file_upload(const char* params);
-    void handle_chunk(const char* params);
+    void handle_file_upload_chunk(const char* params);
     void handle_file_upload_end(const char* params);
     void handle_file_upload_abort();
     void handle_file_download(const char* params);
-    void handle_download_ack(const char* params);
+    void handle_file_download_ack(const char* params);
+    void handle_file_download_abort();
     void send_next_download_chunk();
+    void tick_transfer_retries();
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Upload helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Upload helpers
     void upload_abort_cleanup();
+    void handle_upload_chunk_data(uint8_t transfer_id, uint32_t sequence, const uint8_t* payload, uint16_t payload_len);
+    void reset_upload_completion();
+    void reset_download_completion();
+    void send_upload_ready();
+    void send_upload_chunk_ack(uint32_t sequence, uint32_t bytes_committed);
+    void send_upload_complete();
+    void send_download_ready();
+    void send_download_complete();
+    void resend_download_chunk();
+    void send_download_chunk_line();
 
-    // Ã¢â€â‚¬Ã¢â€â‚¬ Encoding helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-    static bool base64_decode(const char* in, uint8_t* out, size_t* out_len, size_t out_cap);
-    static void base64_encode(const uint8_t* in, size_t len, char* out, size_t out_cap);
+// Encoding helpers
     static uint32_t crc32_update(uint32_t crc, const uint8_t* data, size_t len);
+    static void hex_encode(const uint8_t* data, size_t len, char* out, size_t out_size);
+    static bool hex_decode(const char* hex, uint8_t* out, size_t out_size, uint16_t* out_len);
 
     // Helper: inject MSM event and emit state update if changed
     void inject(MachineEvent ev);
