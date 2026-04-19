@@ -17,7 +17,7 @@ extern "C" {
 
 class DesktopProtocol {
 public:
-    static constexpr size_t kTransferRawChunkSize = 96;
+    static constexpr size_t kTransferRawChunkSize = UsbCdcTransport::kMaxTransferPayloadSize;
     static constexpr uint8_t kUploadDataFrameType = 1;
     static constexpr uint8_t kUploadAckFrameType = 2;
     static constexpr uint8_t kDownloadDataFrameType = 3;
@@ -117,7 +117,6 @@ private:
 
     // Download encode buffers -- kept as members to avoid stack pressure.
     uint8_t  chunk_raw_[kTransferRawChunkSize];
-    char     chunk_hex_[kTransferRawChunkSize * 2 + 1];
 
     // Set to true whenever emit_state_update() is called so the main loop can
     // trigger a touch screen re-render on protocol-driven state changes.
@@ -202,7 +201,6 @@ private:
     void handle_file_unload();
     void handle_file_delete(const char* params);
     void handle_file_upload(const char* params);
-    void handle_file_upload_chunk(const char* params);
     void handle_file_upload_end(const char* params);
     void handle_file_upload_abort();
     void handle_file_download(const char* params);
@@ -222,12 +220,9 @@ private:
     void send_download_ready();
     void send_download_complete();
     void resend_download_chunk();
-    void send_download_chunk_line();
 
 // Encoding helpers
     static uint32_t crc32_update(uint32_t crc, const uint8_t* data, size_t len);
-    static void hex_encode(const uint8_t* data, size_t len, char* out, size_t out_size);
-    static bool hex_decode(const char* hex, uint8_t* out, size_t out_size, uint16_t* out_len);
 
     // Helper: inject MSM event and emit state update if changed
     void inject(MachineEvent ev);

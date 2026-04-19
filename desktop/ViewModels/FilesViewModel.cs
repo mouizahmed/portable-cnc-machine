@@ -729,7 +729,7 @@ public sealed class FilesViewModel : PageViewModelBase
 
                         if (packet.Seq < expectedSeq)
                         {
-                            MainVm.Protocol.SendDownloadAck(transferId, packet.Seq);
+                            MainVm.Protocol.SendDownloadAckFrame(transferId, packet.Seq);
                             break;
                         }
 
@@ -744,7 +744,7 @@ public sealed class FilesViewModel : PageViewModelBase
                         ToolpathStatusMessage = totalBytes > 0
                             ? $"Downloading preview: {fileName} ({(int)(100.0 * bytesReceived / totalBytes)}%)"
                             : $"Downloading preview: {fileName}";
-                        MainVm.Protocol.SendDownloadAck(transferId, packet.Seq);
+                        MainVm.Protocol.SendDownloadAckFrame(transferId, packet.Seq);
                         break;
                     }
 
@@ -1055,7 +1055,7 @@ public sealed class FilesViewModel : PageViewModelBase
                 UploadAck chunkAck;
                 while (true)
                 {
-                    MainVm!.Protocol.SendUploadChunk(transferId, (uint)seq, buffer.AsSpan(0, length));
+                    MainVm!.Protocol.SendUploadDataFrame(transferId, (uint)seq, buffer.AsSpan(0, length));
                     try
                     {
                         chunkAck = await ReadUploadChunkAckAsync(localUploadChannel, TransferChunkTimeout, ct, transferId, (uint)seq);

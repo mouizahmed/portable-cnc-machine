@@ -85,7 +85,6 @@ void DesktopProtocol::dispatch(const char* line) {
     else if (std::strcmp(verb, "@FILE_UNLOAD") == 0) { handle_file_unload(); }
     else if (std::strcmp(verb, "@FILE_DELETE")   == 0) { handle_file_delete(params); }
     else if (std::strcmp(verb, "@FILE_UPLOAD") == 0) { handle_file_upload(params); }
-    else if (std::strcmp(verb, "@FILE_UPLOAD_CHUNK") == 0) { handle_file_upload_chunk(params); }
     else if (std::strcmp(verb, "@FILE_UPLOAD_END")   == 0) { handle_file_upload_end(params); }
     else if (std::strcmp(verb, "@FILE_UPLOAD_ABORT") == 0) { handle_file_upload_abort(); }
     else if (std::strcmp(verb, "@FILE_DOWNLOAD") == 0) { handle_file_download(params); }
@@ -265,10 +264,12 @@ void DesktopProtocol::send_upload_ready() {
 }
 
 void DesktopProtocol::send_upload_chunk_ack(uint32_t sequence, uint32_t bytes_committed) {
-    transport_.send_fmt("@OK FILE_UPLOAD_CHUNK ID=%u SEQ=%lu BYTES=%lu",
-                        static_cast<unsigned int>(upload_.transfer_id),
-                        static_cast<unsigned long>(sequence),
-                        static_cast<unsigned long>(bytes_committed));
+    uint8_t ack_payload[sizeof(uint32_t)]{};
+    ack_payload[0] = static_cast<uint8_t>(bytes_committed & 0xFFu);
+    ack_payload[1] = static_cast<uint8_t>((bytes_committed >> 8) & 0xFFu);
+    ack_payload[2] = static_cast<uint8_t>((bytes_committed >> 16) & 0xFFu);
+    ack_payload[3] = static_cast<uint8_t>((bytes_committed >> 24) & 0xFFu);
+    transport_.send_frame(kUploadAckFrameType, upload_.transfer_id, sequence, ack_payload, sizeof(ack_payload));
 }
 
 void DesktopProtocol::send_upload_complete() {
@@ -306,20 +307,12 @@ void DesktopProtocol::resend_download_chunk() {
         return;
     }
 
-    send_download_chunk_line();
+    transport_.send_frame(kDownloadDataFrameType,
+                          download_.transfer_id,
+                          download_.last_chunk_seq,
+                          chunk_raw_,
+                          download_.last_chunk_len);
     download_.last_send_ms = to_ms_since_boot(get_absolute_time());
-}
-
-void DesktopProtocol::send_download_chunk_line() {
-    if (download_.last_chunk_len == 0) {
-        return;
-    }
-
-    hex_encode(chunk_raw_, download_.last_chunk_len, chunk_hex_, sizeof(chunk_hex_));
-    transport_.send_fmt("@FILE_DOWNLOAD_CHUNK ID=%u SEQ=%lu HEX=%s",
-                        static_cast<unsigned int>(download_.transfer_id),
-                        static_cast<unsigned long>(download_.last_chunk_seq),
-                        chunk_hex_);
 }
 
 void DesktopProtocol::tick_transfer_retries() {
@@ -927,22 +920,6 @@ void DesktopProtocol::handle_file_upload(const char* params) {
     send_upload_ready();
 }
 
-void DesktopProtocol::handle_file_upload_chunk(const char* params) {
-    const uint32_t transfer_id = param_get_u32(params, "ID", 0);
-    const uint32_t sequence = param_get_u32(params, "SEQ", 0xFFFFFFFFu);
-    char hex[kTransferRawChunkSize * 2 + 1] = {};
-    uint16_t payload_len = 0;
-
-    if (!param_get(params, "HEX", hex, sizeof(hex)) ||
-        !hex_decode(hex, chunk_raw_, sizeof(chunk_raw_), &payload_len)) {
-        transport_.send_fmt("@ERROR CHUNK SEQ=%lu REASON=BAD_HEX",
-                            static_cast<unsigned long>(sequence));
-        return;
-    }
-
-    handle_upload_chunk_data(static_cast<uint8_t>(transfer_id), sequence, chunk_raw_, payload_len);
-}
-
 void DesktopProtocol::handle_file_upload_end(const char* params) {
     if (!upload_.active) {
         char crc_str[16] = {};
@@ -1147,7 +1124,11 @@ void DesktopProtocol::send_next_download_chunk() {
     download_.awaiting_ack = true;
     download_.last_send_ms = to_ms_since_boot(get_absolute_time());
 
-    send_download_chunk_line();
+    transport_.send_frame(kDownloadDataFrameType,
+                          download_.transfer_id,
+                          download_.last_chunk_seq,
+                          chunk_raw_,
+                          static_cast<uint16_t>(bytes_read));
     download_.next_seq++;
 }
 
@@ -1305,45 +1286,4 @@ uint32_t DesktopProtocol::crc32_update(uint32_t crc, const uint8_t* data, size_t
             crc = (crc & 1u) ? (crc >> 1) ^ 0xEDB88320u : (crc >> 1);
     }
     return crc;
-}
-
-void DesktopProtocol::hex_encode(const uint8_t* data, size_t len, char* out, size_t out_size) {
-    static constexpr char kHex[] = "0123456789ABCDEF";
-    if (out == nullptr || out_size == 0) {
-        return;
-    }
-
-    size_t write = 0;
-    for (size_t i = 0; data != nullptr && i < len && write + 2 < out_size; ++i) {
-        out[write++] = kHex[(data[i] >> 4) & 0x0F];
-        out[write++] = kHex[data[i] & 0x0F];
-    }
-    out[write] = '\0';
-}
-
-bool DesktopProtocol::hex_decode(const char* hex, uint8_t* out, size_t out_size, uint16_t* out_len) {
-    if (out_len != nullptr) {
-        *out_len = 0;
-    }
-    if (hex == nullptr || out == nullptr || out_len == nullptr) {
-        return false;
-    }
-
-    const size_t len = std::strlen(hex);
-    if ((len % 2) != 0 || (len / 2) > out_size) {
-        return false;
-    }
-
-    size_t write = 0;
-    for (size_t i = 0; i < len; i += 2) {
-        const int hi = from_hex(hex[i]);
-        const int lo = from_hex(hex[i + 1]);
-        if (hi < 0 || lo < 0) {
-            return false;
-        }
-        out[write++] = static_cast<uint8_t>((hi << 4) | lo);
-    }
-
-    *out_len = static_cast<uint16_t>(write);
-    return true;
 }

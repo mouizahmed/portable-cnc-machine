@@ -18,7 +18,7 @@ UsbCdcTransport::PacketKind UsbCdcTransport::poll(char* line_buf, size_t line_ma
             case ReceiveMode::Idle:
                 if (byte == kTransferFrameMarker) {
                     reset_frame_parse();
-                    mode_ = ReceiveMode::FrameHeader;
+                    mode_ = ReceiveMode::FramePacket;
                 } else if (byte == '@') {
                     line_len_ = 0;
                     line_[line_len_++] = '@';
@@ -49,50 +49,48 @@ UsbCdcTransport::PacketKind UsbCdcTransport::poll(char* line_buf, size_t line_ma
                 }
                 break;
 
-            case ReceiveMode::FrameHeader:
-                frame_header_[frame_header_len_++] = byte;
-                if (frame_header_len_ < kTransferFrameHeaderSize) {
+            case ReceiveMode::FramePacket:
+                if (byte != kTransferFrameMarker) {
+                    if (byte == kTransferFrameEscape) {
+                        mode_ = ReceiveMode::FrameEscape;
+                        break;
+                    }
+                    append_frame_packet_byte(byte);
                     break;
                 }
 
-                frame_payload_len_ = read_u16_le(frame_header_ + 7);
-                if (frame_payload_len_ > kMaxTransferPayloadSize) {
-                    reset_receive_state();
-                    break;
-                }
-
-                frame_expected_body_len_ = frame_payload_len_ + sizeof(uint32_t);
-                frame_body_len_ = 0;
-                mode_ = ReceiveMode::FrameBody;
-                break;
-
-            case ReceiveMode::FrameBody:
-                if (frame_body_len_ >= sizeof(frame_body_)) {
-                    reset_receive_state();
-                    break;
-                }
-
-                frame_body_[frame_body_len_++] = byte;
-                if (frame_body_len_ < frame_expected_body_len_) {
+                if (frame_packet_len_ == 0) {
+                    reset_frame_parse();
                     break;
                 }
 
                 {
-                    const uint32_t expected_crc = read_u32_le(frame_body_ + frame_payload_len_);
-                    uint8_t crc_buffer[kTransferFrameHeaderSize + kMaxTransferPayloadSize]{};
-                    std::memcpy(crc_buffer, frame_header_, kTransferFrameHeaderSize);
-                    if (frame_payload_len_ > 0) {
-                        std::memcpy(crc_buffer + kTransferFrameHeaderSize, frame_body_, frame_payload_len_);
+                    const int decoded_len = cobs_decode(frame_packet_,
+                                                        frame_packet_len_,
+                                                        decoded_frame_,
+                                                        sizeof(decoded_frame_));
+                    if (decoded_len < static_cast<int>(kTransferFrameHeaderSize + sizeof(uint32_t))) {
+                        reset_receive_state();
+                        break;
                     }
 
-                    if (crc32(crc_buffer, kTransferFrameHeaderSize + frame_payload_len_) == expected_crc) {
-                        frame.type = frame_header_[0];
-                        frame.transfer_id = frame_header_[1];
-                        frame.flags = frame_header_[2];
-                        frame.seq = read_u32_le(frame_header_ + 3);
-                        frame.payload_len = frame_payload_len_;
-                        if (frame_payload_len_ > 0) {
-                            std::memcpy(frame.payload, frame_body_, frame_payload_len_);
+                    const uint16_t payload_len = read_u16_le(decoded_frame_ + 7);
+                    const size_t expected_len = kTransferFrameHeaderSize + payload_len + sizeof(uint32_t);
+                    if (payload_len > kMaxTransferPayloadSize ||
+                        static_cast<size_t>(decoded_len) != expected_len) {
+                        reset_receive_state();
+                        break;
+                    }
+
+                    const uint32_t expected_crc = read_u32_le(decoded_frame_ + kTransferFrameHeaderSize + payload_len);
+                    if (crc32(decoded_frame_, kTransferFrameHeaderSize + payload_len) == expected_crc) {
+                        frame.type = decoded_frame_[0];
+                        frame.transfer_id = decoded_frame_[1];
+                        frame.flags = decoded_frame_[2];
+                        frame.seq = read_u32_le(decoded_frame_ + 3);
+                        frame.payload_len = payload_len;
+                        if (payload_len > 0) {
+                            std::memcpy(frame.payload, decoded_frame_ + kTransferFrameHeaderSize, payload_len);
                         }
                         reset_receive_state();
                         return PacketKind::Frame;
@@ -100,6 +98,13 @@ UsbCdcTransport::PacketKind UsbCdcTransport::poll(char* line_buf, size_t line_ma
                 }
 
                 reset_receive_state();
+                break;
+
+            case ReceiveMode::FrameEscape:
+                append_frame_packet_byte(static_cast<uint8_t>(byte ^ kTransferFrameEscapeXor));
+                if (mode_ == ReceiveMode::FrameEscape) {
+                    mode_ = ReceiveMode::FramePacket;
+                }
                 break;
         }
     }
@@ -125,25 +130,46 @@ void UsbCdcTransport::send_frame(uint8_t type, uint8_t transfer_id, uint32_t seq
         return;
     }
 
-    uint8_t buffer[1 + kTransferFrameHeaderSize + kMaxTransferPayloadSize + sizeof(uint32_t)]{};
+    uint8_t raw[kTransferFrameHeaderSize + kMaxTransferPayloadSize + sizeof(uint32_t)]{};
+    uint8_t encoded[sizeof(raw) + 4]{};
+    uint8_t wire[1 + (sizeof(encoded) * 2) + 1]{};
     size_t offset = 0;
-    buffer[offset++] = kTransferFrameMarker;
-    buffer[offset++] = type;
-    buffer[offset++] = transfer_id;
-    buffer[offset++] = 0;
-    write_u32_le(buffer + offset, seq);
+    raw[offset++] = type;
+    raw[offset++] = transfer_id;
+    raw[offset++] = 0;
+    write_u32_le(raw + offset, seq);
     offset += sizeof(uint32_t);
-    write_u16_le(buffer + offset, payload_len);
+    write_u16_le(raw + offset, payload_len);
     offset += sizeof(uint16_t);
     if (payload_len > 0 && payload != nullptr) {
-        std::memcpy(buffer + offset, payload, payload_len);
+        std::memcpy(raw + offset, payload, payload_len);
         offset += payload_len;
     }
-    const uint32_t crc = crc32(buffer + 1, kTransferFrameHeaderSize + payload_len);
-    write_u32_le(buffer + offset, crc);
+    const uint32_t crc = crc32(raw, kTransferFrameHeaderSize + payload_len);
+    write_u32_le(raw + offset, crc);
     offset += sizeof(uint32_t);
 
-    std::fwrite(buffer, 1, offset, stdout);
+    const size_t encoded_len = cobs_encode(raw, offset, encoded, sizeof(encoded));
+    if (encoded_len == 0) {
+        return;
+    }
+
+    size_t wire_len = 0;
+    wire[wire_len++] = kTransferFrameMarker;
+    for (size_t i = 0; i < encoded_len; ++i) {
+        if (encoded[i] == kTransferFrameMarker ||
+            encoded[i] == kTransferFrameEscape ||
+            encoded[i] == '\r' ||
+            encoded[i] == '\n') {
+            wire[wire_len++] = kTransferFrameEscape;
+            wire[wire_len++] = static_cast<uint8_t>(encoded[i] ^ kTransferFrameEscapeXor);
+            continue;
+        }
+        wire[wire_len++] = encoded[i];
+    }
+    wire[wire_len++] = kTransferFrameMarker;
+
+    std::fwrite(wire, 1, wire_len, stdout);
     std::fflush(stdout);
 }
 
@@ -181,11 +207,92 @@ uint32_t UsbCdcTransport::crc32(const uint8_t* data, size_t len) {
     return ~crc;
 }
 
+size_t UsbCdcTransport::cobs_encode(const uint8_t* input, size_t input_len, uint8_t* output, size_t output_cap) {
+    if (input == nullptr || output == nullptr || output_cap == 0) {
+        return 0;
+    }
+
+    size_t read = 0;
+    size_t write = 1;
+    size_t code_index = 0;
+    uint8_t code = 1;
+
+    while (read < input_len) {
+        if (write >= output_cap) {
+            return 0;
+        }
+
+        if (input[read] == 0) {
+            output[code_index] = code;
+            code = 1;
+            code_index = write++;
+            read++;
+            continue;
+        }
+
+        output[write++] = input[read++];
+        code++;
+        if (code == 0xFF) {
+            output[code_index] = code;
+            code = 1;
+            code_index = write++;
+        }
+    }
+
+    if (code_index >= output_cap) {
+        return 0;
+    }
+    output[code_index] = code;
+    return write;
+}
+
+int UsbCdcTransport::cobs_decode(const uint8_t* input, size_t input_len, uint8_t* output, size_t output_cap) {
+    if (input == nullptr || output == nullptr) {
+        return -1;
+    }
+
+    size_t read = 0;
+    size_t write = 0;
+    while (read < input_len) {
+        const uint8_t code = input[read++];
+        if (code == 0) {
+            return -1;
+        }
+
+        const size_t copy = static_cast<size_t>(code - 1);
+        if (read + copy > input_len || write + copy > output_cap) {
+            return -1;
+        }
+
+        if (copy > 0) {
+            std::memcpy(output + write, input + read, copy);
+        }
+        read += copy;
+        write += copy;
+
+        if (code < 0xFF && read < input_len) {
+            if (write >= output_cap) {
+                return -1;
+            }
+            output[write++] = 0;
+        }
+    }
+
+    return static_cast<int>(write);
+}
+
+bool UsbCdcTransport::append_frame_packet_byte(uint8_t byte) {
+    if (frame_packet_len_ >= sizeof(frame_packet_)) {
+        reset_receive_state();
+        return false;
+    }
+
+    frame_packet_[frame_packet_len_++] = byte;
+    return true;
+}
+
 void UsbCdcTransport::reset_frame_parse() {
-    frame_header_len_ = 0;
-    frame_body_len_ = 0;
-    frame_expected_body_len_ = 0;
-    frame_payload_len_ = 0;
+    frame_packet_len_ = 0;
 }
 
 void UsbCdcTransport::reset_receive_state() {

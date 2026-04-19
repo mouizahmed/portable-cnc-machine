@@ -23,8 +23,7 @@ public readonly record struct FileDownloadComplete(byte TransferId, string Name,
 /// </summary>
 public sealed class PicoProtocolService
 {
-    public const int FileTransferChunkSize = 96;
-    public const int BinaryTransferChunkSize = FileTransferChunkSize;
+    public const int BinaryTransferChunkSize = 256;
 
     private const byte UploadDataFrameType = 1;
     private const byte UploadAckFrameType = 2;
@@ -175,14 +174,8 @@ public sealed class PicoProtocolService
     public void SendUploadDataFrame(byte transferId, uint sequence, ReadOnlySpan<byte> payload)
         => _serial.SendFrame(UploadDataFrameType, transferId, sequence, payload);
 
-    public void SendUploadChunk(byte transferId, uint sequence, ReadOnlySpan<byte> payload)
-        => Send(FormattableString.Invariant($"@FILE_UPLOAD_CHUNK ID={transferId} SEQ={sequence} HEX={Convert.ToHexString(payload)}"));
-
     public void SendDownloadAckFrame(byte transferId, uint sequence)
         => _serial.SendFrame(DownloadAckFrameType, transferId, sequence, ReadOnlySpan<byte>.Empty);
-
-    public void SendDownloadAck(byte transferId, uint sequence)
-        => Send(FormattableString.Invariant($"@FILE_DOWNLOAD_ACK ID={transferId} SEQ={sequence}"));
 
     public void SendJobStart()  => Send("@START");
     public void SendJobPause()  => Send("@PAUSE");
@@ -227,7 +220,6 @@ public sealed class PicoProtocolService
             case "@JOB":    ParseJob(parts);       break;
             case "@ERROR":  ParseError(parts);     break;
             case "@FILE":   ParseFileEntry(parts); break;
-            case "@FILE_DOWNLOAD_CHUNK": ParseDownloadChunk(parts); break;
             case "@WAIT":   ParseWait(parts);      break;
             default:
                 UnknownLineReceived?.Invoke(line);
@@ -349,13 +341,6 @@ public sealed class PicoProtocolService
                 UploadAbortedReceived?.Invoke();
                 break;
 
-            case "FILE_UPLOAD_CHUNK":
-                byte.TryParse(kv.GetValueOrDefault("ID", "0"), out var uploadChunkTransferId);
-                uint.TryParse(kv.GetValueOrDefault("SEQ", "0"), out var uploadChunkSeq);
-                uint.TryParse(kv.GetValueOrDefault("BYTES", "0"), out var uploadBytesCommitted);
-                UploadChunkAckReceived?.Invoke(uploadChunkTransferId, uploadChunkSeq, uploadBytesCommitted);
-                break;
-
             case "FILE_DOWNLOAD_READY":
                 long.TryParse(kv.GetValueOrDefault("SIZE", "0"), out var downloadSize);
                 byte.TryParse(kv.GetValueOrDefault("ID", "0"), out var downloadTransferId);
@@ -392,20 +377,6 @@ public sealed class PicoProtocolService
         var name = kv.GetValueOrDefault("NAME", parts.Length > 1 ? DecodeValue(parts[1]) : "");
         long.TryParse(kv.GetValueOrDefault("SIZE", "0"), out var size);
         FileListEntryReceived?.Invoke(name, size);
-    }
-
-    private void ParseDownloadChunk(string[] parts)
-    {
-        var kv = ParseKeyValues(parts, startIndex: 1);
-        if (!byte.TryParse(kv.GetValueOrDefault("ID", "0"), out var transferId) ||
-            !uint.TryParse(kv.GetValueOrDefault("SEQ", "0"), out var sequence) ||
-            !TryDecodeHex(kv.GetValueOrDefault("HEX", ""), out var payload))
-        {
-            DownloadFailedReceived?.Invoke("DOWNLOAD_BAD_CHUNK");
-            return;
-        }
-
-        DownloadChunkReceived?.Invoke(transferId, sequence, payload);
     }
 
     private void ParseInfo(string[] parts)
@@ -557,34 +528,6 @@ public sealed class PicoProtocolService
         {
             return value;
         }
-    }
-
-    private static bool TryDecodeHex(string hex, out byte[] payload)
-    {
-        payload = Array.Empty<byte>();
-        if (hex.Length % 2 != 0)
-            return false;
-
-        var bytes = new byte[hex.Length / 2];
-        for (int i = 0; i < bytes.Length; i++)
-        {
-            int hi = HexValue(hex[i * 2]);
-            int lo = HexValue(hex[i * 2 + 1]);
-            if (hi < 0 || lo < 0)
-                return false;
-            bytes[i] = (byte)((hi << 4) | lo);
-        }
-
-        payload = bytes;
-        return true;
-    }
-
-    private static int HexValue(char c)
-    {
-        if (c is >= '0' and <= '9') return c - '0';
-        if (c is >= 'A' and <= 'F') return c - 'A' + 10;
-        if (c is >= 'a' and <= 'f') return c - 'a' + 10;
-        return -1;
     }
 
     private static bool GetBool(Dictionary<string, string> kv, string key)
