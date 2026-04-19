@@ -1354,8 +1354,8 @@ public sealed class FilesViewModel : PageViewModelBase
 
     private async Task StopPreviewDownloadBeforeStorageCommandAsync()
     {
-        await AbortRemotePreviewDownloadAsync();
         CancelPendingPreviewDownload();
+        await AbortRemotePreviewDownloadAsync();
     }
 
     private async Task AbortRemotePreviewDownloadAsync()
