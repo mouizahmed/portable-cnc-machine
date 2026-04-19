@@ -16,6 +16,7 @@ class MachineStateMachine {
 public:
     MachineState state() const;
     bool handle_event(MachineEvent event);
+    void set_state(MachineState state);
 
 private:
     MachineState state_ = MachineState::Booting;

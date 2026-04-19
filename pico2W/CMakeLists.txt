@@ -35,6 +35,7 @@ pico_sdk_init()
 set(PICO_TINYUSB_FATFS_DIR ${PICO_SDK_PATH}/lib/tinyusb/lib/fatfs/source)
 
 add_executable(portable_cnc_machine
+    src/app/comm/pico_uart_client.cpp
     src/app/portable_cnc_app.cpp
     src/app/jog/jog_state_machine.cpp
     src/app/job/job_state_machine.cpp

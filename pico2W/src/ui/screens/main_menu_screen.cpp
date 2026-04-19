@@ -61,9 +61,14 @@ UiEventResult MainMenuScreen::handle_event(const UiEvent& event) {
                 if (controller_.primary_action() == PrimaryAction::LoadJob) {
                     return UiEventResult{true, true, NavTab::Files};
                 }
-                {
-                    const bool changed = controller_.handle_primary_action();
-                    return UiEventResult{true, false, tab(), changed, changed};
+                if (controller_.primary_action() == PrimaryAction::Start) {
+                    return UiEventResult{true, false, tab(), false, false, UiCommandType::StartJob};
+                }
+                if (controller_.primary_action() == PrimaryAction::Pause) {
+                    return UiEventResult{true, false, tab(), false, false, UiCommandType::HoldJob};
+                }
+                if (controller_.primary_action() == PrimaryAction::Resume) {
+                    return UiEventResult{true, false, tab(), false, false, UiCommandType::ResumeJob};
                 }
                 return UiEventResult{true, false, tab()};
             case HomeAction::Jog:

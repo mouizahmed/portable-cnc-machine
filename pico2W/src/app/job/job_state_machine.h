@@ -35,6 +35,7 @@ public:
     bool can_run() const;
     void clear_files();
     bool add_file(const FileEntry& entry);
+    void set_state(JobState state, int16_t selected_index = -1);
 
 private:
     std::array<FileEntry, kMaxFiles> entries_{};
