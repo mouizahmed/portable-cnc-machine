@@ -769,10 +769,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
             ? "Controller busy - please wait"
             : $"Controller busy: {reason}";
         Protocol.PongReceived    += HandlePongReceived;
-        Protocol.UnknownLineReceived += line => DiagnosticsVm?.AddLog("RX", line);
-
         // Handle serial-layer disconnect (cable pulled, port error, etc.)
-        Serial.LineReceived += _ => HandleProtocolActivity();
         Serial.ErrorOccurred += error =>
         {
             DiagnosticsVm?.AddLog("SERIAL", error);

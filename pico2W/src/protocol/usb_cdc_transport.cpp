@@ -1,6 +1,5 @@
 #include "protocol/usb_cdc_transport.h"
 
-#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 
@@ -128,20 +127,6 @@ UsbCdcTransport::PacketKind UsbCdcTransport::poll(char* line_buf, size_t line_ma
                 break;
         }
     }
-}
-
-void UsbCdcTransport::send_line(const char* text) {
-    std::puts(text);
-    std::fflush(stdout);
-}
-
-void UsbCdcTransport::send_fmt(const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    std::vprintf(fmt, args);
-    va_end(args);
-    std::putchar('\n');
-    std::fflush(stdout);
 }
 
 void UsbCdcTransport::send_frame(uint8_t type, uint8_t transfer_id, uint32_t seq,

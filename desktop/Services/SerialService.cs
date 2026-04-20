@@ -125,24 +125,6 @@ public sealed class SerialService : IDisposable
         CleanupPort();
     }
 
-    /// <summary>Send a GRBL command. A newline is appended automatically.</summary>
-    public void SendCommand(string command)
-    {
-        if (!IsConnected) return;
-        try
-        {
-            lock (_writeSync)
-            {
-                _port!.Write(command + "\n");
-            }
-        }
-        catch (Exception ex)
-        {
-            var msg = ex.Message;
-            Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke(msg));
-        }
-    }
-
     public void SendFrame(byte frameType, byte transferId, uint sequence, ReadOnlySpan<byte> payload)
     {
         if (!IsConnected) return;

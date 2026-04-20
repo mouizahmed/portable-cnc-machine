@@ -654,10 +654,9 @@ public sealed class ManualControlViewModel : PageViewModelBase
     {
         if (!CanSendCustomCommand || MainVm == null) return;
 
-        // Raw passthrough via serial — useful for diagnostics / unsupported commands.
-        MainVm.Serial.SendCommand(CustomCommand);
         SetCommandPreview(CustomCommand);
-        MainVm.StatusMessage = $"Sent: {CustomCommand}";
+        MainVm.StatusMessage = "Raw text commands are no longer supported by the binary protocol.";
+        MainVm.IsStatusError = true;
         CustomCommand = string.Empty;
     }
 

@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdarg>
 
 class UsbCdcTransport {
 public:
@@ -35,8 +34,6 @@ public:
 
     PacketKind poll(char* line_buf, size_t line_max, FramePacket& frame);
 
-    void send_line(const char* text);
-    void send_fmt(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
     void send_frame(uint8_t type, uint8_t transfer_id, uint32_t seq,
                     const uint8_t* payload, uint16_t payload_len);
 

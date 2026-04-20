@@ -24,6 +24,9 @@ public:
     static constexpr uint8_t kUploadAckFrameType = 2;
     static constexpr uint8_t kDownloadDataFrameType = 3;
     static constexpr uint8_t kDownloadAckFrameType = 4;
+    static constexpr uint8_t kCommandFrameType = 5;
+    static constexpr uint8_t kResponseFrameType = 6;
+    static constexpr uint8_t kEventFrameType = 7;
 
     DesktopProtocol(UsbCdcTransport& transport,
                     MachineFsm& msm,
@@ -61,33 +64,33 @@ public:
 
     // -- Outbound protocol messages -------------------------------------------
 
-    // Emit current @STATE, @CAPS, @SAFETY (call after any MSM transition)
+    // Emit current state/capability/safety snapshot (call after any MSM transition)
     void emit_state_update(bool mark_changed = true);
 
-    // Emit @STATE <state>
+    // Emit state snapshot
     void emit_state();
 
-    // Emit @CAPS ...
+    // Emit capability snapshot
     void emit_caps();
 
-    // Emit @SAFETY <level>
+    // Emit safety snapshot
     void emit_safety();
 
-    // Emit @JOB NAME=<filename|NONE>
+    // Emit loaded job snapshot
     void emit_job();
 
-    // Emit @POS MX=... MY=... MZ=... WX=... WY=... WZ=...
+    // Emit position snapshot
     void emit_position();
 
-    // Emit @EVENT <name> [key=val ...]
+    // Emit unsolicited event
     void emit_event(const char* name);
     void emit_event_kv(const char* name, const char* kv);
 
-    // Emit @OK <token> [key=val ...]
+    // Emit command acknowledgement
     void emit_ok(const char* token);
     void emit_ok_kv(const char* token, const char* kv);
 
-    // Emit @ERROR <reason>
+    // Emit command error
     void emit_error(const char* reason);
 
     // Abort an in-progress upload (callable from TFT touch events)
@@ -172,12 +175,15 @@ private:
 
     StorageTransferStateMachine transfer_;
     uint8_t next_transfer_id_ = 1;
+    uint32_t current_request_seq_ = 0;
+    uint8_t current_command_type_ = 0;
+    bool handling_command_ = false;
     bool transfer_active() const { return transfer_.is_active(); }
     static DesktopProtocol* storage_worker_instance_;
 
 // Command dispatch
-    void dispatch(const char* line);
     void dispatch_frame(const UsbCdcTransport::FramePacket& frame);
+    void dispatch_command_frame(const UsbCdcTransport::FramePacket& frame);
     int16_t find_job_index_by_name(const char* name) const;
     bool try_load_job_by_index(int16_t index);
     bool try_unload_job();

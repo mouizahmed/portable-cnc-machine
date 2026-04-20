@@ -3,14 +3,230 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
-#include <cstdarg>
 
+#include "protocol/protocol_defs.h"
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
 
 static void percent_decode_in_place(char* text);
 static void percent_encode_value(const char* input, char* output, size_t output_size);
 static uint32_t crc32_update_table(uint32_t crc, const uint8_t* data, size_t len);
+
+namespace {
+
+template <typename T>
+bool copy_command_payload(const UsbCdcTransport::FramePacket& frame, T& out) {
+    if (frame.payload_len != sizeof(T)) {
+        return false;
+    }
+    std::memcpy(&out, frame.payload, sizeof(T));
+    return true;
+}
+
+template <typename T, typename SendFn>
+void send_binary_payload(SendFn&& send_fn, const T& payload) {
+    send_fn(reinterpret_cast<const uint8_t*>(&payload), static_cast<uint16_t>(sizeof(T)));
+}
+
+void copy_wire_text(const char* input, size_t input_size, char* output, size_t output_size) {
+    if (output == nullptr || output_size == 0) {
+        return;
+    }
+    output[0] = '\0';
+    if (input == nullptr || input_size == 0) {
+        return;
+    }
+
+    size_t copy = 0;
+    while (copy < input_size && input[copy] != '\0' && copy + 1 < output_size) {
+        output[copy] = input[copy];
+        ++copy;
+    }
+    output[copy] = '\0';
+}
+
+void write_wire_text(const char* input, char* output, size_t output_size) {
+    if (output == nullptr || output_size == 0) {
+        return;
+    }
+    output[0] = '\0';
+    if (input == nullptr) {
+        return;
+    }
+
+    std::strncpy(output, input, output_size - 1u);
+    output[output_size - 1u] = '\0';
+}
+
+uint8_t command_type_from_token(const char* token) {
+    if (token == nullptr) return 0;
+    if (std::strcmp(token, "HOME") == 0) return CMD_HOME;
+    if (std::strcmp(token, "JOG") == 0) return CMD_JOG;
+    if (std::strcmp(token, "JOG_CANCEL") == 0) return CMD_JOG_CANCEL;
+    if (std::strcmp(token, "ZERO") == 0) return CMD_ZERO;
+    if (std::strcmp(token, "START") == 0) return CMD_START;
+    if (std::strcmp(token, "PAUSE") == 0) return CMD_PAUSE;
+    if (std::strcmp(token, "RESUME") == 0) return CMD_RESUME;
+    if (std::strcmp(token, "ABORT") == 0) return CMD_ABORT;
+    if (std::strcmp(token, "ESTOP") == 0) return CMD_ESTOP;
+    if (std::strcmp(token, "RESET") == 0) return CMD_RESET;
+    if (std::strcmp(token, "SPINDLE_ON") == 0) return CMD_SPINDLE_ON;
+    if (std::strcmp(token, "SPINDLE_OFF") == 0) return CMD_SPINDLE_OFF;
+    if (std::strcmp(token, "OVERRIDE") == 0) return CMD_OVERRIDE;
+    if (std::strcmp(token, "FILE_UNLOAD") == 0) return CMD_FILE_UNLOAD;
+    if (std::strcmp(token, "FILE_UPLOAD_ABORT") == 0) return CMD_FILE_UPLOAD_ABORT;
+    if (std::strcmp(token, "FILE_DOWNLOAD_ABORT") == 0) return CMD_FILE_DOWNLOAD_ABORT;
+    return 0;
+}
+
+uint8_t protocol_error_from_reason(const char* reason) {
+    if (reason == nullptr) return ERROR_UNKNOWN;
+    if (std::strcmp(reason, "INVALID_STATE") == 0) return ERROR_INVALID_STATE;
+    if (std::strcmp(reason, "MISSING_PARAM") == 0) return ERROR_MISSING_PARAM;
+    if (std::strcmp(reason, "NO_JOB_LOADED") == 0) return ERROR_NO_JOB_LOADED;
+    if (std::strcmp(reason, "UPLOAD_FILE_EXISTS") == 0) return ERROR_UPLOAD_FILE_EXISTS;
+    if (std::strcmp(reason, "DOWNLOAD_MISSING_PARAM") == 0) return ERROR_DOWNLOAD_MISSING_PARAM;
+    if (std::strcmp(reason, "UPLOAD_MISSING_PARAM") == 0) return ERROR_UPLOAD_MISSING_PARAM;
+    return ERROR_UNKNOWN;
+}
+
+uint8_t protocol_state(MachineOperationState state) {
+    switch (state) {
+        case MachineOperationState::Booting:            return MACHINE_BOOTING;
+        case MachineOperationState::Syncing:            return MACHINE_SYNCING;
+        case MachineOperationState::TeensyDisconnected: return MACHINE_TEENSY_DISCONNECTED;
+        case MachineOperationState::Idle:               return MACHINE_IDLE;
+        case MachineOperationState::Homing:             return MACHINE_HOMING;
+        case MachineOperationState::Jog:                return MACHINE_JOG;
+        case MachineOperationState::Starting:           return MACHINE_STARTING;
+        case MachineOperationState::Running:            return MACHINE_RUNNING;
+        case MachineOperationState::Hold:               return MACHINE_HOLD;
+        case MachineOperationState::Fault:              return MACHINE_FAULT;
+        case MachineOperationState::Estop:              return MACHINE_ESTOP;
+        case MachineOperationState::CommsFault:         return MACHINE_COMMS_FAULT;
+        case MachineOperationState::Uploading:          return MACHINE_UPLOADING;
+    }
+    return MACHINE_BOOTING;
+}
+
+uint8_t protocol_safety(SafetyLevel safety) {
+    switch (safety) {
+        case SafetyLevel::Safe:       return SAFETY_SAFE;
+        case SafetyLevel::Monitoring: return SAFETY_MONITORING;
+        case SafetyLevel::Warning:    return SAFETY_WARNING;
+        case SafetyLevel::Critical:   return SAFETY_CRITICAL;
+    }
+    return SAFETY_SAFE;
+}
+
+uint16_t protocol_caps(CapsFlags caps) {
+    uint16_t value = 0;
+    if (caps.motion)     value |= CAP_MOTION;
+    if (caps.probe)      value |= CAP_PROBE;
+    if (caps.spindle)    value |= CAP_SPINDLE;
+    if (caps.file_load)  value |= CAP_FILE_LOAD;
+    if (caps.job_start)  value |= CAP_JOB_START;
+    if (caps.job_pause)  value |= CAP_JOB_PAUSE;
+    if (caps.job_resume) value |= CAP_JOB_RESUME;
+    if (caps.job_abort)  value |= CAP_JOB_ABORT;
+    if (caps.overrides)  value |= CAP_OVERRIDES;
+    if (caps.reset)      value |= CAP_RESET;
+    return value;
+}
+
+uint8_t protocol_storage_operation(StorageTransferOperation operation) {
+    switch (operation) {
+        case StorageTransferOperation::None:     return STORAGE_OP_NONE;
+        case StorageTransferOperation::List:     return STORAGE_OP_LIST;
+        case StorageTransferOperation::Load:     return STORAGE_OP_LOAD;
+        case StorageTransferOperation::Unload:   return STORAGE_OP_UNLOAD;
+        case StorageTransferOperation::Delete:   return STORAGE_OP_DELETE;
+        case StorageTransferOperation::Upload:   return STORAGE_OP_UPLOAD;
+        case StorageTransferOperation::Download: return STORAGE_OP_DOWNLOAD;
+    }
+    return STORAGE_OP_NONE;
+}
+
+uint8_t protocol_storage_error(StorageTransferError error) {
+    switch (error) {
+        case StorageTransferError::Busy:            return ERROR_STORAGE_BUSY;
+        case StorageTransferError::NotAllowed:      return ERROR_STORAGE_NOT_ALLOWED;
+        case StorageTransferError::SdNotMounted:    return ERROR_STORAGE_NO_SD;
+        case StorageTransferError::FileNotFound:    return ERROR_STORAGE_FILE_NOT_FOUND;
+        case StorageTransferError::InvalidFilename: return ERROR_STORAGE_INVALID_FILENAME;
+        case StorageTransferError::InvalidSession:  return ERROR_STORAGE_INVALID_SESSION;
+        case StorageTransferError::BadSequence:     return ERROR_STORAGE_BAD_SEQUENCE;
+        case StorageTransferError::SizeMismatch:    return ERROR_STORAGE_SIZE_MISMATCH;
+        case StorageTransferError::CrcMismatch:     return ERROR_STORAGE_CRC_FAIL;
+        case StorageTransferError::ReadFail:        return ERROR_STORAGE_READ_FAIL;
+        case StorageTransferError::WriteFail:       return ERROR_STORAGE_WRITE_FAIL;
+        case StorageTransferError::NoSpace:         return ERROR_STORAGE_NO_SPACE;
+        case StorageTransferError::Aborted:         return ERROR_STORAGE_ABORTED;
+        case StorageTransferError::None:            return ERROR_NONE;
+    }
+    return ERROR_UNKNOWN;
+}
+
+struct CommandContextScope {
+    bool& handling;
+    uint32_t& request_seq;
+    uint8_t& command_type;
+    bool previous_handling;
+    uint32_t previous_request_seq;
+    uint8_t previous_command_type;
+
+    CommandContextScope(bool& handling_ref,
+                        uint32_t& request_seq_ref,
+                        uint8_t& command_type_ref,
+                        uint32_t next_request_seq,
+                        uint8_t next_command_type)
+        : handling(handling_ref),
+          request_seq(request_seq_ref),
+          command_type(command_type_ref),
+          previous_handling(handling_ref),
+          previous_request_seq(request_seq_ref),
+          previous_command_type(command_type_ref) {
+        handling = true;
+        request_seq = next_request_seq;
+        command_type = next_command_type;
+    }
+
+    ~CommandContextScope() {
+        handling = previous_handling;
+        request_seq = previous_request_seq;
+        command_type = previous_command_type;
+    }
+};
+
+const char* axis_name(uint8_t axis) {
+    switch (axis) {
+        case AXIS_X: return "X";
+        case AXIS_Y: return "Y";
+        case AXIS_Z: return "Z";
+        default:     return nullptr;
+    }
+}
+
+const char* axes_name(uint8_t axes_mask) {
+    switch (axes_mask) {
+        case AXES_X:   return "X";
+        case AXES_Y:   return "Y";
+        case AXES_Z:   return "Z";
+        case AXES_ALL: return "ALL";
+        default:       return nullptr;
+    }
+}
+
+const char* override_name(uint8_t target) {
+    switch (target) {
+        case OVERRIDE_FEED:    return "FEED";
+        case OVERRIDE_SPINDLE: return "SPINDLE";
+        case OVERRIDE_RAPID:   return "RAPID";
+        default:               return nullptr;
+    }
+}
+
+} // namespace
 
 DesktopProtocol* DesktopProtocol::storage_worker_instance_ = nullptr;
 
@@ -47,63 +263,251 @@ void DesktopProtocol::poll() {
             process_upload_results();
             return;
         }
-        if (kind == UsbCdcTransport::PacketKind::Line) {
-            dispatch(line_);
-        } else if (kind == UsbCdcTransport::PacketKind::Frame) {
+        if (kind == UsbCdcTransport::PacketKind::Frame) {
             dispatch_frame(frame_);
         }
     }
 }
 
-void DesktopProtocol::dispatch(const char* line) {
-    if (line[0] != '@') return;
-
-    // Find first space to split verb from params
-    const char* space = std::strchr(line, ' ');
-    char verb[32];
-    const char* params = "";
-
-    if (space) {
-        size_t verb_len = static_cast<size_t>(space - line);
-        if (verb_len >= sizeof(verb)) verb_len = sizeof(verb) - 1;
-        std::memcpy(verb, line, verb_len);
-        verb[verb_len] = '\0';
-        params = space + 1;
-    } else {
-        std::strncpy(verb, line, sizeof(verb) - 1);
-        verb[sizeof(verb) - 1] = '\0';
+void DesktopProtocol::dispatch_command_frame(const UsbCdcTransport::FramePacket& frame) {
+    if (frame.transfer_id != PCNC_TRANSFER_ID_NONE || frame.payload_len == 0) {
+        emit_error("MALFORMED_CMD");
+        return;
     }
 
-    if (std::strcmp(verb, "@PING")             == 0) { handle_ping(); }
-    else if (std::strcmp(verb, "@INFO")        == 0) { handle_info(); }
-    else if (std::strcmp(verb, "@STATUS")      == 0) { handle_status(); }
-    else if (std::strcmp(verb, "@HOME")        == 0) { handle_home(); }
-    else if (std::strcmp(verb, "@JOG")         == 0) { handle_jog(params); }
-    else if (std::strcmp(verb, "@JOG_CANCEL")  == 0) { handle_jog_cancel(); }
-    else if (std::strcmp(verb, "@ZERO")        == 0) { handle_zero(params); }
-    else if (std::strcmp(verb, "@START")       == 0) { handle_start(); }
-    else if (std::strcmp(verb, "@PAUSE")       == 0) { handle_pause(); }
-    else if (std::strcmp(verb, "@RESUME")      == 0) { handle_resume(); }
-    else if (std::strcmp(verb, "@ABORT")       == 0) { handle_abort(); }
-    else if (std::strcmp(verb, "@ESTOP")       == 0) { handle_estop(); }
-    else if (std::strcmp(verb, "@RESET")       == 0) { handle_reset(); }
-    else if (std::strcmp(verb, "@SPINDLE_ON")  == 0) { handle_spindle_on(params); }
-    else if (std::strcmp(verb, "@SPINDLE_OFF") == 0) { handle_spindle_off(); }
-    else if (std::strcmp(verb, "@OVERRIDE")    == 0) { handle_override(params); }
-    else if (std::strcmp(verb, "@FILE_LIST")   == 0) { handle_file_list(); }
-    else if (std::strcmp(verb, "@FILE_LOAD")   == 0) { handle_file_load(params); }
-    else if (std::strcmp(verb, "@FILE_UNLOAD") == 0) { handle_file_unload(); }
-    else if (std::strcmp(verb, "@FILE_DELETE")   == 0) { handle_file_delete(params); }
-    else if (std::strcmp(verb, "@FILE_UPLOAD") == 0) { handle_file_upload(params); }
-    else if (std::strcmp(verb, "@FILE_UPLOAD_END")   == 0) { handle_file_upload_end(params); }
-    else if (std::strcmp(verb, "@FILE_UPLOAD_ABORT") == 0) { handle_file_upload_abort(); }
-    else if (std::strcmp(verb, "@FILE_DOWNLOAD") == 0) { handle_file_download(params); }
-    else if (std::strcmp(verb, "@FILE_DOWNLOAD_ACK") == 0) { handle_file_download_ack(params); }
-    else if (std::strcmp(verb, "@FILE_DOWNLOAD_ABORT") == 0) { handle_file_download_abort(); }
-    // Unknown verbs are silently ignored
+    const uint8_t message_type = frame.payload[0];
+    CommandContextScope command_context(handling_command_,
+                                        current_request_seq_,
+                                        current_command_type_,
+                                        frame.seq,
+                                        message_type);
+    switch (message_type) {
+        case CMD_PING: {
+            CmdPing cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_ping();
+            break;
+        }
+        case CMD_INFO: {
+            CmdInfo cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_info();
+            break;
+        }
+        case CMD_STATUS: {
+            CmdStatus cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_status();
+            break;
+        }
+        case CMD_HOME: {
+            CmdHome cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_home();
+            break;
+        }
+        case CMD_JOG: {
+            CmdJog cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            const char* axis = axis_name(cmd.axis);
+            if (axis == nullptr) { emit_error("MALFORMED_CMD"); return; }
+            char params[64];
+            std::snprintf(params, sizeof(params), "AXIS=%s DIST=%.3f FEED=%u",
+                          axis,
+                          static_cast<double>(cmd.dist),
+                          static_cast<unsigned int>(cmd.feed));
+            handle_jog(params);
+            break;
+        }
+        case CMD_JOG_CANCEL: {
+            CmdJogCancel cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_jog_cancel();
+            break;
+        }
+        case CMD_ZERO: {
+            CmdZero cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            const char* axes = axes_name(cmd.axes_mask);
+            if (axes == nullptr) { emit_error("MALFORMED_CMD"); return; }
+            char params[16];
+            std::snprintf(params, sizeof(params), "AXIS=%s", axes);
+            handle_zero(params);
+            break;
+        }
+        case CMD_START: {
+            CmdStart cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_start();
+            break;
+        }
+        case CMD_PAUSE: {
+            CmdPause cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_pause();
+            break;
+        }
+        case CMD_RESUME: {
+            CmdResume cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_resume();
+            break;
+        }
+        case CMD_ABORT: {
+            CmdAbort cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_abort();
+            break;
+        }
+        case CMD_ESTOP: {
+            CmdEstop cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_estop();
+            break;
+        }
+        case CMD_RESET: {
+            CmdReset cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_reset();
+            break;
+        }
+        case CMD_SPINDLE_ON: {
+            CmdSpindleOn cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            char params[16];
+            std::snprintf(params, sizeof(params), "RPM=%u", static_cast<unsigned int>(cmd.rpm));
+            handle_spindle_on(params);
+            break;
+        }
+        case CMD_SPINDLE_OFF: {
+            CmdSpindleOff cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_spindle_off();
+            break;
+        }
+        case CMD_OVERRIDE: {
+            CmdOverride cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            const char* target = override_name(cmd.target);
+            if (target == nullptr) { emit_error("MALFORMED_CMD"); return; }
+            char params[32];
+            std::snprintf(params, sizeof(params), "%s=%u",
+                          target,
+                          static_cast<unsigned int>(cmd.percent));
+            handle_override(params);
+            break;
+        }
+        case CMD_FILE_LIST: {
+            CmdFileList cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_file_list();
+            break;
+        }
+        case CMD_FILE_LOAD: {
+            CmdFileLoad cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            char name[PCNC_MAX_FILENAME_BYTES + 1u]{};
+            char encoded_name[192]{};
+            char params[224]{};
+            copy_wire_text(cmd.name, PCNC_MAX_FILENAME_BYTES, name, sizeof(name));
+            percent_encode_value(name, encoded_name, sizeof(encoded_name));
+            std::snprintf(params, sizeof(params), "NAME=%s", encoded_name);
+            handle_file_load(params);
+            break;
+        }
+        case CMD_FILE_UNLOAD: {
+            CmdFileUnload cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_file_unload();
+            break;
+        }
+        case CMD_FILE_DELETE: {
+            CmdFileDelete cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            char name[PCNC_MAX_FILENAME_BYTES + 1u]{};
+            char encoded_name[192]{};
+            char params[224]{};
+            copy_wire_text(cmd.name, PCNC_MAX_FILENAME_BYTES, name, sizeof(name));
+            percent_encode_value(name, encoded_name, sizeof(encoded_name));
+            std::snprintf(params, sizeof(params), "NAME=%s", encoded_name);
+            handle_file_delete(params);
+            break;
+        }
+        case CMD_FILE_UPLOAD: {
+            CmdFileUpload cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            char name[PCNC_MAX_FILENAME_BYTES + 1u]{};
+            char encoded_name[192]{};
+            char params[256]{};
+            copy_wire_text(cmd.name, PCNC_MAX_FILENAME_BYTES, name, sizeof(name));
+            percent_encode_value(name, encoded_name, sizeof(encoded_name));
+            std::snprintf(params, sizeof(params), "NAME=%s SIZE=%lu OVERWRITE=%u",
+                          encoded_name,
+                          static_cast<unsigned long>(cmd.size),
+                          static_cast<unsigned int>(cmd.overwrite != 0 ? 1 : 0));
+            handle_file_upload(params);
+            break;
+        }
+        case CMD_FILE_UPLOAD_END: {
+            CmdFileUploadEnd cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            char params[16];
+            std::snprintf(params, sizeof(params), "CRC=%08lx", static_cast<unsigned long>(cmd.crc32));
+            handle_file_upload_end(params);
+            break;
+        }
+        case CMD_FILE_UPLOAD_ABORT: {
+            CmdFileUploadAbort cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_file_upload_abort();
+            break;
+        }
+        case CMD_FILE_DOWNLOAD: {
+            CmdFileDownload cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            char name[PCNC_MAX_FILENAME_BYTES + 1u]{};
+            char encoded_name[192]{};
+            char params[224]{};
+            copy_wire_text(cmd.name, PCNC_MAX_FILENAME_BYTES, name, sizeof(name));
+            percent_encode_value(name, encoded_name, sizeof(encoded_name));
+            std::snprintf(params, sizeof(params), "NAME=%s", encoded_name);
+            handle_file_download(params);
+            break;
+        }
+        case CMD_FILE_DOWNLOAD_ACK: {
+            CmdFileDownloadAck cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            char params[32];
+            std::snprintf(params, sizeof(params), "ID=%u SEQ=%lu",
+                          static_cast<unsigned int>(cmd.transfer_id),
+                          static_cast<unsigned long>(cmd.seq));
+            handle_file_download_ack(params);
+            break;
+        }
+        case CMD_FILE_DOWNLOAD_ABORT: {
+            CmdFileDownloadAbort cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_file_download_abort();
+            break;
+        }
+        case CMD_PROBE_Z:
+        case CMD_BEGIN_JOB:
+        case CMD_END_JOB:
+        case CMD_CLEAR_JOB:
+            // Compatibility placeholders: the current text parser has no live
+            // handlers for these commands, so binary frames keep the same behavior.
+            break;
+        default:
+            break;
+    }
 }
 
 void DesktopProtocol::dispatch_frame(const UsbCdcTransport::FramePacket& frame) {
+    if (frame.type == kCommandFrameType) {
+        dispatch_command_frame(frame);
+        return;
+    }
+
     if (frame.type == kUploadDataFrameType) {
         handle_upload_chunk_data(frame.transfer_id, frame.seq, frame.payload, frame.payload_len);
         return;
@@ -150,51 +554,51 @@ void DesktopProtocol::dispatch_frame(const UsbCdcTransport::FramePacket& frame) 
 // -- Outbound helpers ---------------------------------------------------------
 
 void DesktopProtocol::emit_state() {
-    const char* s = "UNKNOWN";
-    switch (msm_.state()) {
-        case MachineOperationState::Booting:            s = "BOOTING";             break;
-        case MachineOperationState::Syncing:            s = "SYNCING";             break;
-        case MachineOperationState::TeensyDisconnected: s = "TEENSY_DISCONNECTED"; break;
-        case MachineOperationState::Idle:               s = "IDLE";                break;
-        case MachineOperationState::Homing:             s = "HOMING";              break;
-        case MachineOperationState::Jog:                s = "JOG";                 break;
-        case MachineOperationState::Starting:           s = "STARTING";            break;
-        case MachineOperationState::Running:            s = "RUNNING";             break;
-        case MachineOperationState::Hold:               s = "HOLD";                break;
-        case MachineOperationState::Fault:              s = "FAULT";               break;
-        case MachineOperationState::Estop:              s = "ESTOP";               break;
-        case MachineOperationState::CommsFault:         s = "COMMS_FAULT";         break;
-        case MachineOperationState::Uploading:          s = "UPLOADING";           break;
+    const uint8_t state = protocol_state(msm_.state());
+    if (handling_command_) {
+        RespState payload{RESP_STATE, current_request_seq_, state};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
+        return;
     }
-    transport_.send_fmt("@STATE %s", s);
+
+    EventState payload{EVENT_STATE, state};
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::emit_caps() {
-    const CapsFlags c = msm_.caps();
-    transport_.send_fmt(
-        "@CAPS MOTION=%d PROBE=%d SPINDLE=%d FILE_LOAD=%d "
-        "JOB_START=%d JOB_PAUSE=%d JOB_RESUME=%d JOB_ABORT=%d OVERRIDES=%d RESET=%d",
-        c.motion      ? 1 : 0,
-        c.probe       ? 1 : 0,
-        c.spindle     ? 1 : 0,
-        c.file_load ? 1 : 0,
-        c.job_start   ? 1 : 0,
-        c.job_pause   ? 1 : 0,
-        c.job_resume  ? 1 : 0,
-        c.job_abort   ? 1 : 0,
-        c.overrides   ? 1 : 0,
-        c.reset       ? 1 : 0);
+    const uint16_t caps = protocol_caps(msm_.caps());
+    if (handling_command_) {
+        RespCaps payload{RESP_CAPS, current_request_seq_, caps};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
+        return;
+    }
+
+    EventCaps payload{EVENT_CAPS, caps};
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::emit_safety() {
-    const char* s = "SAFE";
-    switch (msm_.safety()) {
-        case SafetyLevel::Safe:       s = "SAFE";       break;
-        case SafetyLevel::Monitoring: s = "MONITORING"; break;
-        case SafetyLevel::Warning:    s = "WARNING";    break;
-        case SafetyLevel::Critical:   s = "CRITICAL";   break;
+    const uint8_t safety = protocol_safety(msm_.safety());
+    if (handling_command_) {
+        RespSafety payload{RESP_SAFETY, current_request_seq_, safety};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
+        return;
     }
-    transport_.send_fmt("@SAFETY %s", s);
+
+    EventSafety payload{EVENT_SAFETY, safety};
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::emit_state_update(bool mark_changed) {
@@ -207,50 +611,254 @@ void DesktopProtocol::emit_state_update(bool mark_changed) {
 }
 
 void DesktopProtocol::emit_job() {
-    if (const FileEntry* loaded = jobs_.loaded_entry()) {
-        char encoded_name[192]{};
-        percent_encode_value(loaded->name, encoded_name, sizeof(encoded_name));
-        transport_.send_fmt("@JOB NAME=%s", encoded_name);
+    const FileEntry* loaded = jobs_.loaded_entry();
+    if (handling_command_) {
+        RespJob payload{};
+        payload.message_type = RESP_JOB;
+        payload.request_seq = current_request_seq_;
+        payload.has_job = loaded != nullptr ? 1 : 0;
+        if (loaded != nullptr) {
+            write_wire_text(loaded->name, payload.name, sizeof(payload.name));
+        }
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
         return;
     }
 
-    transport_.send_fmt("@JOB NAME=NONE");
+    EventJob payload{};
+    payload.message_type = EVENT_JOB;
+    payload.has_job = loaded != nullptr ? 1 : 0;
+    if (loaded != nullptr) {
+        write_wire_text(loaded->name, payload.name, sizeof(payload.name));
+    }
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::emit_position() {
-    const double x = static_cast<double>(jogs_.x());
-    const double y = static_cast<double>(jogs_.y());
-    const double z = static_cast<double>(jogs_.z());
-    transport_.send_fmt("@POS MX=%.3f MY=%.3f MZ=%.3f WX=%.3f WY=%.3f WZ=%.3f",
-                        x, y, z, x, y, z);
+    const float x = jogs_.x();
+    const float y = jogs_.y();
+    const float z = jogs_.z();
+    if (handling_command_) {
+        RespPos payload{RESP_POS, current_request_seq_, x, y, z, x, y, z};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
+        return;
+    }
+
+    EventPos payload{EVENT_POS, x, y, z, x, y, z};
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::emit_event(const char* name) {
-    transport_.send_fmt("@EVENT %s", name);
+    emit_event_kv(name, nullptr);
 }
 
 void DesktopProtocol::emit_event_kv(const char* name, const char* kv) {
-    if (kv && kv[0]) {
-        transport_.send_fmt("@EVENT %s %s", name, kv);
-    } else {
-        transport_.send_fmt("@EVENT %s", name);
+    if (name == nullptr) {
+        return;
+    }
+
+    if (std::strcmp(name, "JOB_COMPLETE") == 0) {
+        EventJobComplete payload{EVENT_JOB_COMPLETE};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "JOB_ERROR") == 0) {
+        EventJobError payload{};
+        payload.message_type = EVENT_JOB_ERROR;
+        char reason[PCNC_MAX_REASON_BYTES]{};
+        if (kv != nullptr) {
+            param_get(kv, "REASON", reason, sizeof(reason));
+        }
+        write_wire_text(reason, payload.reason, sizeof(payload.reason));
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "SD_MOUNTED") == 0) {
+        EventSdMounted payload{EVENT_SD_MOUNTED};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "SD_REMOVED") == 0) {
+        EventSdRemoved payload{EVENT_SD_REMOVED};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "TEENSY_CONNECTED") == 0) {
+        EventTeensyConnected payload{EVENT_TEENSY_CONNECTED};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "TEENSY_DISCONNECTED") == 0) {
+        EventTeensyDisconnected payload{EVENT_TEENSY_DISCONNECTED};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "ESTOP_ACTIVE") == 0) {
+        EventEstopActive payload{EVENT_ESTOP_ACTIVE};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "ESTOP_CLEARED") == 0) {
+        EventEstopCleared payload{EVENT_ESTOP_CLEARED};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "LIMIT") == 0) {
+        EventLimit payload{};
+        payload.message_type = EVENT_LIMIT;
+        char axis[8]{};
+        if (kv != nullptr && param_get(kv, "AXIS", axis, sizeof(axis))) {
+            if (std::strchr(axis, 'X') != nullptr) payload.axes_mask |= AXES_X;
+            if (std::strchr(axis, 'Y') != nullptr) payload.axes_mask |= AXES_Y;
+            if (std::strchr(axis, 'Z') != nullptr) payload.axes_mask |= AXES_Z;
+        }
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "STORAGE_UPLOAD_PROFILE") == 0) {
+        EventStorageUploadProfile payload{};
+        payload.message_type = EVENT_STORAGE_UPLOAD_PROFILE;
+        payload.size = param_get_u32(kv, "SIZE", 0);
+        payload.total_ms = param_get_u32(kv, "TOTAL_MS", 0);
+        payload.prealloc_ms = param_get_u32(kv, "PREALLOC_MS", 0);
+        payload.write_ms = param_get_u32(kv, "WRITE_MS", 0);
+        payload.max_write_ms = param_get_u32(kv, "MAX_WRITE_MS", 0);
+        payload.close_ms = param_get_u32(kv, "CLOSE_MS", 0);
+        payload.chunks = param_get_u32(kv, "CHUNKS", 0);
+        payload.queue_max = param_get_u32(kv, "QUEUE_MAX", 0);
+        payload.bps = param_get_u32(kv, "BPS", 0);
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "STORAGE_UPLOAD_CHUNK_PROFILE") == 0) {
+        EventStorageUploadChunkProfile payload{};
+        payload.message_type = EVENT_STORAGE_UPLOAD_CHUNK_PROFILE;
+        payload.seq = param_get_u32(kv, "SEQ", 0);
+        payload.bytes = param_get_u32(kv, "BYTES", 0);
+        payload.total_ms = param_get_u32(kv, "TOTAL_MS", 0);
+        payload.write_ms = param_get_u32(kv, "WRITE_MS", 0);
+        payload.last_write_ms = param_get_u32(kv, "LAST_WRITE_MS", 0);
+        payload.max_write_ms = param_get_u32(kv, "MAX_WRITE_MS", 0);
+        payload.chunks = param_get_u32(kv, "CHUNKS", 0);
+        payload.queue = param_get_u32(kv, "QUEUE", 0);
+        payload.queue_max = param_get_u32(kv, "QUEUE_MAX", 0);
+        payload.bps = param_get_u32(kv, "BPS", 0);
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
     }
 }
 
 void DesktopProtocol::emit_ok(const char* token) {
-    transport_.send_fmt("@OK %s", token);
+    if (token != nullptr && std::strcmp(token, "PONG") == 0) {
+        RespPong payload{RESP_PONG, current_request_seq_};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
+        return;
+    }
+    if (token != nullptr && std::strcmp(token, "FILE_UNLOAD") == 0) {
+        RespFileUnload payload{RESP_FILE_UNLOAD, current_request_seq_};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
+        return;
+    }
+    if (token != nullptr && std::strcmp(token, "FILE_UPLOAD_ABORT") == 0) {
+        RespFileUploadAbort payload{RESP_FILE_UPLOAD_ABORT, current_request_seq_};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
+        return;
+    }
+    if (token != nullptr && std::strcmp(token, "FILE_DOWNLOAD_ABORT") == 0) {
+        RespFileDownloadAbort payload{RESP_FILE_DOWNLOAD_ABORT, current_request_seq_};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
+        return;
+    }
+
+    uint8_t command_type = current_command_type_;
+    if (command_type == 0) {
+        command_type = command_type_from_token(token);
+    }
+    RespCommandAck payload{RESP_COMMAND_ACK, current_request_seq_, command_type};
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::emit_ok_kv(const char* token, const char* kv) {
-    if (kv && kv[0]) {
-        transport_.send_fmt("@OK %s %s", token, kv);
-    } else {
-        transport_.send_fmt("@OK %s", token);
+    if (kv == nullptr || kv[0] == '\0') {
+        emit_ok(token);
+        return;
     }
+
+    if (std::strcmp(token, "FILE_LOAD") == 0) {
+        RespFileLoad payload{};
+        payload.message_type = RESP_FILE_LOAD;
+        payload.request_seq = current_request_seq_;
+        char name[PCNC_MAX_FILENAME_BYTES]{};
+        param_get(kv, "NAME", name, sizeof(name));
+        write_wire_text(name, payload.name, sizeof(payload.name));
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(token, "FILE_DELETE") == 0) {
+        RespFileDelete payload{};
+        payload.message_type = RESP_FILE_DELETE;
+        payload.request_seq = current_request_seq_;
+        char name[PCNC_MAX_FILENAME_BYTES]{};
+        param_get(kv, "NAME", name, sizeof(name));
+        write_wire_text(name, payload.name, sizeof(payload.name));
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
+        return;
+    }
+
+    emit_ok(token);
 }
 
 void DesktopProtocol::emit_error(const char* reason) {
-    transport_.send_fmt("@ERROR %s", reason);
+    RespError payload{};
+    payload.message_type = RESP_ERROR;
+    payload.request_seq = current_request_seq_;
+    payload.error = protocol_error_from_reason(reason);
+    write_wire_text(reason, payload.reason, sizeof(payload.reason));
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::emit_storage_error(StorageTransferError error,
@@ -282,26 +890,20 @@ void DesktopProtocol::emit_storage_error(StorageTransferError error,
         }
     }
 
-    const char* op = nullptr;
-    switch (operation) {
-        case StorageTransferOperation::List:     op = "LIST"; break;
-        case StorageTransferOperation::Load:     op = "LOAD"; break;
-        case StorageTransferOperation::Unload:   op = "UNLOAD"; break;
-        case StorageTransferOperation::Delete:   op = "DELETE"; break;
-        case StorageTransferOperation::Upload:   op = "UPLOAD"; break;
-        case StorageTransferOperation::Download: op = "DOWNLOAD"; break;
-        case StorageTransferOperation::None:     break;
-    }
-
-    if (op != nullptr && kv != nullptr && kv[0] != '\0') {
-        transport_.send_fmt("@ERROR %s OP=%s %s", reason, op, kv);
-    } else if (op != nullptr) {
-        transport_.send_fmt("@ERROR %s OP=%s", reason, op);
-    } else if (kv != nullptr && kv[0] != '\0') {
-        transport_.send_fmt("@ERROR %s %s", reason, kv);
-    } else {
-        transport_.send_fmt("@ERROR %s", reason);
-    }
+    RespStorageError payload{};
+    payload.message_type = RESP_STORAGE_ERROR;
+    payload.request_seq = current_request_seq_;
+    payload.error = protocol_storage_error(error);
+    payload.operation = protocol_storage_operation(operation);
+    payload.seq = param_get_u32(kv, "SEQ", 0);
+    payload.expected = param_get_u32(kv, "EXPECTED", 0);
+    payload.actual = param_get_u32(kv, "ACTUAL", 0);
+    write_wire_text(kv != nullptr && kv[0] != '\0' ? kv : reason,
+                    payload.detail,
+                    sizeof(payload.detail));
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::abort_active_storage_transfer(bool clear_completion,
@@ -352,15 +954,16 @@ void DesktopProtocol::reset_download_completion() {
 
 void DesktopProtocol::send_upload_ready() {
     const auto& ctx = transfer_.context();
-    char encoded_name[192]{};
-    percent_encode_value(ctx.filename, encoded_name, sizeof(encoded_name));
-    char kv[256];
-    std::snprintf(kv, sizeof(kv), "NAME=%s SIZE=%lu ID=%u CHUNK=%u",
-                  encoded_name,
-                  static_cast<unsigned long>(ctx.expected_size),
-                  static_cast<unsigned int>(ctx.session_id),
-                  static_cast<unsigned int>(kTransferRawChunkSize));
-    emit_ok_kv("FILE_UPLOAD_READY", kv);
+    RespFileUploadReady payload{};
+    payload.message_type = RESP_FILE_UPLOAD_READY;
+    payload.request_seq = current_request_seq_;
+    payload.transfer_id = ctx.session_id;
+    payload.size = ctx.expected_size;
+    payload.chunk_size = static_cast<uint16_t>(kTransferRawChunkSize);
+    write_wire_text(ctx.filename, payload.name, sizeof(payload.name));
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::send_upload_chunk_ack(uint32_t sequence, uint32_t bytes_committed) {
@@ -374,35 +977,42 @@ void DesktopProtocol::send_upload_chunk_ack(uint32_t sequence, uint32_t bytes_co
 
 void DesktopProtocol::send_upload_complete() {
     const auto& ctx = transfer_.context();
-    char encoded_name[192]{};
-    percent_encode_value(ctx.completion_name, encoded_name, sizeof(encoded_name));
-    transport_.send_fmt("@OK FILE_UPLOAD_END NAME=%s SIZE=%lu ID=%u",
-                        encoded_name,
-                        static_cast<unsigned long>(ctx.completion_size),
-                        static_cast<unsigned int>(ctx.completion_session_id));
+    RespFileUploadEnd payload{};
+    payload.message_type = RESP_FILE_UPLOAD_END;
+    payload.request_seq = current_request_seq_;
+    payload.transfer_id = ctx.completion_session_id;
+    payload.size = ctx.completion_size;
+    write_wire_text(ctx.completion_name, payload.name, sizeof(payload.name));
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::send_download_ready() {
     const auto& ctx = transfer_.context();
-    char encoded_name[192]{};
-    percent_encode_value(ctx.filename, encoded_name, sizeof(encoded_name));
-    char kv[256];
-    std::snprintf(kv, sizeof(kv), "NAME=%s SIZE=%lu ID=%u CHUNK=%u",
-                  encoded_name,
-                  static_cast<unsigned long>(ctx.expected_size),
-                  static_cast<unsigned int>(ctx.session_id),
-                  static_cast<unsigned int>(kTransferRawChunkSize));
-    emit_ok_kv("FILE_DOWNLOAD_READY", kv);
+    RespFileDownloadReady payload{};
+    payload.message_type = RESP_FILE_DOWNLOAD_READY;
+    payload.request_seq = current_request_seq_;
+    payload.transfer_id = ctx.session_id;
+    payload.size = ctx.expected_size;
+    payload.chunk_size = static_cast<uint16_t>(kTransferRawChunkSize);
+    write_wire_text(ctx.filename, payload.name, sizeof(payload.name));
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::send_download_complete() {
     const auto& ctx = transfer_.context();
-    char encoded_name[192]{};
-    percent_encode_value(ctx.completion_name, encoded_name, sizeof(encoded_name));
-    transport_.send_fmt("@OK FILE_DOWNLOAD_END NAME=%s CRC=%08lx ID=%u",
-                        encoded_name,
-                        static_cast<unsigned long>(ctx.completion_crc),
-                        static_cast<unsigned int>(ctx.completion_session_id));
+    RespFileDownloadEnd payload{};
+    payload.message_type = RESP_FILE_DOWNLOAD_END;
+    payload.request_seq = current_request_seq_;
+    payload.transfer_id = ctx.completion_session_id;
+    payload.crc32 = ctx.completion_crc;
+    write_wire_text(ctx.completion_name, payload.name, sizeof(payload.name));
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+    }, payload);
 }
 
 void DesktopProtocol::fill_download_window() {
@@ -485,11 +1095,17 @@ void DesktopProtocol::handle_ping() {
 }
 
 void DesktopProtocol::handle_info() {
-    transport_.send_fmt("@INFO FIRMWARE=0.1.0 BOARD=PICO2W TEENSY=%s",
-                        msm_.teensy_connected() ? "CONNECTED" : "DISCONNECTED");
-    // Push current state + caps immediately after @INFO so the desktop always has
-    // an up-to-date view on connect (the @STATE emitted at startup is lost if the
-    // desktop wasn't connected yet).
+    RespInfo payload{};
+    payload.message_type = RESP_INFO;
+    payload.request_seq = current_request_seq_;
+    write_wire_text("0.1.0", payload.firmware, sizeof(payload.firmware));
+    write_wire_text("PICO2W", payload.board, sizeof(payload.board));
+    payload.teensy_connected = msm_.teensy_connected() ? 1 : 0;
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+    }, payload);
+    // Push current state + caps immediately after INFO so the desktop always has
+    // an up-to-date view on connect.
     emit_state_update(false);
     emit_job();
 }
@@ -677,9 +1293,14 @@ void DesktopProtocol::handle_file_list() {
             std::strcmp(dot, ".tap")   != 0 && std::strcmp(dot, ".TAP")   != 0 &&
             std::strcmp(dot, ".gc")    != 0 && std::strcmp(dot, ".GC")    != 0) continue;
 
-        char encoded_name[192]{};
-        percent_encode_value(info.fname, encoded_name, sizeof(encoded_name));
-        transport_.send_fmt("@FILE NAME=%s SIZE=%lu", encoded_name, (unsigned long)info.fsize);
+        RespFileEntry payload{};
+        payload.message_type = RESP_FILE_ENTRY;
+        payload.request_seq = current_request_seq_;
+        write_wire_text(info.fname, payload.name, sizeof(payload.name));
+        payload.size = info.fsize;
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
         count++;
     }
     f_closedir(&dir);
@@ -692,8 +1313,13 @@ void DesktopProtocol::handle_file_list() {
         free_bytes = (uint64_t)free_clust * fs->csize * 512u;
     }
 
-    transport_.send_fmt("@OK FILE_LIST_END COUNT=%d FREE=%llu",
-                        count, (unsigned long long)free_bytes);
+    RespFileListEnd payload{RESP_FILE_LIST_END,
+                            current_request_seq_,
+                            static_cast<uint32_t>(count),
+                            free_bytes};
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+    }, payload);
     transfer_.finish_operation();
 }
 
@@ -974,9 +1600,14 @@ void DesktopProtocol::handle_file_upload(const char* params) {
     FRESULT stat_r = f_stat(path, &info);
     if (stat_r == FR_OK && !overwrite) {
         transfer_.finish_operation();
-        char encoded_name[192]{};
-        percent_encode_value(name, encoded_name, sizeof(encoded_name));
-        transport_.send_fmt("@ERROR UPLOAD_FILE_EXISTS NAME=%s", encoded_name);
+        RespError payload{};
+        payload.message_type = RESP_ERROR;
+        payload.request_seq = current_request_seq_;
+        payload.error = ERROR_UPLOAD_FILE_EXISTS;
+        write_wire_text(name, payload.reason, sizeof(payload.reason));
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kResponseFrameType, PCNC_TRANSFER_ID_NONE, current_request_seq_, data, len);
+        }, payload);
         return;
     }
     if (stat_r == FR_OK && overwrite) {
