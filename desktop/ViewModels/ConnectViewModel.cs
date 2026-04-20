@@ -399,7 +399,7 @@ public sealed class ConnectViewModel : PageViewModelBase
         MainVm.PiConnectionStatus = ConnectionStatus.Connected;
         MainVm.Protocol.SendStatus();
         MainVm.StatusMessage = infoCompleted
-            ? $"Connected on {SelectedPort} — firmware {PicoFirmware}"
+            ? $"Connected on {SelectedPort}"
             : $"Connected on {SelectedPort} — @INFO timed out, waiting for state...";
 
         IsConnecting = false;

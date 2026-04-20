@@ -414,6 +414,7 @@ public sealed class PicoProtocolService
 
         var errorKv = ParseKeyValues(parts, startIndex: 2);
         var storageOp = errorKv.GetValueOrDefault("OP", "");
+        var errorDetail = FormatErrorDetail(parts);
 
         switch (parts[1])
         {
@@ -504,13 +505,13 @@ public sealed class PicoProtocolService
                 }
                 else if (string.Equals(storageOp, "UPLOAD", StringComparison.OrdinalIgnoreCase))
                 {
-                    UploadFailedReceived?.Invoke(parts[1]);
+                    UploadFailedReceived?.Invoke(errorDetail);
                 }
 
                 if (string.Equals(storageOp, "DOWNLOAD", StringComparison.OrdinalIgnoreCase))
-                    DownloadFailedReceived?.Invoke(parts[1]);
+                    DownloadFailedReceived?.Invoke(errorDetail);
 
-                ErrorReceived?.Invoke(parts[1]);
+                ErrorReceived?.Invoke(errorDetail);
                 return;
             }
         }
@@ -544,6 +545,9 @@ public sealed class PicoProtocolService
         var reason = string.Join(' ', parts[1..]);
         ErrorReceived?.Invoke(reason);
     }
+
+    private static string FormatErrorDetail(string[] parts)
+        => parts.Length <= 2 ? parts[1] : string.Join(' ', parts[1..]);
 
     // ── Parse helpers ────────────────────────────────────────────────────────
 

@@ -78,7 +78,7 @@ struct StorageTransferContext {
     uint32_t bytes_written = 0;
     uint32_t bytes_sent = 0;
     uint32_t expected_sequence = 0;
-    uint32_t last_ack_sequence = 0;
+    uint32_t last_ack_sequence = 0xFFFFFFFFu;
     uint32_t crc_running = 0xFFFFFFFFu;
     uint32_t retry_count = 0;
     bool awaiting_ack = false;

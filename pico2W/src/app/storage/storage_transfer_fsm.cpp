@@ -255,7 +255,7 @@ void StorageTransferStateMachine::finish_operation() {
     ctx_.bytes_written = 0;
     ctx_.bytes_sent = 0;
     ctx_.expected_sequence = 0;
-    ctx_.last_ack_sequence = 0;
+    ctx_.last_ack_sequence = 0xFFFFFFFFu;
     ctx_.crc_running = 0xFFFFFFFFu;
     ctx_.retry_count = 0;
     ctx_.awaiting_ack = false;

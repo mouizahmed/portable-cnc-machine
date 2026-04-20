@@ -461,17 +461,23 @@
                   IsEnabled="{Binding CanHome}"
                   Content="HOME ALL"/>
 
-          <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="4,0"/>
-
-          <Button Classes="AppButton"
-                  Command="{Binding GoFilesCommand}"
-                  Content="Load File"/>
         </StackPanel>
 
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0">
-          <TextBlock Text="Status:" Classes="FieldLabel" VerticalAlignment="Center"/>
-          <TextBlock Text="{Binding StatusMessage}" Classes="FieldValue" VerticalAlignment="Center"/>
-        </StackPanel>
+        <Grid Grid.Column="1"
+              ColumnDefinitions="Auto,*"
+              Margin="8,0"
+              ClipToBounds="True">
+          <TextBlock Text="Status:"
+                     Classes="FieldLabel"
+                     VerticalAlignment="Center"
+                     Margin="0,0,8,0"/>
+          <TextBlock Grid.Column="1"
+                     Text="{Binding StatusMessage}"
+                     Classes="FieldValue"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"
+                     TextWrapping="NoWrap"/>
+        </Grid>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="8,0" IsVisible="{Binding IsConnected}">
           <TextBlock Text="Feed:" Classes="FieldLabel" VerticalAlignment="Center"/>

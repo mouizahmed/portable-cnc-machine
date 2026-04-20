@@ -105,7 +105,7 @@ public:
 private:
     static constexpr uint32_t kDownloadWindowSize = 8;
     static constexpr uint32_t kUploadAckStride = 8;
-    static constexpr size_t kUploadQueueCapacity = 24;
+    static constexpr size_t kUploadQueueCapacity = 2;
     static constexpr uint32_t kDownloadResendIntervalMs = 750;
 
     struct UploadQueueEntry {
@@ -135,6 +135,7 @@ private:
     SdSpiCard& sd_;
 
     char line_[256];
+    UsbCdcTransport::FramePacket frame_{};
 
     // Chunk decode buffers -- kept as members (not stack locals) to avoid
     // overflowing the default 2 KB Pico stack inside the deep f_write() call chain.

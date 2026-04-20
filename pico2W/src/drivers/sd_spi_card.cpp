@@ -151,28 +151,6 @@ bool SdSpiCard::write_blocks(uint32_t sector, const uint8_t* buffer, std::size_t
         return false;
     }
 
-    if (count > 1) {
-        // Pre-erase is optional, but most SD cards use it to avoid long busy
-        // stalls during multi-block writes.
-        (void)send_command(kAcmd23, static_cast<uint32_t>(count));
-
-        if (send_command(kCmd25, block_address(sector), nullptr, 0, true) != 0x00) {
-            return false;
-        }
-
-        for (std::size_t index = 0; index < count; ++index) {
-            if (!write_data_block(buffer + (index * 512), kMultiBlockWriteToken)) {
-                end_bus();
-                return false;
-            }
-        }
-
-        transfer(kStopTranToken);
-        const bool ready = wait_ready(kWriteTimeoutMs);
-        end_bus();
-        return ready;
-    }
-
     for (std::size_t index = 0; index < count; ++index) {
         if (send_command(kCmd24, block_address(sector + static_cast<uint32_t>(index)), nullptr, 0, true) != 0x00) {
             return false;
