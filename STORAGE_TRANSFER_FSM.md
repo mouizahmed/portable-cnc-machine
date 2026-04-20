@@ -10,7 +10,7 @@ The storage transfer FSM owns SD-card file operation state on the Pico. It is se
 
 The transfer FSM exists to make file operations deterministic: no stale sessions, no implicit busy state, one abort path, and structured errors for upload/download/list/load/delete.
 
-Current implementation status: states, events, errors, and text helper functions are defined in `pico2W/src/app/storage/storage_transfer_fsm.h/.cpp`. Runtime behavior has not yet been moved out of `DesktopProtocol`.
+Current implementation status: **complete**. `StorageTransferStateMachine` owns all transfer state (session ID, filename, expected size, bytes written/sent, sequences, running CRC, FatFS handle, completion record, last error). `DesktopProtocol` holds it as `transfer_` and delegates all session state through it. The upload pipeline queue and core-1 worker remain inline in `DesktopProtocol` as implementation detail; they do not constitute state ownership.
 
 ## State Model
 
@@ -144,28 +144,18 @@ File payload traffic currently uses binary transfer frames:
 | `3` | Pico -> Desktop | Download data chunk |
 | `4` | Desktop -> Pico | Download chunk ACK |
 
-Session-level commands remain text during this migration step:
-
-- `@FILE_UPLOAD`
-- `@FILE_UPLOAD_END`
-- `@FILE_UPLOAD_ABORT`
-- `@FILE_DOWNLOAD`
-- `@FILE_DOWNLOAD_ABORT`
-- `@FILE_LIST`
-- `@FILE_LOAD`
-- `@FILE_UNLOAD`
-- `@FILE_DELETE`
+Session-level commands currently remain text (`@FILE_UPLOAD`, `@FILE_UPLOAD_END`, `@FILE_UPLOAD_ABORT`, `@FILE_DOWNLOAD`, `@FILE_DOWNLOAD_ABORT`, `@FILE_LIST`, `@FILE_LOAD`, `@FILE_UNLOAD`, `@FILE_DELETE`). Migration of these to binary frames is the next planned step.
 
 The FSM must treat binary frame session IDs and sequence numbers as authoritative for active transfers.
 
 ## Non-Goals For This Step
 
-Do not add these until the storage FSM owns current stop-and-wait behavior:
+~~Do not add these until the storage FSM owns current stop-and-wait behavior~~
+
+The FSM refactor is complete. The items below remain future work but are no longer blocked:
 
 - sliding window / pipelining
 - cumulative ACKs
 - resume after reconnect
 - core-1 FatFS worker
-- full desktop/Pico protocol migration to binary frames
-
-Those optimizations are simpler after transfer state is explicit and testable.
+- full desktop/Pico protocol migration to binary frames (next planned step)

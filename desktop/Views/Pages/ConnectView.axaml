@@ -9,8 +9,7 @@
              mc:Ignorable="d">
 
   <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
-    <controls:SectionCard Title="USB SERIAL CONNECTION"
-                          Subtitle="Choose the controller USB serial device and connect. Session and device details stay in the app right rail.">
+    <controls:SectionCard Title="USB SERIAL CONNECTION">
       <controls:SectionCard.Actions>
         <Button Content="Refresh"
                 Command="{Binding RefreshPortsCommand}"
