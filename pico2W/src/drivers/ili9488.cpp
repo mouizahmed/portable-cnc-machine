@@ -143,6 +143,48 @@ void Ili9488::draw_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t col
     fill_rect(x + w - 1, y, 1, h, color);
 }
 
+void Ili9488::draw_rgb565_bitmap(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* pixels) {
+    if (pixels == nullptr || w <= 0 || h <= 0) {
+        return;
+    }
+    if (x < 0 || y < 0) {
+        return;
+    }
+    if ((x + w) > static_cast<int16_t>(LCD_WIDTH) || (y + h) > static_cast<int16_t>(LCD_HEIGHT)) {
+        return;
+    }
+
+    set_window(static_cast<uint16_t>(x),
+               static_cast<uint16_t>(y),
+               static_cast<uint16_t>(x + w - 1),
+               static_cast<uint16_t>(y + h - 1));
+
+    std::array<uint8_t, 192> buffer{};
+    const std::size_t pixel_count = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+    std::size_t written = 0;
+
+    write_pin(PIN_LCD_DC, true);
+    write_pin(PIN_LCD_CS, false);
+
+    while (written < pixel_count) {
+        const std::size_t chunk_pixels = (pixel_count - written) > (buffer.size() / 3)
+            ? (buffer.size() / 3)
+            : (pixel_count - written);
+
+        for (std::size_t i = 0; i < chunk_pixels; ++i) {
+            const uint16_t color = pixels[written + i];
+            buffer[i * 3] = expand5_to_8(static_cast<uint8_t>((color >> 11) & 0x1F));
+            buffer[i * 3 + 1] = expand6_to_8(static_cast<uint8_t>((color >> 5) & 0x3F));
+            buffer[i * 3 + 2] = expand5_to_8(static_cast<uint8_t>(color & 0x1F));
+        }
+
+        spi_write_blocking(spi_, buffer.data(), static_cast<unsigned int>(chunk_pixels * 3));
+        written += chunk_pixels;
+    }
+
+    write_pin(PIN_LCD_CS, true);
+}
+
 void Ili9488::draw_text(int16_t x, int16_t y, const char* text, uint16_t fg, uint16_t bg, uint8_t scale) {
     if (text == nullptr) {
         return;

@@ -28,6 +28,7 @@ public:
     void run();
 
 private:
+    Ili9488& display_;
     Xpt2046& touch_;
     bool touch_latched_ = false;
     TouchPoint last_touch_point_{};
@@ -52,6 +53,7 @@ private:
     bool upload_was_active_ = false;
 
     void run_startup_sequence();
+    void show_boot_logo();
     bool poll_event(UiEvent& event);
     void handle_event(const UiEvent& event);
     void handle_ui_command(const UiEventResult& result);

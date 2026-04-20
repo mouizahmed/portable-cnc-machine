@@ -2,15 +2,18 @@
 
 #include "config.h"
 #include "pico/stdlib.h"
+#include "ui/assets/boot_logo_rgb565.h"
 
 namespace {
 // Dev shortcut: skip the blocking touch calibration workflow during firmware iteration.
 // Set false to restore normal persisted calibration / calibration UI behavior.
 constexpr bool kSkipTouchCalibrationForDev = true;
+constexpr uint32_t kBootLogoHoldMs = 1200;
 }
 
 PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_card, CalibrationStorage& storage)
-    : touch_(touch),
+    : display_(display),
+      touch_(touch),
       storage_service_(sd_card),
       controller_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
       uart_client_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
@@ -119,6 +122,8 @@ void PortableCncApp::run() {
 }
 
 void PortableCncApp::run_startup_sequence() {
+    show_boot_logo();
+
     if (!kSkipTouchCalibrationForDev) {
         TouchCalibration calibration{};
         controller_.begin_calibration();
@@ -139,6 +144,25 @@ void PortableCncApp::run_startup_sequence() {
     } else {
         desktop_protocol_.emit_state_update();
     }
+}
+
+void PortableCncApp::show_boot_logo() {
+    display_.fill_screen(COLOR_BG);
+
+    const int16_t logo_x = static_cast<int16_t>((LCD_WIDTH - kBootLogoWidth) / 2);
+    const int16_t logo_y = static_cast<int16_t>((LCD_HEIGHT - kBootLogoHeight) / 2) - 12;
+    display_.draw_rgb565_bitmap(logo_x, logo_y, kBootLogoWidth, kBootLogoHeight, kBootLogoPixels);
+
+    constexpr char kTitle[] = "Portable CNC";
+    constexpr char kSubtitle[] = "Control";
+    const int16_t title_x = static_cast<int16_t>((LCD_WIDTH - display_.text_width(kTitle, 2)) / 2);
+    const int16_t subtitle_x = static_cast<int16_t>((LCD_WIDTH - display_.text_width(kSubtitle, 2)) / 2);
+    const int16_t text_y = static_cast<int16_t>(logo_y + kBootLogoHeight + 14);
+
+    display_.draw_text(title_x, text_y, kTitle, COLOR_TEXT, COLOR_BG, 2);
+    display_.draw_text(subtitle_x, static_cast<int16_t>(text_y + 18), kSubtitle, COLOR_MUTED, COLOR_BG, 2);
+
+    sleep_ms(kBootLogoHoldMs);
 }
 
 bool PortableCncApp::poll_event(UiEvent& event) {

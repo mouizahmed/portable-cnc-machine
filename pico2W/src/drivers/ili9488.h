@@ -15,6 +15,7 @@ public:
     void fill_screen(uint16_t color);
     void fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
     void draw_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+    void draw_rgb565_bitmap(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* pixels);
     void draw_text(int16_t x, int16_t y, const char* text, uint16_t fg, uint16_t bg, uint8_t scale = 1);
 
     int16_t text_width(const char* text, uint8_t scale = 1) const;
