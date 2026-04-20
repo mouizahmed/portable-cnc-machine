@@ -8,6 +8,10 @@
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
 
+#ifndef PCNC_UPLOAD_READBACK_VERIFY_PASSES
+#define PCNC_UPLOAD_READBACK_VERIFY_PASSES 0
+#endif
+
 static void percent_decode_in_place(char* text);
 static void percent_encode_value(const char* input, char* output, size_t output_size);
 static uint32_t crc32_update_table(uint32_t crc, const uint8_t* data, size_t len);
@@ -1754,7 +1758,8 @@ void DesktopProtocol::handle_file_upload_end(const char* params) {
         return;
     }
 
-    constexpr int kVerifyPasses = 3;
+#if PCNC_UPLOAD_READBACK_VERIFY_PASSES > 0
+    constexpr int kVerifyPasses = PCNC_UPLOAD_READBACK_VERIFY_PASSES;
     uint32_t verify_crc[kVerifyPasses]{};
     uint32_t verify_size[kVerifyPasses]{};
     FRESULT verify_result[kVerifyPasses]{};
@@ -1844,14 +1849,16 @@ void DesktopProtocol::handle_file_upload_end(const char* params) {
 
     if (verified_final_crc != expected_crc) {
         char kv[256];
+        const uint32_t verify_crc_2 = kVerifyPasses > 1 ? verify_crc[1] : 0u;
+        const uint32_t verify_crc_3 = kVerifyPasses > 2 ? verify_crc[2] : 0u;
         if (first_mismatch_offset != 0xFFFFFFFFu) {
             std::snprintf(kv,
                           sizeof(kv),
                           "PHASE=READBACK EXPECTED=%08lx ACTUAL=%08lx ACTUAL2=%08lx ACTUAL3=%08lx SIZE=%lu FRAMECRC=%08lx FRAMELEN=%lu CHUNKS=%lu DIFF=%lu WANT=%02x GOT=%02x",
                           static_cast<unsigned long>(expected_crc),
                           static_cast<unsigned long>(verified_final_crc),
-                          static_cast<unsigned long>(verify_crc[1]),
-                          static_cast<unsigned long>(verify_crc[2]),
+                          static_cast<unsigned long>(verify_crc_2),
+                          static_cast<unsigned long>(verify_crc_3),
                           static_cast<unsigned long>(verify_size[0]),
                           static_cast<unsigned long>(frame_crc),
                           static_cast<unsigned long>(frame_.payload_len),
@@ -1865,8 +1872,8 @@ void DesktopProtocol::handle_file_upload_end(const char* params) {
                           "PHASE=READBACK EXPECTED=%08lx ACTUAL=%08lx ACTUAL2=%08lx ACTUAL3=%08lx SIZE=%lu FRAMECRC=%08lx FRAMELEN=%lu CHUNKS=%lu",
                           static_cast<unsigned long>(expected_crc),
                           static_cast<unsigned long>(verified_final_crc),
-                          static_cast<unsigned long>(verify_crc[1]),
-                          static_cast<unsigned long>(verify_crc[2]),
+                          static_cast<unsigned long>(verify_crc_2),
+                          static_cast<unsigned long>(verify_crc_3),
                           static_cast<unsigned long>(verify_size[0]),
                           static_cast<unsigned long>(frame_crc),
                           static_cast<unsigned long>(frame_.payload_len),
@@ -1879,6 +1886,7 @@ void DesktopProtocol::handle_file_upload_end(const char* params) {
         emit_storage_error(StorageTransferError::CrcMismatch, StorageTransferOperation::Upload, kv);
         return;
     }
+#endif
 
     const uint32_t total_ms = to_ms_since_boot(get_absolute_time()) - upload_profile_start_ms_;
     const uint32_t bps = total_ms > 0

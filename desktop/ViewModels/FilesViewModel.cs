@@ -30,7 +30,7 @@ public sealed class FilesViewModel : PageViewModelBase
     private static readonly int TransferRawChunkSize = PicoProtocolService.BinaryTransferChunkSize;
     private static readonly TimeSpan TransferInitTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TransferChunkTimeout = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan TransferFinalizeTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan TransferFinalizeTimeout = TimeSpan.FromSeconds(30);
     private const int TransferMaxRetries = 3;
     private static readonly int UploadWindowSize = 16;
     private static readonly uint[] Crc32Table = BuildCrc32Table();
@@ -208,9 +208,7 @@ public sealed class FilesViewModel : PageViewModelBase
     public string? LoadedJobFileName => MainVm?.CurrentFileName;
     public string LoadedJobSizeText => ResolveLoadedJobInfo()?.Size ?? "--";
     public string LoadedJobLinesText => TryGetDocumentLineSummary(MainVm?.CurrentFileName);
-    public string SelectedPreviewHeaderText => HasLocalPreview
-        ? "Local file. Upload it to the device before it can be loaded."
-        : "";
+    public string SelectedPreviewHeaderText => "";
     public string LoadedJobHeaderText => "";
     public string SelectedPreviewStatusText => HasLocalPreview ? "LOCAL" : "PREVIEW";
     public IBrush SelectedPreviewStatusBrush => HasLocalPreview
@@ -1279,7 +1277,7 @@ public sealed class FilesViewModel : PageViewModelBase
             }
 
             // ── Phase 3: finalise ──────────────────────────────────────────
-            UploadStatusText = "Verifying…";
+            UploadStatusText = "Finalizing...";
             var finalCrc = $"{FinalizeCrc32(uploadCrc):x8}";
             MainVm?.DiagnosticsVm.AddLog("UPLOAD", $"finalizing name={name} size={fileSize} crc={finalCrc}");
             MainVm!.Protocol.SendFileUploadEnd(finalCrc);
@@ -1542,7 +1540,7 @@ public sealed class FilesViewModel : PageViewModelBase
             var finalCrc = $"{FinalizeCrc32(uploadCrc):x8}";
             Dispatcher.UIThread.Post(() =>
             {
-                UploadStatusText = "Verifying...";
+                UploadStatusText = "Finalizing...";
                 MainVm?.DiagnosticsVm.AddLog("UPLOAD", $"finalizing name={name} size={fileSize} crc={finalCrc}");
             });
             MainVm!.Protocol.SendFileUploadEnd(finalCrc);
