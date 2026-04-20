@@ -64,11 +64,8 @@ void PortableCncApp::run() {
         const bool upload_ended_this_tick =
             upload_active_now && !desktop_protocol_.upload_active();
 
-        if (upload_active_now && !upload_ended_this_tick) {
-            upload_screen_.render_progress(
-                desktop_protocol_.upload_bytes_written(),
-                desktop_protocol_.upload_expected_size());
-        }
+        // Progress bar update removed — desktop app shows progress.
+        // The upload screen (with abort button) is drawn once when upload starts.
 
         bool needs_render = desktop_protocol_.consume_state_changed();
         if (desktop_protocol_.consume_file_list_changed()) {
@@ -113,7 +110,11 @@ void PortableCncApp::run() {
             handle_event(event);
         }
 
-        sleep_ms(UI_POLL_MS);
+        if (desktop_protocol_.storage_transfer_active()) {
+            sleep_us(TRANSFER_POLL_US);
+        } else {
+            sleep_ms(UI_POLL_MS);
+        }
     }
 }
 
@@ -251,10 +252,7 @@ void PortableCncApp::render_storage_change() {
 
 void PortableCncApp::render_current_screen(bool full) {
     if (desktop_protocol_.upload_active()) {
-        upload_screen_.render(
-            desktop_protocol_.upload_bytes_written(),
-            desktop_protocol_.upload_expected_size(),
-            desktop_protocol_.upload_name());
+        upload_screen_.render(desktop_protocol_.upload_name());
         return;
     }
 

@@ -82,6 +82,7 @@ struct StorageTransferContext {
     uint32_t crc_running = 0xFFFFFFFFu;
     uint32_t retry_count = 0;
     bool awaiting_ack = false;
+    uint32_t chunks_in_flight = 0;
     uint16_t last_chunk_length = 0;
     uint32_t last_send_ms = 0;
     FIL file{};
@@ -115,6 +116,7 @@ public:
     uint32_t crc_running() const { return ctx_.crc_running; }
     uint32_t retry_count() const { return ctx_.retry_count; }
     bool awaiting_ack() const { return ctx_.awaiting_ack; }
+    uint32_t chunks_in_flight() const { return ctx_.chunks_in_flight; }
     uint16_t last_chunk_length() const { return ctx_.last_chunk_length; }
     uint32_t last_send_ms() const { return ctx_.last_send_ms; }
     FIL& file() { return ctx_.file; }

@@ -11,6 +11,7 @@
 #include "app/storage/storage_service.h"
 #include "drivers/sd_spi_card.h"
 #include "protocol/usb_cdc_transport.h"
+#include "pico/sync.h"
 
 extern "C" {
 #include "ff.h"
@@ -38,6 +39,7 @@ public:
     // Returns true (and clears the flag) if a protocol-driven FSM state change
     // occurred since the last call. Used by the main loop to trigger a screen re-render.
     bool upload_active() const { return transfer_.is_upload(); }
+    bool storage_transfer_active() const { return transfer_.is_active(); }
     uint32_t upload_bytes_written() const { return transfer_.bytes_written(); }
     uint32_t upload_expected_size() const { return transfer_.expected_size(); }
     const char* upload_name() const { return transfer_.filename(); }
@@ -101,7 +103,28 @@ public:
     void on_sd_removed();
 
 private:
+    static constexpr uint32_t kDownloadWindowSize = 8;
+    static constexpr uint32_t kUploadAckStride = 8;
+    static constexpr size_t kUploadQueueCapacity = 24;
     static constexpr uint32_t kDownloadResendIntervalMs = 750;
+
+    struct UploadQueueEntry {
+        uint8_t transfer_id = 0;
+        uint32_t sequence = 0;
+        uint16_t length = 0;
+        uint32_t crc_after = 0xFFFFFFFFu;
+        uint8_t payload[kTransferRawChunkSize]{};
+    };
+
+    struct UploadCommitResult {
+        uint8_t transfer_id = 0;
+        uint32_t sequence = 0;
+        uint16_t length = 0;
+        uint32_t crc_after = 0xFFFFFFFFu;
+        uint32_t write_elapsed_ms = 0;
+        FRESULT result = FR_OK;
+        UINT written = 0;
+    };
 
     UsbCdcTransport& transport_;
     MachineFsm& msm_;
@@ -123,10 +146,33 @@ private:
     // trigger a touch screen re-render on protocol-driven state changes.
     bool state_changed_ = false;
     bool file_list_changed_ = false;
+    uint32_t upload_profile_start_ms_ = 0;
+    uint32_t upload_profile_prealloc_ms_ = 0;
+    uint32_t upload_profile_write_ms_ = 0;
+    uint32_t upload_profile_max_write_ms_ = 0;
+    uint32_t upload_profile_close_ms_ = 0;
+    uint32_t upload_profile_chunks_ = 0;
+    UploadQueueEntry upload_queue_[kUploadQueueCapacity]{};
+    size_t upload_queue_head_ = 0;
+    size_t upload_queue_tail_ = 0;
+    size_t upload_queue_count_ = 0;
+    size_t upload_queue_high_water_ = 0;
+    UploadCommitResult upload_results_[kUploadQueueCapacity]{};
+    size_t upload_result_head_ = 0;
+    size_t upload_result_tail_ = 0;
+    size_t upload_result_count_ = 0;
+    volatile bool upload_worker_enabled_ = false;
+    volatile bool upload_worker_busy_ = false;
+    critical_section_t upload_worker_lock_{};
+    uint32_t upload_next_receive_sequence_ = 0;
+    uint32_t upload_bytes_received_ = 0;
+    uint32_t upload_receive_crc_running_ = 0xFFFFFFFFu;
+    UploadQueueEntry upload_worker_entry_{};
 
     StorageTransferStateMachine transfer_;
     uint8_t next_transfer_id_ = 1;
     bool transfer_active() const { return transfer_.is_active(); }
+    static DesktopProtocol* storage_worker_instance_;
 
 // Command dispatch
     void dispatch(const char* line);
@@ -168,12 +214,19 @@ private:
     void handle_file_download(const char* params);
     void handle_file_download_ack(const char* params);
     void handle_file_download_abort();
+    void fill_download_window();
     void send_next_download_chunk();
     void tick_transfer_retries();
 
 // Upload helpers
     void upload_abort_cleanup();
     void handle_upload_chunk_data(uint8_t transfer_id, uint32_t sequence, const uint8_t* payload, uint16_t payload_len);
+    void process_upload_results();
+    bool enqueue_upload_chunk(uint8_t transfer_id, uint32_t sequence, const uint8_t* payload, uint16_t payload_len);
+    void commit_upload_result(const UploadCommitResult& result);
+    void reset_upload_queue();
+    void storage_worker_loop();
+    static void storage_worker_entry();
     void reset_upload_completion();
     void reset_download_completion();
     void send_upload_ready();
@@ -181,7 +234,6 @@ private:
     void send_upload_complete();
     void send_download_ready();
     void send_download_complete();
-    void resend_download_chunk();
     void abort_active_storage_transfer(bool clear_completion,
                                        bool delete_partial_upload_file,
                                        bool close_file = true);

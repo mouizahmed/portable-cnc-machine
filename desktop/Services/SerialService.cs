@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO.Ports;
 using System.Text;
 using Avalonia.Threading;
@@ -16,11 +17,21 @@ public sealed class SerialService : IDisposable
     private const byte TransferFrameEscape = 0x7D;
     private const byte TransferFrameEscapeXor = 0x20;
     private const int TransferFrameHeaderSize = 9;
-    private const int MaxTransferPayloadSize = 1024;
+    private const int MaxTransferPayloadSize = 4096;
+    private static readonly int[] UsbCdcBaudRates = { 12_000_000, 2_000_000, 921_600, 115_200 };
     private const int MaxTransferRawFrameSize = TransferFrameHeaderSize + MaxTransferPayloadSize + sizeof(uint);
     private const int MaxTransferEncodedFrameSize = MaxTransferRawFrameSize + ((MaxTransferRawFrameSize + 253) / 254);
+    private static readonly uint[] Crc32Table = BuildCrc32Table();
 
     public readonly record struct TransferFrame(byte FrameType, byte TransferId, byte Flags, uint Sequence, byte[] Payload);
+    public readonly record struct TransferWriteStats(
+        long BuildMs,
+        long CobsMs,
+        long WireMs,
+        long WriteMs,
+        long MaxWriteMs,
+        int Count,
+        long Bytes);
 
     private enum ReceiveMode
     {
@@ -33,6 +44,7 @@ public sealed class SerialService : IDisposable
     private static readonly TimeSpan StartupErrorGracePeriod = TimeSpan.FromSeconds(2);
     private readonly object _readSync = new();
     private readonly object _writeSync = new();
+    private readonly object _transferStatsSync = new();
     private SerialPort? _port;
     private readonly StringBuilder _lineBuffer = new();
     private readonly byte[] _framePacket = new byte[MaxTransferEncodedFrameSize];
@@ -40,6 +52,13 @@ public sealed class SerialService : IDisposable
     private DateTime _connectedAtUtc = DateTime.MinValue;
     private ReceiveMode _receiveMode = ReceiveMode.Idle;
     private int _framePacketBytesRead;
+    private long _transferBuildTicks;
+    private long _transferCobsTicks;
+    private long _transferWireTicks;
+    private long _transferWriteTicks;
+    private long _transferMaxWriteTicks;
+    private long _transferBytesWritten;
+    private int _transferFrameWrites;
 
     public bool IsConnected => _port?.IsOpen == true;
     public string? PortName => _port?.PortName;
@@ -57,35 +76,48 @@ public sealed class SerialService : IDisposable
     {
         if (IsConnected) Disconnect();
 
-        try
+        Exception? lastError = null;
+        foreach (int baudRate in UsbCdcBaudRates)
         {
-            _port = new SerialPort(portName, 115200)
+            try
             {
-                Encoding = Encoding.ASCII,
-                // Pico USB CDC generally expects DTR to be asserted for normal traffic,
-                // but forcing RTS high has proven destabilizing on reopen.
-                DtrEnable = true,
-                RtsEnable = false,
-                WriteTimeout = 5000
-            };
+                _port = new SerialPort(portName, baudRate)
+                {
+                    Encoding = Encoding.ASCII,
+                    Handshake = Handshake.None,
+                    // Pico USB CDC generally expects DTR to be asserted for normal traffic,
+                    // but forcing RTS high has proven destabilizing on reopen.
+                    DtrEnable = true,
+                    RtsEnable = false,
+                    ReadBufferSize = 262144,
+                    WriteBufferSize = 1048576,
+                    WriteTimeout = 5000
+                };
 
-            _port.DataReceived += OnDataReceived;
-            _port.ErrorReceived += OnSerialErrorReceived;
-            _port.PinChanged += OnSerialPinChanged;
-            _port.Open();
-            _port.DiscardInBuffer();
-            _port.DiscardOutBuffer();
-            _connectedAtUtc = DateTime.UtcNow;
+                _port.DataReceived += OnDataReceived;
+                _port.ErrorReceived += OnSerialErrorReceived;
+                _port.PinChanged += OnSerialPinChanged;
+                _port.Open();
+                _port.DiscardInBuffer();
+                _port.DiscardOutBuffer();
+                _connectedAtUtc = DateTime.UtcNow;
 
-            return true;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                CleanupPort();
+            }
         }
-        catch (Exception ex)
+
+        if (lastError != null)
         {
-            var msg = ex.Message;
+            var msg = lastError.Message;
             Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke(msg));
-            CleanupPort();
-            return false;
         }
+
+        return false;
     }
 
     public void Disconnect()
@@ -119,6 +151,7 @@ public sealed class SerialService : IDisposable
 
         try
         {
+            long stageStart = Stopwatch.GetTimestamp();
             byte[] buffer = new byte[TransferFrameHeaderSize + payload.Length + sizeof(uint)];
             byte[] encoded = new byte[buffer.Length + ((buffer.Length + 253) / 254)];
             int rawOffset = 0;
@@ -131,10 +164,15 @@ public sealed class SerialService : IDisposable
             rawOffset += payload.Length;
             uint crc = ComputeCrc32(buffer.AsSpan(0, TransferFrameHeaderSize + payload.Length));
             WriteUInt32LittleEndian(buffer, ref rawOffset, crc);
+            long buildTicks = Stopwatch.GetTimestamp() - stageStart;
 
+            stageStart = Stopwatch.GetTimestamp();
             int encodedLength = CobsEncode(buffer.AsSpan(0, rawOffset), encoded);
             if (encodedLength <= 0)
                 throw new InvalidOperationException("Failed to encode transfer frame.");
+            long cobsTicks = Stopwatch.GetTimestamp() - stageStart;
+
+            stageStart = Stopwatch.GetTimestamp();
             byte[] wire = new byte[1 + (encodedLength * 2) + 1];
             int offset = 0;
             wire[offset++] = TransferFrameMarker;
@@ -150,17 +188,147 @@ public sealed class SerialService : IDisposable
                 wire[offset++] = encoded[i];
             }
             wire[offset++] = TransferFrameMarker;
+            long wireTicks = Stopwatch.GetTimestamp() - stageStart;
 
+            stageStart = Stopwatch.GetTimestamp();
             lock (_writeSync)
             {
-                _port!.BaseStream.Write(wire, 0, offset);
-                _port.BaseStream.Flush();
+                _port!.Write(wire, 0, offset);
+            }
+            long writeTicks = Stopwatch.GetTimestamp() - stageStart;
+
+            lock (_transferStatsSync)
+            {
+                _transferBuildTicks += buildTicks;
+                _transferCobsTicks += cobsTicks;
+                _transferWireTicks += wireTicks;
+                _transferWriteTicks += writeTicks;
+                _transferMaxWriteTicks = Math.Max(_transferMaxWriteTicks, writeTicks);
+                _transferBytesWritten += offset;
+                _transferFrameWrites++;
             }
         }
         catch (Exception ex)
         {
             var msg = ex.Message;
             Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke(msg));
+        }
+    }
+
+    /// <summary>
+    /// Builds one wire frame and appends it to <paramref name="output"/> without writing to the port.
+    /// Call <see cref="SendPrebuiltFrames"/> once per window to flush all frames in a single Write().
+    /// </summary>
+    public void BuildFrameInto(byte frameType, byte transferId, uint sequence,
+                               ReadOnlySpan<byte> payload, System.IO.MemoryStream output)
+    {
+        if (payload.Length > MaxTransferPayloadSize)
+            throw new ArgumentOutOfRangeException(nameof(payload));
+
+        long stageStart = Stopwatch.GetTimestamp();
+        byte[] rawBuf = new byte[TransferFrameHeaderSize + payload.Length + sizeof(uint)];
+        int rawOffset = 0;
+        rawBuf[rawOffset++] = frameType;
+        rawBuf[rawOffset++] = transferId;
+        rawBuf[rawOffset++] = 0;
+        WriteUInt32LittleEndian(rawBuf, ref rawOffset, sequence);
+        WriteUInt16LittleEndian(rawBuf, ref rawOffset, (ushort)payload.Length);
+        payload.CopyTo(rawBuf.AsSpan(rawOffset, payload.Length));
+        rawOffset += payload.Length;
+        uint crc = ComputeCrc32(rawBuf.AsSpan(0, TransferFrameHeaderSize + payload.Length));
+        WriteUInt32LittleEndian(rawBuf, ref rawOffset, crc);
+        long buildTicks = Stopwatch.GetTimestamp() - stageStart;
+
+        stageStart = Stopwatch.GetTimestamp();
+        byte[] encoded = new byte[rawBuf.Length + ((rawBuf.Length + 253) / 254)];
+        int encodedLength = CobsEncode(rawBuf.AsSpan(0, rawOffset), encoded);
+        if (encodedLength <= 0)
+            throw new InvalidOperationException("Failed to COBS-encode transfer frame.");
+        long cobsTicks = Stopwatch.GetTimestamp() - stageStart;
+
+        stageStart = Stopwatch.GetTimestamp();
+        output.WriteByte(TransferFrameMarker);
+        for (int i = 0; i < encodedLength; i++)
+        {
+            if (ShouldEscapeFrameByte(encoded[i]))
+            {
+                output.WriteByte(TransferFrameEscape);
+                output.WriteByte((byte)(encoded[i] ^ TransferFrameEscapeXor));
+            }
+            else
+            {
+                output.WriteByte(encoded[i]);
+            }
+        }
+        output.WriteByte(TransferFrameMarker);
+        long wireTicks = Stopwatch.GetTimestamp() - stageStart;
+
+        lock (_transferStatsSync)
+        {
+            _transferBuildTicks += buildTicks;
+            _transferCobsTicks += cobsTicks;
+            _transferWireTicks += wireTicks;
+        }
+    }
+
+    /// <summary>
+    /// Writes all data accumulated in <paramref name="frames"/> to the port in a single Write() call.
+    /// This is the key win: N frames → 1 syscall instead of N, eliminating per-call USB CDC latency.
+    /// </summary>
+    public void SendPrebuiltFrames(System.IO.MemoryStream frames, int frameCount)
+    {
+        if (!IsConnected || frames.Length == 0) return;
+        int length = (int)frames.Length;
+        byte[] buffer = frames.GetBuffer();
+        long stageStart = Stopwatch.GetTimestamp();
+        try
+        {
+            lock (_writeSync)
+            {
+                _port!.BaseStream.Write(buffer, 0, length);
+            }
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.Message;
+            Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke(msg));
+            return;
+        }
+        long writeTicks = Stopwatch.GetTimestamp() - stageStart;
+        lock (_transferStatsSync)
+        {
+            _transferWriteTicks += writeTicks;
+            _transferMaxWriteTicks = Math.Max(_transferMaxWriteTicks, writeTicks);
+            _transferBytesWritten += length;
+            _transferFrameWrites += frameCount;
+        }
+    }
+
+    public TransferWriteStats SnapshotTransferWriteStats(bool reset = false)
+    {
+        lock (_transferStatsSync)
+        {
+            var stats = new TransferWriteStats(
+                StopwatchTicksToMs(_transferBuildTicks),
+                StopwatchTicksToMs(_transferCobsTicks),
+                StopwatchTicksToMs(_transferWireTicks),
+                StopwatchTicksToMs(_transferWriteTicks),
+                StopwatchTicksToMs(_transferMaxWriteTicks),
+                _transferFrameWrites,
+                _transferBytesWritten);
+
+            if (reset)
+            {
+                _transferBuildTicks = 0;
+                _transferCobsTicks = 0;
+                _transferWireTicks = 0;
+                _transferWriteTicks = 0;
+                _transferMaxWriteTicks = 0;
+                _transferBytesWritten = 0;
+                _transferFrameWrites = 0;
+            }
+
+            return stats;
         }
     }
 
@@ -418,13 +586,25 @@ public sealed class SerialService : IDisposable
     {
         uint crc = 0xFFFFFFFFu;
         for (int index = 0; index < data.Length; index++)
-        {
-            crc ^= data[index];
-            for (int bit = 0; bit < 8; bit++)
-                crc = (crc & 1u) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
-        }
+            crc = Crc32Table[(int)((crc ^ data[index]) & 0xFFu)] ^ (crc >> 8);
         return ~crc;
     }
+
+    private static uint[] BuildCrc32Table()
+    {
+        var table = new uint[256];
+        for (uint value = 0; value < table.Length; value++)
+        {
+            uint crc = value;
+            for (int bit = 0; bit < 8; bit++)
+                crc = (crc & 1u) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+            table[value] = crc;
+        }
+        return table;
+    }
+
+    private static long StopwatchTicksToMs(long ticks)
+        => (long)(ticks * 1000.0 / Stopwatch.Frequency);
 
     private static int CobsEncode(ReadOnlySpan<byte> input, Span<byte> output)
     {
@@ -466,9 +646,6 @@ public sealed class SerialService : IDisposable
         return write;
     }
 
-    private static bool ShouldEscapeFrameByte(byte value)
-        => value is TransferFrameMarker or TransferFrameEscape or (byte)'\r' or (byte)'\n';
-
     private static int CobsDecode(ReadOnlySpan<byte> input, Span<byte> output)
     {
         int read = 0;
@@ -498,4 +675,7 @@ public sealed class SerialService : IDisposable
 
         return write;
     }
+
+    private static bool ShouldEscapeFrameByte(byte value)
+        => value is TransferFrameMarker or TransferFrameEscape or (byte)'\r' or (byte)'\n';
 }

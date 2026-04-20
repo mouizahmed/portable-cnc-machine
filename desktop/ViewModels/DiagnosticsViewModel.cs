@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Windows.Input;
 
 namespace PortableCncApp.ViewModels;
@@ -11,6 +12,8 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
     public string LatestLogSummary => LogEntries.Count == 0
         ? "No console entries yet."
         : $"{LogEntries[^1].Type}: {LogEntries[^1].Message}";
+    public string FullLogText => string.Join(Environment.NewLine, LogEntries.Select(entry =>
+        $"{entry.FormattedTime} {entry.Type,-8} {entry.Message}"));
 
     private string _commandInput = string.Empty;
     public string CommandInput
@@ -133,7 +136,7 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
         }
     }
 
-    private void AddLog(string type, string message)
+    public void AddLog(string type, string message)
     {
         LogEntries.Add(new LogEntry
         {
@@ -142,8 +145,12 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
             Message = message
         });
 
+        while (LogEntries.Count > 500)
+            LogEntries.RemoveAt(0);
+
         RaisePropertyChanged(nameof(LogEntryCount));
         RaisePropertyChanged(nameof(LatestLogSummary));
+        RaisePropertyChanged(nameof(FullLogText));
     }
 
     private void ClearLog()
@@ -151,6 +158,7 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
         LogEntries.Clear();
         RaisePropertyChanged(nameof(LogEntryCount));
         RaisePropertyChanged(nameof(LatestLogSummary));
+        RaisePropertyChanged(nameof(FullLogText));
     }
 
     private void RaiseLimitProperties()

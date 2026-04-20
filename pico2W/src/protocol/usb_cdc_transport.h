@@ -10,7 +10,7 @@ public:
     static constexpr uint8_t kTransferFrameEscape = 0x7D;
     static constexpr uint8_t kTransferFrameEscapeXor = 0x20;
     static constexpr size_t kTransferFrameHeaderSize = 9;
-    static constexpr size_t kMaxTransferPayloadSize = 1024;
+    static constexpr size_t kMaxTransferPayloadSize = 4096;
     static constexpr size_t kMaxTransferRawFrameSize =
         kTransferFrameHeaderSize + kMaxTransferPayloadSize + sizeof(uint32_t);
     static constexpr size_t kMaxTransferEncodedFrameSize =
@@ -52,6 +52,9 @@ private:
     ReceiveMode mode_ = ReceiveMode::Idle;
     char line_[2048]{};
     size_t line_len_ = 0;
+    uint8_t rx_buffer_[8192]{};
+    size_t rx_len_ = 0;
+    size_t rx_pos_ = 0;
     uint8_t frame_packet_[kMaxTransferEncodedFrameSize]{};
     size_t frame_packet_len_ = 0;
     uint8_t decoded_frame_[kMaxTransferRawFrameSize]{};
@@ -66,6 +69,7 @@ private:
     static uint32_t crc32(const uint8_t* data, size_t len);
     static size_t cobs_encode(const uint8_t* input, size_t input_len, uint8_t* output, size_t output_cap);
     static int cobs_decode(const uint8_t* input, size_t input_len, uint8_t* output, size_t output_cap);
+    bool read_next_byte(uint8_t& byte);
     bool append_frame_packet_byte(uint8_t byte);
     void reset_frame_parse();
     void reset_receive_state();

@@ -15,12 +15,16 @@ constexpr uint8_t kCmd9 = 9;
 constexpr uint8_t kCmd16 = 16;
 constexpr uint8_t kCmd17 = 17;
 constexpr uint8_t kCmd24 = 24;
+constexpr uint8_t kCmd25 = 25;
 constexpr uint8_t kCmd55 = 55;
 constexpr uint8_t kCmd58 = 58;
+constexpr uint8_t kAcmd23 = 23;
 constexpr uint8_t kAcmd41 = 41;
 
 constexpr uint8_t kR1Idle = 0x01;
 constexpr uint8_t kDataToken = 0xFE;
+constexpr uint8_t kMultiBlockWriteToken = 0xFC;
+constexpr uint8_t kStopTranToken = 0xFD;
 constexpr uint8_t kDataAccepted = 0x05;
 constexpr uint32_t kInitTimeoutMs = 1000;
 constexpr uint32_t kReadTimeoutMs = 200;
@@ -147,6 +151,28 @@ bool SdSpiCard::write_blocks(uint32_t sector, const uint8_t* buffer, std::size_t
         return false;
     }
 
+    if (count > 1) {
+        // Pre-erase is optional, but most SD cards use it to avoid long busy
+        // stalls during multi-block writes.
+        (void)send_command(kAcmd23, static_cast<uint32_t>(count));
+
+        if (send_command(kCmd25, block_address(sector), nullptr, 0, true) != 0x00) {
+            return false;
+        }
+
+        for (std::size_t index = 0; index < count; ++index) {
+            if (!write_data_block(buffer + (index * 512), kMultiBlockWriteToken)) {
+                end_bus();
+                return false;
+            }
+        }
+
+        transfer(kStopTranToken);
+        const bool ready = wait_ready(kWriteTimeoutMs);
+        end_bus();
+        return ready;
+    }
+
     for (std::size_t index = 0; index < count; ++index) {
         if (send_command(kCmd24, block_address(sector + static_cast<uint32_t>(index)), nullptr, 0, true) != 0x00) {
             return false;
@@ -223,9 +249,7 @@ bool SdSpiCard::read_data_block(uint8_t* buffer, std::size_t length) {
         return false;
     }
 
-    for (std::size_t i = 0; i < length; ++i) {
-        buffer[i] = transfer(0xFF);
-    }
+    spi_read_blocking(spi_, 0xFF, buffer, static_cast<size_t>(length));
 
     transfer(0xFF);
     transfer(0xFF);
@@ -238,9 +262,7 @@ bool SdSpiCard::write_data_block(const uint8_t* buffer, uint8_t token) {
     }
 
     transfer(token);
-    for (std::size_t i = 0; i < 512; ++i) {
-        transfer(buffer[i]);
-    }
+    spi_write_blocking(spi_, buffer, 512);
     transfer(0xFF);
     transfer(0xFF);
 
@@ -253,7 +275,7 @@ uint8_t SdSpiCard::send_command(uint8_t command,
                                 uint8_t* response,
                                 std::size_t response_size,
                                 bool keep_selected) {
-    if (command == kAcmd41) {
+    if (command == kAcmd23 || command == kAcmd41) {
         const uint8_t prefix = send_command(kCmd55, 0);
         if (prefix > 0x01) {
             return prefix;

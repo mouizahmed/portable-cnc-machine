@@ -28,28 +28,14 @@
                     Height="300"
                     BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1">
-              <ScrollViewer>
-                <ItemsControl ItemsSource="{Binding LogEntries}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:LogEntry">
-                      <StackPanel Orientation="Horizontal" Margin="0,2">
-                        <TextBlock Text="{Binding FormattedTime}"
-                                   Classes="CodeText"
-                                   Foreground="{DynamicResource TextTertiaryBrush}"
-                                   Width="90"/>
-                        <TextBlock Text="{Binding Type}"
-                                   Classes="CodeText"
-                                   FontWeight="SemiBold"
-                                   Width="40"
-                                   Foreground="{DynamicResource AccentBrush}"/>
-                        <TextBlock Text="{Binding Message}"
-                                   Classes="CodeText"
-                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
-                      </StackPanel>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </ScrollViewer>
+              <TextBox Text="{Binding FullLogText}"
+                       IsReadOnly="True"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       FontFamily="Consolas"
+                       BorderThickness="0"
+                       Background="Transparent"
+                       Foreground="{DynamicResource TextPrimaryBrush}"/>
             </Border>
 
             <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">

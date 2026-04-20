@@ -30,6 +30,10 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# The app uses USB CDC as a binary transport. TinyUSB defaults to debug level 1
+# for Debug builds, which adds avoidable overhead in the transfer hot path.
+set(LOG 0 CACHE STRING "TinyUSB debug log level" FORCE)
+
 pico_sdk_init()
 
 set(PICO_TINYUSB_FATFS_DIR ${PICO_SDK_PATH}/lib/tinyusb/lib/fatfs/source)
@@ -99,11 +103,25 @@ target_link_libraries(portable_cnc_machine PRIVATE
     hardware_spi
     hardware_sync
     hardware_uart
+    pico_multicore
     pico_stdlib
 )
 
 pico_enable_stdio_uart(portable_cnc_machine 0)
 pico_enable_stdio_usb(portable_cnc_machine 1)
+
+# Larger USB buffers for 4096-byte file frames. Keep TinyUSB CDC FIFOs modest;
+# large near-limit values caused Windows COM semaphore timeouts. The protocol
+# path is back on pico_stdio_usb for stability while we diagnose the remaining
+# write-side bottleneck.
+target_compile_definitions(portable_cnc_machine PRIVATE
+    CFG_TUD_CDC_RX_BUFSIZE=8192
+    CFG_TUD_CDC_TX_BUFSIZE=8192
+    CFG_TUD_CDC_EP_BUFSIZE=512
+    PICO_STDIO_USB_TASK_INTERVAL_US=10
+    PICO_STDIO_USB_RX_BUFSIZE=131072
+    PICO_STDIO_USB_TX_BUFSIZE=98304
+)
 
 pico_add_extra_outputs(portable_cnc_machine)
 

@@ -10,11 +10,7 @@ class UploadScreen {
 public:
     explicit UploadScreen(Ili9488& display);
 
-    // Full redraw — call when entering the upload state
-    void render(uint32_t bytes, uint32_t total, const char* name) const;
-
-    // Partial update — call on each main-loop tick while uploading
-    void render_progress(uint32_t bytes, uint32_t total) const;
+    void render(const char* name) const;
 
     bool hit_test_abort(const TouchPoint& point) const;
 
@@ -22,6 +18,8 @@ private:
     Ili9488& display_;
     UiPainter painter_;
 
-    static const UiRect      kAbortRect;
+    static constexpr int16_t kAbortW = 140;
+    static constexpr int16_t kAbortH = 32;
+    static const UiRect       kAbortRect;
     static const UiButtonStyle kAbortStyle;
 };

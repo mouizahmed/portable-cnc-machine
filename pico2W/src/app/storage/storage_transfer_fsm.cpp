@@ -206,15 +206,18 @@ void StorageTransferStateMachine::note_download_chunk_sent(uint32_t sequence,
     ctx_.expected_sequence = sequence + 1;
     ctx_.bytes_sent = bytes_sent;
     ctx_.crc_running = crc_running;
-    ctx_.awaiting_ack = true;
-    ctx_.last_ack_sequence = sequence;
     ctx_.last_chunk_length = chunk_length;
     ctx_.last_send_ms = send_time_ms;
+    ++ctx_.chunks_in_flight;
+    ctx_.awaiting_ack = true;
 }
 
 void StorageTransferStateMachine::note_download_ack(uint32_t sequence) {
     ctx_.last_ack_sequence = sequence;
-    ctx_.awaiting_ack = false;
+    // chunks_in_flight = distance from (sequence+1) to expected_sequence
+    const uint32_t remaining = ctx_.expected_sequence - (sequence + 1u);
+    ctx_.chunks_in_flight = (remaining <= ctx_.chunks_in_flight) ? remaining : 0u;
+    ctx_.awaiting_ack = (ctx_.chunks_in_flight > 0);
     ctx_.retry_count = 0;
 }
 
@@ -256,6 +259,7 @@ void StorageTransferStateMachine::finish_operation() {
     ctx_.crc_running = 0xFFFFFFFFu;
     ctx_.retry_count = 0;
     ctx_.awaiting_ack = false;
+    ctx_.chunks_in_flight = 0;
     ctx_.last_chunk_length = 0;
     ctx_.last_send_ms = 0;
     ctx_.file = FIL{};

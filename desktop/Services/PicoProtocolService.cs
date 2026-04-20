@@ -23,7 +23,7 @@ public readonly record struct FileDownloadComplete(byte TransferId, string Name,
 /// </summary>
 public sealed class PicoProtocolService
 {
-    public const int BinaryTransferChunkSize = 1024;
+    public const int BinaryTransferChunkSize = 4096;
 
     private const byte UploadDataFrameType = 1;
     private const byte UploadAckFrameType = 2;
@@ -173,6 +173,18 @@ public sealed class PicoProtocolService
 
     public void SendUploadDataFrame(byte transferId, uint sequence, ReadOnlySpan<byte> payload)
         => _serial.SendFrame(UploadDataFrameType, transferId, sequence, payload);
+
+    /// <summary>Pre-build one upload frame into <paramref name="batch"/> without writing to the port.</summary>
+    public void BuildUploadDataFrame(byte transferId, uint sequence, ReadOnlySpan<byte> payload,
+                                     System.IO.MemoryStream batch)
+        => _serial.BuildFrameInto(UploadDataFrameType, transferId, sequence, payload, batch);
+
+    /// <summary>Flush all pre-built frames to the port in a single Write() call.</summary>
+    public void SendPrebuiltFrames(System.IO.MemoryStream frames, int frameCount)
+        => _serial.SendPrebuiltFrames(frames, frameCount);
+
+    public SerialService.TransferWriteStats SnapshotTransferWriteStats(bool reset = false)
+        => _serial.SnapshotTransferWriteStats(reset);
 
     public void SendDownloadAckFrame(byte transferId, uint sequence)
         => _serial.SendFrame(DownloadAckFrameType, transferId, sequence, ReadOnlySpan<byte>.Empty);

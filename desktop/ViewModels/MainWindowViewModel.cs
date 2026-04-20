@@ -754,15 +754,30 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         Protocol.PositionChanged += OnPositionChanged;
         Protocol.JobChanged      += HandleJobChanged;
         Protocol.EventReceived   += HandleProtocolEvent;
-        Protocol.ErrorReceived   += msg => { StatusMessage = $"Error: {msg}"; IsStatusError = true; };
+        Protocol.OkReceived      += (token, kv) =>
+        {
+            if (token.StartsWith("FILE_", StringComparison.OrdinalIgnoreCase))
+                DiagnosticsVm?.AddLog("OK", $"{token} {FormatEventValues(kv)}".TrimEnd());
+        };
+        Protocol.ErrorReceived   += msg =>
+        {
+            DiagnosticsVm?.AddLog("ERROR", msg);
+            StatusMessage = $"Error: {msg}";
+            IsStatusError = true;
+        };
         Protocol.WaitReceived    += reason => StatusMessage = string.IsNullOrEmpty(reason)
             ? "Controller busy - please wait"
             : $"Controller busy: {reason}";
         Protocol.PongReceived    += HandlePongReceived;
+        Protocol.UnknownLineReceived += line => DiagnosticsVm?.AddLog("RX", line);
 
         // Handle serial-layer disconnect (cable pulled, port error, etc.)
         Serial.LineReceived += _ => HandleProtocolActivity();
-        Serial.ErrorOccurred += HandleSerialError;
+        Serial.ErrorOccurred += error =>
+        {
+            DiagnosticsVm?.AddLog("SERIAL", error);
+            HandleSerialError(error);
+        };
 
         // Page ViewModels
         DashboardVm    = new DashboardViewModel();
@@ -965,6 +980,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void HandleProtocolEvent(string name, IReadOnlyDictionary<string, string> kv)
     {
+        if (name.StartsWith("STORAGE_", StringComparison.OrdinalIgnoreCase))
+            DiagnosticsVm?.AddLog("EVENT", $"{name} {FormatEventValues(kv)}".TrimEnd());
+
         switch (name)
         {
             case "JOB_PROGRESS":
@@ -1024,6 +1042,17 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                     UpdateLimitAxes(axis);
                 break;
         }
+    }
+
+    private static string FormatEventValues(IReadOnlyDictionary<string, string> kv)
+    {
+        if (kv.Count == 0)
+            return string.Empty;
+
+        var parts = new List<string>(kv.Count);
+        foreach (var item in kv)
+            parts.Add($"{item.Key}={item.Value}");
+        return string.Join(' ', parts);
     }
 
     private void UpdateLimitAxes(string axes)

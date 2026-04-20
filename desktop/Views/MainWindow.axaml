@@ -397,10 +397,30 @@
                   </controls:SectionCard>
 
                   <controls:SectionCard Title="CONSOLE">
+                    <controls:SectionCard.Actions>
+                      <Button Content="Clear"
+                              Command="{Binding ClearLogCommand}"
+                              Classes="AppButton"/>
+                    </controls:SectionCard.Actions>
                     <controls:SectionCard.Body>
-                      <StackPanel>
+                      <StackPanel Spacing="8">
                         <TextBlock Text="{Binding LogEntryCount, StringFormat={}{0} entries}" Classes="FieldLabel"/>
-                        <TextBlock Text="{Binding LatestLogSummary}" Classes="FieldValue" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        <Border Background="{DynamicResource ConsoleSurfaceBrush}"
+                                CornerRadius="4"
+                                Padding="8"
+                                MinHeight="320"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1">
+                          <TextBox Text="{Binding FullLogText}"
+                                   IsReadOnly="True"
+                                   AcceptsReturn="True"
+                                   TextWrapping="Wrap"
+                                   FontFamily="Consolas"
+                                   BorderThickness="0"
+                                   Background="Transparent"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   MinHeight="300"/>
+                        </Border>
                       </StackPanel>
                     </controls:SectionCard.Body>
                   </controls:SectionCard>

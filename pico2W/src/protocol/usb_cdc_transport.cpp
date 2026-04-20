@@ -6,14 +6,34 @@
 
 #include "pico/stdlib.h"
 
+static uint32_t crc32_update_table(uint32_t crc, const uint8_t* data, size_t len) {
+    static bool initialized = false;
+    static uint32_t table[256];
+
+    if (!initialized) {
+        for (uint32_t value = 0; value < 256; value++) {
+            uint32_t entry = value;
+            for (int bit = 0; bit < 8; bit++) {
+                entry = (entry & 1u) != 0 ? (entry >> 1) ^ 0xEDB88320u : (entry >> 1);
+            }
+            table[value] = entry;
+        }
+        initialized = true;
+    }
+
+    for (size_t i = 0; i < len; i++) {
+        crc = table[(crc ^ data[i]) & 0xFFu] ^ (crc >> 8);
+    }
+    return crc;
+}
+
 UsbCdcTransport::PacketKind UsbCdcTransport::poll(char* line_buf, size_t line_max, FramePacket& frame) {
     while (true) {
-        int c = getchar_timeout_us(0);
-        if (c == PICO_ERROR_TIMEOUT) {
+        uint8_t byte = 0;
+        if (!read_next_byte(byte)) {
             return PacketKind::None;
         }
 
-        const uint8_t byte = static_cast<uint8_t>(c);
         switch (mode_) {
             case ReceiveMode::Idle:
                 if (byte == kTransferFrameMarker) {
@@ -194,14 +214,7 @@ uint32_t UsbCdcTransport::read_u32_le(const uint8_t* in) {
 }
 
 uint32_t UsbCdcTransport::crc32(const uint8_t* data, size_t len) {
-    uint32_t crc = 0xFFFFFFFFu;
-    for (size_t i = 0; i < len; i++) {
-        crc ^= data[i];
-        for (int bit = 0; bit < 8; bit++) {
-            crc = (crc & 1u) != 0 ? (crc >> 1) ^ 0xEDB88320u : (crc >> 1);
-        }
-    }
-    return ~crc;
+    return ~crc32_update_table(0xFFFFFFFFu, data, len);
 }
 
 size_t UsbCdcTransport::cobs_encode(const uint8_t* input, size_t input_len, uint8_t* output, size_t output_cap) {
@@ -276,6 +289,25 @@ int UsbCdcTransport::cobs_decode(const uint8_t* input, size_t input_len, uint8_t
     }
 
     return static_cast<int>(write);
+}
+
+bool UsbCdcTransport::read_next_byte(uint8_t& byte) {
+    if (rx_pos_ >= rx_len_) {
+        const int read = stdio_get_until(reinterpret_cast<char*>(rx_buffer_),
+                                         static_cast<int>(sizeof(rx_buffer_)),
+                                         make_timeout_time_us(0));
+        if (read <= 0) {
+            rx_len_ = 0;
+            rx_pos_ = 0;
+            return false;
+        }
+
+        rx_len_ = static_cast<size_t>(read);
+        rx_pos_ = 0;
+    }
+
+    byte = rx_buffer_[rx_pos_++];
+    return true;
 }
 
 bool UsbCdcTransport::append_frame_packet_byte(uint8_t byte) {

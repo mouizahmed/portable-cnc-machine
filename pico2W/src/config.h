@@ -24,9 +24,10 @@ constexpr unsigned int LCD_HEIGHT = 320;
 
 constexpr uint32_t DISPLAY_SPI_BAUD = 20'000'000;
 constexpr uint32_t SD_SPI_INIT_BAUD = 400'000;
-constexpr uint32_t SD_SPI_BAUD = 12'000'000;
+constexpr uint32_t SD_SPI_BAUD = 25'000'000;
 constexpr uint32_t MOTION_UART_BAUD = 115200;
 constexpr uint32_t UI_POLL_MS = 20;
+constexpr uint32_t TRANSFER_POLL_US = 25;
 constexpr uint32_t TOUCH_SETTLE_MS = 80;
 constexpr uint32_t TOUCH_RELEASE_TIMEOUT_MS = 1500;
 constexpr uint32_t RECALIBRATE_HOLD_MS = 1800;
