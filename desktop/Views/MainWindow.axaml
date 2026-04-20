@@ -14,6 +14,7 @@
         MinHeight="700"
         CanResize="False"
         Title="Portable CNC Control"
+        Icon="/Assets/app-icon.png"
         Background="{DynamicResource AppBackgroundBrush}">
 
   <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,248">

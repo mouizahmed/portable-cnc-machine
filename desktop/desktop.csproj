@@ -47,4 +47,8 @@
     <EmbeddedResource Include="Rendering/Shaders/*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+
 </Project>
