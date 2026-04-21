@@ -10,6 +10,7 @@
 #include "hardware/regs/addressmap.h"
 #include "hardware/sync.h"
 #include "pico/assert.h"
+#include "pico/multicore.h"
 
 extern "C" char __flash_binary_end;
 
@@ -107,10 +108,17 @@ bool CalibrationStorage::save(const TouchCalibration& calibration) const {
     gpio_put(PIN_TOUCH_CS, 1);
     gpio_put(PIN_SD_CS, 1);
 
+    const bool lockout_core1 = multicore_lockout_victim_is_initialized(1);
+    if (lockout_core1) {
+        multicore_lockout_start_blocking();
+    }
     const uint32_t interrupt_state = save_and_disable_interrupts();
     flash_range_erase(kFlashOffset, FLASH_SECTOR_SIZE);
     flash_range_program(kFlashOffset, flash_sector_buffer, FLASH_SECTOR_SIZE);
     restore_interrupts(interrupt_state);
+    if (lockout_core1) {
+        multicore_lockout_end_blocking();
+    }
 
     TouchCalibration verify{};
     return load(verify);

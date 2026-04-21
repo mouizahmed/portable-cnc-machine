@@ -115,6 +115,7 @@ private:
     static constexpr uint32_t kDownloadWindowSize = 8;
     static constexpr uint32_t kUploadAckStride = 8;
     static constexpr size_t kUploadQueueCapacity = 16;
+    static constexpr size_t kUploadWorkerStackBytes = 8192;
     static constexpr uint32_t kDownloadResendIntervalMs = 750;
 
     struct UploadQueueEntry {
@@ -187,6 +188,8 @@ private:
     bool handling_command_ = false;
     bool transfer_active() const { return transfer_.is_active(); }
     static DesktopProtocol* storage_worker_instance_;
+    static volatile bool storage_worker_lockout_ready_;
+    static uint32_t upload_worker_stack_[kUploadWorkerStackBytes / sizeof(uint32_t)];
 
 // Command dispatch
     void dispatch_frame(const UsbCdcTransport::FramePacket& frame);

@@ -138,6 +138,7 @@ target_compile_definitions(portable_cnc_machine PRIVATE
     PICO_STDIO_USB_TASK_INTERVAL_US=10
     PICO_STDIO_USB_RX_BUFSIZE=131072
     PICO_STDIO_USB_TX_BUFSIZE=98304
+    PICO_CORE1_STACK_SIZE=0
 )
 
 pico_add_extra_outputs(portable_cnc_machine)

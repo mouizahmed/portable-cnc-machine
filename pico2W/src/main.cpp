@@ -9,17 +9,17 @@
 int main() {
     stdio_init_all();
 
-    Ili9488 display(spi0);
+    static Ili9488 display(spi0);
     display.init();
 
-    Xpt2046 touch(spi0);
+    static Xpt2046 touch(spi0);
     touch.init();
     touch.set_rotation(1);
 
-    SdSpiCard sd_card(spi1);
+    static SdSpiCard sd_card(spi1);
     sd_card.init();
 
-    CalibrationStorage storage;
-    PortableCncApp app(display, touch, sd_card, storage);
+    static CalibrationStorage storage;
+    static PortableCncApp app(display, touch, sd_card, storage);
     app.run();
 }

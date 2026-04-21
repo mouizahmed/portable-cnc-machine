@@ -10,6 +10,7 @@
 #include "hardware/regs/addressmap.h"
 #include "hardware/sync.h"
 #include "pico/assert.h"
+#include "pico/multicore.h"
 
 extern "C" char __flash_binary_end;
 
@@ -45,10 +46,17 @@ void write_sector(const void* data, std::size_t size) {
         std::memcpy(flash_sector_buffer, data, size);
     }
 
+    const bool lockout_core1 = multicore_lockout_victim_is_initialized(1);
+    if (lockout_core1) {
+        multicore_lockout_start_blocking();
+    }
     const uint32_t interrupt_state = save_and_disable_interrupts();
     flash_range_erase(kFlashOffset, FLASH_SECTOR_SIZE);
     flash_range_program(kFlashOffset, flash_sector_buffer, FLASH_SECTOR_SIZE);
     restore_interrupts(interrupt_state);
+    if (lockout_core1) {
+        multicore_lockout_end_blocking();
+    }
 }
 
 void assert_storage_region_reserved() {

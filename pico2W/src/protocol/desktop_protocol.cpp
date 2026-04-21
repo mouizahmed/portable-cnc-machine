@@ -233,6 +233,8 @@ const char* override_name(uint8_t target) {
 } // namespace
 
 DesktopProtocol* DesktopProtocol::storage_worker_instance_ = nullptr;
+volatile bool DesktopProtocol::storage_worker_lockout_ready_ = false;
+alignas(8) uint32_t DesktopProtocol::upload_worker_stack_[DesktopProtocol::kUploadWorkerStackBytes / sizeof(uint32_t)]{};
 
 // -- Constructor --------------------------------------------------------------
 
@@ -255,7 +257,13 @@ DesktopProtocol::DesktopProtocol(UsbCdcTransport& transport,
     critical_section_init(&upload_worker_lock_);
     if (storage_worker_instance_ == nullptr) {
         storage_worker_instance_ = this;
-        multicore_launch_core1(&DesktopProtocol::storage_worker_entry);
+        multicore_launch_core1_with_stack(&DesktopProtocol::storage_worker_entry,
+                                          upload_worker_stack_,
+                                          sizeof(upload_worker_stack_));
+        const absolute_time_t deadline = make_timeout_time_ms(100);
+        while (!storage_worker_lockout_ready_ && !time_reached(deadline)) {
+            sleep_us(10);
+        }
     }
 }
 
@@ -2419,6 +2427,9 @@ void DesktopProtocol::storage_worker_entry() {
 }
 
 void DesktopProtocol::storage_worker_loop() {
+    multicore_lockout_victim_init();
+    storage_worker_lockout_ready_ = true;
+
     while (true) {
         bool has_entry = false;
 

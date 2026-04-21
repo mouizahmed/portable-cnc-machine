@@ -32,7 +32,10 @@ public sealed class FilesViewModel : PageViewModelBase
     private static readonly TimeSpan TransferChunkTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan TransferFinalizeTimeout = TimeSpan.FromSeconds(30);
     private const int TransferMaxRetries = 3;
-    private static readonly int UploadWindowSize = 16;
+    // Keep the desktop burst below the Pico-side queue capacity.
+    // Matching the queue depth exactly leaves no headroom if the worker falls behind,
+    // which can trap the Pico main loop in upload wait paths and make the UI appear frozen.
+    private static readonly int UploadWindowSize = 8;
     private static readonly uint[] Crc32Table = BuildCrc32Table();
 
     // ── Preview fields ────────────────────────────────────────────────────────
