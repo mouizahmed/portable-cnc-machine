@@ -7,9 +7,11 @@
 #include "app/job/loaded_job_storage.h"
 #include "app/job/job_state_machine.h"
 #include "app/machine/machine_fsm.h"
+#include "app/settings/machine_settings_store.h"
 #include "app/storage/storage_transfer_fsm.h"
 #include "app/storage/storage_service.h"
 #include "drivers/sd_spi_card.h"
+#include "protocol/protocol_defs.h"
 #include "protocol/usb_cdc_transport.h"
 #include "pico/sync.h"
 
@@ -33,6 +35,7 @@ public:
                     JogStateMachine& jogs,
                     JobStateMachine& jobs,
                     LoadedJobStorage& loaded_job_storage,
+                    MachineSettingsStore& machine_settings,
                     StorageService& storage,
                     SdSpiCard& sd);
 
@@ -78,6 +81,9 @@ public:
 
     // Emit loaded job snapshot
     void emit_job();
+
+    // Emit current machine settings snapshot.
+    void emit_machine_settings();
 
     // Emit position snapshot
     void emit_position();
@@ -134,6 +140,7 @@ private:
     JogStateMachine& jogs_;
     JobStateMachine& jobs_;
     LoadedJobStorage& loaded_job_storage_;
+    MachineSettingsStore& machine_settings_;
     StorageService& storage_;
     SdSpiCard& sd_;
 
@@ -221,6 +228,8 @@ private:
     void handle_file_download(const char* params);
     void handle_file_download_ack(const char* params);
     void handle_file_download_abort();
+    void handle_settings_get();
+    void handle_settings_set(const CmdSettingsSet& cmd);
     void fill_download_window();
     void send_next_download_chunk();
     void tick_transfer_retries();

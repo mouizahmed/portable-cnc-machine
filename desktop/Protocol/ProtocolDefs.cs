@@ -58,7 +58,9 @@ public enum CommandMessageType : byte
     FileDownloadAbort = 27,
     BeginJob = 28,
     EndJob = 29,
-    ClearJob = 30
+    ClearJob = 30,
+    SettingsGet = 31,
+    SettingsSet = 32
 }
 
 public enum ResponseMessageType : byte
@@ -84,7 +86,8 @@ public enum ResponseMessageType : byte
     FileDownloadEnd = 19,
     FileDownloadAbort = 20,
     StorageError = 21,
-    Wait = 22
+    Wait = 22,
+    MachineSettings = 23
 }
 
 public enum EventMessageType : byte
@@ -279,6 +282,31 @@ public unsafe struct CmdFileDownload
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdBeginJob { public byte MessageType; }
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdEndJob { public byte MessageType; public uint Lines; }
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdClearJob { public byte MessageType; }
+[StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdSettingsGet { public byte MessageType; }
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct CmdSettingsSet
+{
+    public byte MessageType;
+    public float StepsPerMmX;
+    public float StepsPerMmY;
+    public float StepsPerMmZ;
+    public float MaxFeedRateX;
+    public float MaxFeedRateY;
+    public float MaxFeedRateZ;
+    public float AccelerationX;
+    public float AccelerationY;
+    public float AccelerationZ;
+    public float MaxTravelX;
+    public float MaxTravelY;
+    public float MaxTravelZ;
+    public byte SoftLimitsEnabled;
+    public byte HardLimitsEnabled;
+    public float SpindleMinRpm;
+    public float SpindleMaxRpm;
+    public float WarningTemperature;
+    public float MaxTemperature;
+}
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct RespPong { public byte MessageType; public uint RequestSeq; }
 
@@ -423,6 +451,31 @@ public unsafe struct RespWait
     public byte MessageType;
     public uint RequestSeq;
     public fixed byte Reason[ProtocolConstants.MaxReasonBytes];
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct RespMachineSettings
+{
+    public byte MessageType;
+    public uint RequestSeq;
+    public float StepsPerMmX;
+    public float StepsPerMmY;
+    public float StepsPerMmZ;
+    public float MaxFeedRateX;
+    public float MaxFeedRateY;
+    public float MaxFeedRateZ;
+    public float AccelerationX;
+    public float AccelerationY;
+    public float AccelerationZ;
+    public float MaxTravelX;
+    public float MaxTravelY;
+    public float MaxTravelZ;
+    public byte SoftLimitsEnabled;
+    public byte HardLimitsEnabled;
+    public float SpindleMinRpm;
+    public float SpindleMaxRpm;
+    public float WarningTemperature;
+    public float MaxTemperature;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct EventState { public byte MessageType; public byte State; }

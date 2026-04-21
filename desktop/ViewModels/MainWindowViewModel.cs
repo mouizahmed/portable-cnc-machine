@@ -35,6 +35,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     private DateTime _lastLivenessPingUtc = DateTime.MinValue;
     private bool _awaitingLivenessPong;
     private bool _hasReceivedMachineState;
+    private int _machineSettingsLoadVersion;
     private readonly SemaphoreSlim _commandWaitGate = new(1, 1);
 
     public enum ControllerCommandResultKind
@@ -69,6 +70,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                     _lastProtocolActivityUtc = DateTime.UtcNow;
                     _lastLivenessPingUtc = DateTime.MinValue;
                     _awaitingLivenessPong = false;
+                    SettingsVm.BeginMachineSettingsLoad();
+                    _ = LoadMachineSettingsOnConnectAsync(++_machineSettingsLoadVersion);
                 }
                 else if (value != ConnectionStatus.Connecting)
                 {
@@ -77,6 +80,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                     _lastLivenessPingUtc = DateTime.MinValue;
                     _awaitingLivenessPong = false;
                     _hasReceivedMachineState = false;
+                    _machineSettingsLoadVersion++;
+                    SettingsVm.ResetMachineSettingsAvailability();
                 }
 
                 RaisePropertyChanged(nameof(ConnectionStatusText));
@@ -755,6 +760,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         Protocol.SafetyChanged   += l => SafetyLevel = l;
         Protocol.PositionChanged += OnPositionChanged;
         Protocol.JobChanged      += HandleJobChanged;
+        Protocol.MachineSettingsReceived += HandleMachineSettingsReceived;
         Protocol.EventReceived   += HandleProtocolEvent;
         Protocol.OkReceived      += (token, kv) =>
         {
@@ -927,6 +933,16 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         _lastLivenessPingUtc = DateTime.MinValue;
     }
 
+    private void HandleMachineSettingsReceived(PicoMachineSettings settings)
+    {
+        HandleProtocolActivity();
+
+        if (PiConnectionStatus != ConnectionStatus.Connected)
+            return;
+
+        SettingsVm.ApplyMachineSettings(settings);
+    }
+
     private void HandleSerialError(string _)
     {
         if (PiConnectionStatus != ConnectionStatus.Connected)
@@ -1060,6 +1076,43 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         XLimitTriggered = upper.Contains('X');
         YLimitTriggered = upper.Contains('Y');
         ZLimitTriggered = upper.Contains('Z');
+    }
+
+    private async Task LoadMachineSettingsOnConnectAsync(int version)
+    {
+        if (PiConnectionStatus != ConnectionStatus.Connected)
+            return;
+
+        var completion = new TaskCompletionSource<PicoMachineSettings>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void HandleMachineSettings(PicoMachineSettings settings)
+            => completion.TrySetResult(settings);
+
+        Protocol.MachineSettingsReceived += HandleMachineSettings;
+
+        try
+        {
+            Protocol.SendSettingsGet();
+
+            var completed = await Task.WhenAny(completion.Task, Task.Delay(TimeSpan.FromSeconds(3))) == completion.Task;
+            if (version != _machineSettingsLoadVersion || PiConnectionStatus != ConnectionStatus.Connected)
+                return;
+
+            if (!completed)
+            {
+                SettingsVm.FailMachineSettingsLoad("Machine settings request timed out. Reconnect or try again.");
+                StatusMessage = "Machine settings load failed";
+                IsStatusError = true;
+                return;
+            }
+
+            var settings = await completion.Task;
+            SettingsVm.ApplyMachineSettings(settings);
+        }
+        finally
+        {
+            Protocol.MachineSettingsReceived -= HandleMachineSettings;
+        }
     }
 
     // ════════════════════════════════════════════════════════════════

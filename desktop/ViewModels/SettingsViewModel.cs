@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using PortableCncApp.Services;
 
@@ -7,6 +8,14 @@ namespace PortableCncApp.ViewModels;
 
 public sealed class SettingsViewModel : PageViewModelBase
 {
+    private enum MachineSettingsLoadState
+    {
+        Unavailable,
+        Loading,
+        Loaded,
+        Error
+    }
+
     private const double MinStepsPerMm = 1;
     private const double MaxStepsPerMm = 20000;
     private const double MinFeedRate = 1;
@@ -27,41 +36,14 @@ public sealed class SettingsViewModel : PageViewModelBase
     private readonly RelayCommand _exportSettingsCommand;
     private readonly RelayCommand _refreshPortsCommand;
 
-    private AppSettings _persistedSnapshot = new();
-    private MachineSettingsSnapshot _machineSnapshot = MachineSettingsSnapshot.Default;
+    private AppSettings _cleanAppSnapshot = new();
+    private MachineSettings _cleanMachineSnapshot = MachineSettings.Default;
+    private MachineSettingsLoadState _machineSettingsLoadState = MachineSettingsLoadState.Unavailable;
+    private string? _machineSettingsLoadError;
+    private bool _isSavingSettings;
     private bool _isApplyingSnapshot;
     private string? _statusTextOverride;
     private string? _statusDetailOverride;
-
-    private sealed record MachineSettingsSnapshot(
-        double StepsPerMmX,
-        double StepsPerMmY,
-        double StepsPerMmZ,
-        double MaxFeedRateX,
-        double MaxFeedRateY,
-        double MaxFeedRateZ,
-        double AccelerationX,
-        double AccelerationY,
-        double AccelerationZ,
-        double MaxTravelX,
-        double MaxTravelY,
-        double MaxTravelZ,
-        bool SoftLimitsEnabled,
-        bool HardLimitsEnabled,
-        double SpindleMinRpm,
-        double SpindleMaxRpm,
-        double WarningTemperature,
-        double MaxTemperature)
-    {
-        public static MachineSettingsSnapshot Default { get; } = new(
-            800, 800, 800,
-            5000, 5000, 1000,
-            200, 200, 100,
-            300, 200, 100,
-            true, true,
-            1000, 24000,
-            40, 50);
-    }
 
     public ObservableCollection<string> AvailablePorts { get; } = new();
     public IReadOnlyList<string> UnitsOptions { get; } = ["mm", "in"];
@@ -303,14 +285,22 @@ public sealed class SettingsViewModel : PageViewModelBase
         private set => SetProperty(ref _hasPendingSettingsChanges, value);
     }
 
+    public bool IsSavingSettings
+    {
+        get => _isSavingSettings;
+        private set => SetProperty(ref _isSavingSettings, value);
+    }
+
     public bool HasSavedPort => !string.IsNullOrWhiteSpace(LastPort);
     public bool HasLimitsSafetyWarning => !SoftLimitsEnabled || !HardLimitsEnabled;
     public bool IsPicoConnected => MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
-    public bool HasMachineSettingsLoaded => IsPicoConnected;
+    public bool HasMachineSettingsLoaded => _machineSettingsLoadState == MachineSettingsLoadState.Loaded;
+    public bool IsMachineSettingsLoading => _machineSettingsLoadState == MachineSettingsLoadState.Loading;
+    public bool HasMachineSettingsLoadError => _machineSettingsLoadState == MachineSettingsLoadState.Error;
 
     public string StatusText => _statusTextOverride ?? BuildStatusText();
     public string StatusDetail => _statusDetailOverride ?? BuildStatusDetail();
-    public string SettingsStateText => HasPendingSettingsChanges ? "PENDING" : "SAVED";
+    public string SettingsStateText => HasPendingSettingsChanges ? "PENDING" : "UNCHANGED";
     public string LastPortSummary => HasSavedPort ? LastPort! : "No saved port";
     public string UnitsSummary => Units == "in" ? "Inches" : "Millimeters";
     public string AutoConnectSummary => AutoConnect ? "Armed for startup" : "Manual connect only";
@@ -338,8 +328,8 @@ public sealed class SettingsViewModel : PageViewModelBase
 
     public SettingsViewModel()
     {
-        _saveLocalSettingsCommand = new RelayCommand(SaveLocalSettings, () => HasPendingSettingsChanges);
-        _revertChangesCommand = new RelayCommand(RevertChanges, () => HasPendingSettingsChanges);
+        _saveLocalSettingsCommand = new RelayCommand(SaveLocalSettings, () => HasPendingSettingsChanges && !IsSavingSettings);
+        _revertChangesCommand = new RelayCommand(RevertChanges, () => HasPendingSettingsChanges && !IsSavingSettings);
         _loadDefaultsCommand = new RelayCommand(LoadDefaults);
         _importSettingsCommand = new RelayCommand(ImportSettings);
         _exportSettingsCommand = new RelayCommand(ExportSettings);
@@ -360,6 +350,9 @@ public sealed class SettingsViewModel : PageViewModelBase
         if (propertyName != nameof(MainWindowViewModel.PiConnectionStatus))
             return;
 
+        if (!IsPicoConnected)
+            ResetMachineSettingsAvailability();
+
         ClearStatusOverride();
         UpdateDerivedState();
     }
@@ -374,7 +367,7 @@ public sealed class SettingsViewModel : PageViewModelBase
         ThemeMode = settings.ThemeMode;
 
         _isApplyingSnapshot = false;
-        _persistedSnapshot = settings.Clone();
+        _cleanAppSnapshot = settings.Clone();
         ClearStatusOverride();
         RefreshAvailablePorts();
         UpdateDerivedState();
@@ -392,52 +385,160 @@ public sealed class SettingsViewModel : PageViewModelBase
             ApplyFrom(persisted);
     }
 
-    private void SaveLocalSettings()
+    public void BeginMachineSettingsLoad()
+    {
+        _machineSettingsLoadState = MachineSettingsLoadState.Loading;
+        _machineSettingsLoadError = null;
+        ClearStatusOverride();
+        UpdateDerivedState();
+    }
+
+    public void ApplyMachineSettings(PicoMachineSettings settings)
+    {
+        _machineSettingsLoadState = MachineSettingsLoadState.Loaded;
+        _machineSettingsLoadError = null;
+        ApplyMachineSettingsSnapshot(MachineSettings.FromProtocol(settings), updateSnapshot: true);
+    }
+
+    public void FailMachineSettingsLoad(string message)
+    {
+        _machineSettingsLoadState = MachineSettingsLoadState.Error;
+        _machineSettingsLoadError = string.IsNullOrWhiteSpace(message)
+            ? "Unable to load machine settings from the controller."
+            : message;
+        ClearStatusOverride();
+        UpdateDerivedState();
+    }
+
+    public void ResetMachineSettingsAvailability()
+    {
+        _machineSettingsLoadState = MachineSettingsLoadState.Unavailable;
+        _machineSettingsLoadError = null;
+        ClearStatusOverride();
+        UpdateDerivedState();
+    }
+
+    private async void SaveLocalSettings()
     {
         if (MainVm == null)
             return;
 
+        if (IsSavingSettings)
+            return;
+
         var current = BuildCurrentSettings();
+        var currentMachineSettings = BuildCurrentMachineSettings();
+        var hadPendingLocalChanges = HasUnsavedLocalDifferences();
+        var hadPendingMachineChanges = HasMachineSettingsLoaded && HasUnsavedMachineDifferences();
 
-        MainVm.Settings.Current.CopyFrom(current);
-        MainVm.Settings.Save();
+        IsSavingSettings = true;
+        _saveLocalSettingsCommand.RaiseCanExecuteChanged();
+        _revertChangesCommand.RaiseCanExecuteChanged();
 
-        _persistedSnapshot = current.Clone();
-        if (HasMachineSettingsLoaded)
-            _machineSnapshot = BuildCurrentMachineSettings();
-        ClearStatusOverride();
-        UpdateDerivedState();
-        RefreshAvailablePorts();
-        MainVm.NotifySettingsChanged();
-        MainVm.StatusMessage = "Settings saved.";
+        try
+        {
+            if (hadPendingLocalChanges)
+            {
+                MainVm.StatusMessage = hadPendingMachineChanges
+                    ? "Saving app settings..."
+                    : "Saving settings...";
+                MainVm.Settings.Current.CopyFrom(current);
+                MainVm.Settings.Save();
+                _cleanAppSnapshot = current.Clone();
+                RefreshAvailablePorts();
+                MainVm.NotifySettingsChanged();
+            }
+
+            if (hadPendingMachineChanges)
+            {
+                if (!HasMachineSettingsLoaded || !IsPicoConnected)
+                {
+                    ClearStatusOverride();
+                    UpdateDerivedState();
+                    MainVm.StatusMessage = hadPendingLocalChanges
+                        ? "App settings saved. Machine settings are still pending."
+                        : "Machine settings are pending. Connect to Pico to save them.";
+                    MainVm.IsStatusError = true;
+                    return;
+                }
+
+                MainVm.StatusMessage = hadPendingLocalChanges
+                    ? "Saving machine settings..."
+                    : "Saving settings...";
+                MainVm.IsStatusError = false;
+
+                var result = await MainVm.SendCommandAndWaitAsync(
+                    "SETTINGS_SET",
+                    () => MainVm.Protocol.SendSettingsSet(currentMachineSettings.ToProtocol()),
+                    TimeSpan.FromSeconds(3),
+                    disconnectOnTimeout: true);
+
+                if (!result.Success)
+                {
+                    ClearStatusOverride();
+                    UpdateDerivedState();
+                    MainVm.ApplyCommandResult(result, hadPendingLocalChanges
+                        ? "App settings saved but machine save failed"
+                        : "Machine save failed");
+                    return;
+                }
+
+                _cleanMachineSnapshot = currentMachineSettings.Clone();
+            }
+
+            ClearStatusOverride();
+            UpdateDerivedState();
+            MainVm.StatusMessage = "Settings saved.";
+            MainVm.IsStatusError = false;
+        }
+        catch (Exception ex)
+        {
+            ClearStatusOverride();
+            UpdateDerivedState();
+            MainVm.StatusMessage = $"Settings save failed: {ex.Message}";
+            MainVm.IsStatusError = true;
+        }
+        finally
+        {
+            IsSavingSettings = false;
+            _saveLocalSettingsCommand.RaiseCanExecuteChanged();
+            _revertChangesCommand.RaiseCanExecuteChanged();
+        }
     }
 
     private void RevertChanges()
     {
-        ApplyFrom(_persistedSnapshot);
+        ApplyFrom(_cleanAppSnapshot);
         if (HasMachineSettingsLoaded)
-            ApplyMachineSettingsSnapshot(_machineSnapshot, updateSnapshot: false);
+            ApplyMachineSettingsSnapshot(_cleanMachineSnapshot, updateSnapshot: false);
 
         SetStatusOverride(
             "Reverted",
             "Settings were restored to the last unchanged values.");
 
         if (MainVm != null)
+        {
             MainVm.StatusMessage = "Unsaved settings changes reverted.";
+            MainVm.IsStatusError = false;
+        }
     }
 
     private void LoadDefaults()
     {
-        ApplyValuesWithoutChangingSnapshot(new AppSettings());
+        ApplyAppDefaultsWithoutChangingSnapshot();
         if (HasMachineSettingsLoaded)
-            ApplyMachineSettingsSnapshot(MachineSettingsSnapshot.Default, updateSnapshot: false);
+            ApplyVisibleMachineDefaultsWithoutChangingSnapshot();
 
         SetStatusOverride(
             "Defaults loaded",
-            "Defaults are loaded in memory. Save when you are ready.");
+            HasMachineSettingsLoaded
+                ? "Defaults were applied to the visible app and machine settings. Save when you are ready."
+                : "Defaults were applied to the visible app settings. Save when you are ready.");
 
         if (MainVm != null)
-            MainVm.StatusMessage = "Default settings loaded into the page.";
+            MainVm.StatusMessage = HasMachineSettingsLoaded
+                ? "Default app and machine settings loaded into the page."
+                : "Default app settings loaded into the page.";
     }
 
     private void ImportSettings()
@@ -473,6 +574,12 @@ public sealed class SettingsViewModel : PageViewModelBase
         RefreshAvailablePorts();
         UpdateDerivedState();
     }
+
+    private void ApplyAppDefaultsWithoutChangingSnapshot()
+        => ApplyValuesWithoutChangingSnapshot(new AppSettings());
+
+    private void ApplyVisibleMachineDefaultsWithoutChangingSnapshot()
+        => ApplyMachineSettingsSnapshot(MachineSettings.Default, updateSnapshot: false);
 
     private bool SetLocalProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
@@ -511,6 +618,8 @@ public sealed class SettingsViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(SettingsStateText));
         RaisePropertyChanged(nameof(IsPicoConnected));
         RaisePropertyChanged(nameof(HasMachineSettingsLoaded));
+        RaisePropertyChanged(nameof(IsMachineSettingsLoading));
+        RaisePropertyChanged(nameof(HasMachineSettingsLoadError));
         RaisePropertyChanged(nameof(HasSavedPort));
         RaisePropertyChanged(nameof(LastPortSummary));
         RaisePropertyChanged(nameof(UnitsSummary));
@@ -552,13 +661,13 @@ public sealed class SettingsViewModel : PageViewModelBase
     }
 
     private bool HasUnsavedLocalDifferences()
-        => !StringEquals(LastPort, _persistedSnapshot.LastPort)
-           || AutoConnect != _persistedSnapshot.AutoConnect
-           || !StringEquals(Units, _persistedSnapshot.Units)
-           || !StringEquals(ThemeMode, _persistedSnapshot.ThemeMode);
+        => !StringEquals(LastPort, _cleanAppSnapshot.LastPort)
+           || AutoConnect != _cleanAppSnapshot.AutoConnect
+           || !StringEquals(Units, _cleanAppSnapshot.Units)
+           || !StringEquals(ThemeMode, _cleanAppSnapshot.ThemeMode);
 
     private bool HasUnsavedMachineDifferences()
-        => BuildCurrentMachineSettings() != _machineSnapshot;
+        => !BuildCurrentMachineSettings().ValueEquals(_cleanMachineSnapshot);
 
     private bool MatchesLocalSettings(AppSettings settings)
         => StringEquals(settings.LastPort, LastPort)
@@ -575,28 +684,30 @@ public sealed class SettingsViewModel : PageViewModelBase
             ThemeMode = NormalizeThemeMode(ThemeMode)
         };
 
-    private MachineSettingsSnapshot BuildCurrentMachineSettings()
-        => new(
-            StepsPerMmX,
-            StepsPerMmY,
-            StepsPerMmZ,
-            MaxFeedRateX,
-            MaxFeedRateY,
-            MaxFeedRateZ,
-            AccelerationX,
-            AccelerationY,
-            AccelerationZ,
-            MaxTravelX,
-            MaxTravelY,
-            MaxTravelZ,
-            SoftLimitsEnabled,
-            HardLimitsEnabled,
-            SpindleMinRpm,
-            SpindleMaxRpm,
-            WarningTemperature,
-            MaxTemperature);
+    private MachineSettings BuildCurrentMachineSettings()
+        => new()
+        {
+            StepsPerMmX = StepsPerMmX,
+            StepsPerMmY = StepsPerMmY,
+            StepsPerMmZ = StepsPerMmZ,
+            MaxFeedRateX = MaxFeedRateX,
+            MaxFeedRateY = MaxFeedRateY,
+            MaxFeedRateZ = MaxFeedRateZ,
+            AccelerationX = AccelerationX,
+            AccelerationY = AccelerationY,
+            AccelerationZ = AccelerationZ,
+            MaxTravelX = MaxTravelX,
+            MaxTravelY = MaxTravelY,
+            MaxTravelZ = MaxTravelZ,
+            SoftLimitsEnabled = SoftLimitsEnabled,
+            HardLimitsEnabled = HardLimitsEnabled,
+            SpindleMinRpm = SpindleMinRpm,
+            SpindleMaxRpm = SpindleMaxRpm,
+            WarningTemperature = WarningTemperature,
+            MaxTemperature = MaxTemperature
+        };
 
-    private void ApplyMachineSettingsSnapshot(MachineSettingsSnapshot settings, bool updateSnapshot)
+    private void ApplyMachineSettingsSnapshot(MachineSettings settings, bool updateSnapshot)
     {
         _isApplyingSnapshot = true;
 
@@ -621,17 +732,28 @@ public sealed class SettingsViewModel : PageViewModelBase
 
         _isApplyingSnapshot = false;
         if (updateSnapshot)
-            _machineSnapshot = settings;
+            _cleanMachineSnapshot = settings.Clone();
         UpdateDerivedState();
     }
 
     private string BuildStatusText()
-        => HasPendingSettingsChanges ? "Settings pending" : "Settings unchanged";
+        => _machineSettingsLoadState switch
+        {
+            MachineSettingsLoadState.Loading => "Loading machine settings",
+            MachineSettingsLoadState.Error => "Machine settings unavailable",
+            _ when HasPendingSettingsChanges => "Settings pending",
+            _ => "Settings unchanged"
+        };
 
     private string BuildStatusDetail()
-        => HasPendingSettingsChanges
-            ? "Visible settings have unsaved changes."
-            : "Visible settings match the current unchanged snapshot.";
+        => _machineSettingsLoadState switch
+        {
+            MachineSettingsLoadState.Loading => "Requesting the current machine settings snapshot from Pico.",
+            MachineSettingsLoadState.Error => _machineSettingsLoadError ?? "Unable to load machine settings from the controller.",
+            MachineSettingsLoadState.Unavailable when !IsPicoConnected => "Machine sections stay hidden until the Pico is connected and settings load succeeds.",
+            _ when HasPendingSettingsChanges => "Visible settings have unsaved changes.",
+            _ => "Visible settings match the current unchanged snapshot."
+        };
 
     private string BuildLimitsSafetyWarning()
     {

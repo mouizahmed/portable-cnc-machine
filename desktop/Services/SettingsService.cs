@@ -13,6 +13,7 @@ public sealed class SettingsService
         "PortableCNC",
         "settings.json");
 
+    // Persists desktop-local app preferences only.
     public AppSettings Current { get; private set; } = new();
 
     public void Load()

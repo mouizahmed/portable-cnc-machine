@@ -5,6 +5,7 @@
 #include "app/jog/jog_state_machine.h"
 #include "app/job/job_state_machine.h"
 #include "app/machine/machine_fsm.h"
+#include "app/settings/machine_settings_store.h"
 #include "app/storage/storage_service.h"
 
 enum class ControlCommand : uint8_t {
@@ -26,6 +27,7 @@ public:
     PortableCncController(MachineFsm& machine,
                           JogStateMachine& jog,
                           JobStateMachine& jobs,
+                          MachineSettingsStore& machine_settings,
                           StorageService& storage);
 
     bool begin_calibration();
@@ -41,6 +43,7 @@ public:
     MachineOperationState machine_state() const;
     const JogStateMachine& jog() const;
     const JobStateMachine& jobs() const;
+    const MachineSettings& machine_settings() const;
     StorageState storage_state() const;
     const char* storage_status_text() const;
     uint64_t storage_free_bytes() const;
@@ -48,6 +51,7 @@ public:
     bool can_jog() const;
     bool can_load_file() const;
     bool can_run_loaded_job() const;
+    bool save_machine_settings(const MachineSettings& settings, const char** error_reason);
     PrimaryAction primary_action() const;
     const char* primary_action_label() const;
 
@@ -55,5 +59,6 @@ private:
     MachineFsm& machine_;
     JogStateMachine& jog_;
     JobStateMachine& jobs_;
+    MachineSettingsStore& machine_settings_;
     StorageService& storage_;
 };

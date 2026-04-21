@@ -4,7 +4,9 @@
 #include <cstdint>
 #include <cstring>
 
+#include "config.h"
 #include "hardware/flash.h"
+#include "hardware/gpio.h"
 #include "hardware/regs/addressmap.h"
 #include "hardware/sync.h"
 #include "pico/assert.h"
@@ -99,6 +101,11 @@ bool CalibrationStorage::save(const TouchCalibration& calibration) const {
 
     std::memset(flash_sector_buffer, 0xFF, sizeof(flash_sector_buffer));
     std::memcpy(flash_sector_buffer, &stored, sizeof(stored));
+
+    // Leave shared SPI peripherals deselected before flash erase/program.
+    gpio_put(PIN_LCD_CS, 1);
+    gpio_put(PIN_TOUCH_CS, 1);
+    gpio_put(PIN_SD_CS, 1);
 
     const uint32_t interrupt_state = save_and_disable_interrupts();
     flash_range_erase(kFlashOffset, FLASH_SECTOR_SIZE);

@@ -1,21 +1,28 @@
 #include "app/portable_cnc_app.h"
 
 #include "config.h"
+#include "hardware/gpio.h"
 #include "pico/stdlib.h"
 #include "ui/assets/boot_logo_rgb565.h"
 
 namespace {
 // Dev shortcut: skip the blocking touch calibration workflow during firmware iteration.
-// Set false to restore normal persisted calibration / calibration UI behavior.
-constexpr bool kSkipTouchCalibrationForDev = true;
+// Keep false for normal persisted calibration / calibration UI behavior.
+constexpr bool kSkipTouchCalibrationForDev = false;
 constexpr uint32_t kBootLogoHoldMs = 1200;
+
+void release_shared_spi_devices() {
+    gpio_put(PIN_LCD_CS, 1);
+    gpio_put(PIN_TOUCH_CS, 1);
+    gpio_put(PIN_SD_CS, 1);
+}
 }
 
 PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_card, CalibrationStorage& storage)
     : display_(display),
       touch_(touch),
       storage_service_(sd_card),
-      controller_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
+      controller_(machine_fsm_, jog_state_machine_, job_state_machine_, machine_settings_store_, storage_service_),
       uart_client_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
       status_provider_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
       calibration_app_(display, touch, storage),
@@ -23,24 +30,28 @@ PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_c
       main_menu_screen_(display, frame_, controller_),
       jog_screen_(display, frame_, controller_),
       files_screen_(display, frame_, controller_),
+      settings_screen_(display, frame_, controller_),
       upload_screen_(display),
       desktop_protocol_(usb_transport_,
                         machine_fsm_,
                         jog_state_machine_,
                         job_state_machine_,
                         loaded_job_storage_,
+                        machine_settings_store_,
                         storage_service_,
                         sd_card) {
     files_screen_.bind_protocol(desktop_protocol_);
     router_.register_screen(main_menu_screen_);
     router_.register_screen(jog_screen_);
     router_.register_screen(files_screen_);
+    router_.register_screen(settings_screen_);
     router_.navigate_to(NavTab::Home);
 }
 
 void PortableCncApp::run() {
     run_startup_sequence();
     sd_was_mounted_ = storage_service_.is_mounted();
+    machine_settings_revision_ = machine_settings_store_.revision();
     desktop_protocol_.consume_state_changed();
     render_current_screen(true);
 
@@ -63,6 +74,16 @@ void PortableCncApp::run() {
         }
 
         desktop_protocol_.poll();
+
+        const uint32_t machine_settings_revision_now = machine_settings_store_.revision();
+        if (machine_settings_revision_now != machine_settings_revision_) {
+            machine_settings_revision_ = machine_settings_revision_now;
+            desktop_protocol_.emit_machine_settings();
+            if (!desktop_protocol_.upload_active() &&
+                router_.current().tab() == NavTab::Settings) {
+                render_current_screen(false);
+            }
+        }
 
         const bool upload_ended_this_tick =
             upload_active_now && !desktop_protocol_.upload_active();
@@ -123,13 +144,19 @@ void PortableCncApp::run() {
 
 void PortableCncApp::run_startup_sequence() {
     show_boot_logo();
+    release_shared_spi_devices();
 
     if (!kSkipTouchCalibrationForDev) {
         TouchCalibration calibration{};
         controller_.begin_calibration();
         calibration_app_.ensure_calibration(calibration);
         controller_.complete_calibration();
+        touch_latched_ = false;
+        last_touch_point_ = TouchPoint{};
+        release_shared_spi_devices();
     }
+
+    release_shared_spi_devices();
     storage_service_.initialize(job_state_machine_);
 
     while (storage_service_.state() == StorageState::Mounting) {
@@ -285,6 +312,7 @@ void PortableCncApp::render_current_screen(bool full) {
         return;
     }
 
+    frame_.render_status_bar(status_provider_.current());
     frame_.render_nav_bar(router_.current().tab());
     frame_.clear_content();
     router_.current().render_content();

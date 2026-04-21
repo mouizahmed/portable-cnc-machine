@@ -61,6 +61,7 @@ add_executable(portable_cnc_machine
     src/app/job/loaded_job_storage.cpp
     src/app/machine/machine_fsm.cpp
     src/app/navigation/screen_router.cpp
+    src/app/settings/machine_settings_store.cpp
     src/app/status/status_line_formatter.cpp
     src/app/status/status_provider.cpp
     src/app/storage/storage_service.cpp
@@ -84,12 +85,13 @@ add_executable(portable_cnc_machine
     src/ui/screens/files_screen.cpp
     src/ui/screens/jog_screen.cpp
     src/ui/screens/main_menu_screen.cpp
+    src/ui/screens/settings_screen.cpp
     src/ui/screens/upload_screen.cpp
     ${PORTABLE_CNC_FATFS_DIR}/ff.c
     ${PORTABLE_CNC_FATFS_DIR}/ffunicode.c
 )
 
-set(PORTABLE_CNC_RESERVED_FLASH_BYTES 8192)
+set(PORTABLE_CNC_RESERVED_FLASH_BYTES 12288)
 set(PORTABLE_CNC_SDK_MEMMAP_DEFAULT
     "${PICO_SDK_PATH}/src/rp2_common/pico_crt0/rp2350/memmap_default.ld")
 set(PORTABLE_CNC_LINKER_SCRIPT

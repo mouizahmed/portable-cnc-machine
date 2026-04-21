@@ -61,6 +61,8 @@ typedef enum {
     CMD_BEGIN_JOB = 28,
     CMD_END_JOB = 29,
     CMD_CLEAR_JOB = 30,
+    CMD_SETTINGS_GET = 31,
+    CMD_SETTINGS_SET = 32,
 } CommandMessageType;
 
 typedef enum {
@@ -86,6 +88,7 @@ typedef enum {
     RESP_FILE_DOWNLOAD_ABORT = 20,
     RESP_STORAGE_ERROR = 21,
     RESP_WAIT = 22,
+    RESP_MACHINE_SETTINGS = 23,
 } ResponseMessageType;
 
 typedef enum {
@@ -238,6 +241,28 @@ typedef struct PCNC_PACKED { uint8_t message_type; } CmdFileDownloadAbort;
 typedef struct PCNC_PACKED { uint8_t message_type; } CmdBeginJob;
 typedef struct PCNC_PACKED { uint8_t message_type; uint32_t lines; } CmdEndJob;
 typedef struct PCNC_PACKED { uint8_t message_type; } CmdClearJob;
+typedef struct PCNC_PACKED { uint8_t message_type; } CmdSettingsGet;
+typedef struct PCNC_PACKED {
+    uint8_t message_type;
+    float steps_per_mm_x;
+    float steps_per_mm_y;
+    float steps_per_mm_z;
+    float max_feed_rate_x;
+    float max_feed_rate_y;
+    float max_feed_rate_z;
+    float acceleration_x;
+    float acceleration_y;
+    float acceleration_z;
+    float max_travel_x;
+    float max_travel_y;
+    float max_travel_z;
+    uint8_t soft_limits_enabled;
+    uint8_t hard_limits_enabled;
+    float spindle_min_rpm;
+    float spindle_max_rpm;
+    float warning_temperature;
+    float max_temperature;
+} CmdSettingsSet;
 
 typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; } RespPong;
 typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; char firmware[PCNC_MAX_FIRMWARE_BYTES]; char board[PCNC_MAX_BOARD_BYTES]; uint8_t teensy_connected; } RespInfo;
@@ -261,6 +286,28 @@ typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; uint8_t
 typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; } RespFileDownloadAbort;
 typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; uint8_t error; uint8_t operation; uint32_t seq; uint32_t expected; uint32_t actual; char detail[PCNC_MAX_REASON_BYTES]; } RespStorageError;
 typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; char reason[PCNC_MAX_REASON_BYTES]; } RespWait;
+typedef struct PCNC_PACKED {
+    uint8_t message_type;
+    uint32_t request_seq;
+    float steps_per_mm_x;
+    float steps_per_mm_y;
+    float steps_per_mm_z;
+    float max_feed_rate_x;
+    float max_feed_rate_y;
+    float max_feed_rate_z;
+    float acceleration_x;
+    float acceleration_y;
+    float acceleration_z;
+    float max_travel_x;
+    float max_travel_y;
+    float max_travel_z;
+    uint8_t soft_limits_enabled;
+    uint8_t hard_limits_enabled;
+    float spindle_min_rpm;
+    float spindle_max_rpm;
+    float warning_temperature;
+    float max_temperature;
+} RespMachineSettings;
 
 typedef struct PCNC_PACKED { uint8_t message_type; uint8_t state; } EventState;
 typedef struct PCNC_PACKED { uint8_t message_type; uint16_t caps; } EventCaps;

@@ -6,6 +6,7 @@
 #include "app/job/loaded_job_storage.h"
 #include "app/machine/machine_fsm.h"
 #include "app/navigation/screen_router.h"
+#include "app/settings/machine_settings_store.h"
 #include "app/status/status_provider.h"
 #include "app/storage/storage_service.h"
 #include "calibration/calibration_storage.h"
@@ -18,6 +19,7 @@
 #include "ui/screens/files_screen.h"
 #include "ui/screens/jog_screen.h"
 #include "ui/screens/main_menu_screen.h"
+#include "ui/screens/settings_screen.h"
 #include "ui/screens/screen.h"
 #include "ui/screens/upload_screen.h"
 
@@ -37,6 +39,7 @@ private:
     JogStateMachine jog_state_machine_;
     JobStateMachine job_state_machine_;
     LoadedJobStorage loaded_job_storage_;
+    MachineSettingsStore machine_settings_store_;
     StorageService storage_service_;
     PortableCncController controller_;
     PicoUartClient uart_client_;
@@ -46,9 +49,11 @@ private:
     MainMenuScreen main_menu_screen_;
     JogScreen jog_screen_;
     FilesScreen files_screen_;
+    SettingsScreen settings_screen_;
     UploadScreen upload_screen_;
     UsbCdcTransport usb_transport_;
     DesktopProtocol desktop_protocol_;
+    uint32_t machine_settings_revision_ = 0;
     bool sd_was_mounted_ = false;
     bool upload_was_active_ = false;
 

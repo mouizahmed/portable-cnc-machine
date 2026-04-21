@@ -11,6 +11,25 @@ namespace PortableCncApp.Services;
 public record struct PicoPos(double MX, double MY, double MZ, double WX, double WY, double WZ);
 
 public record PicoInfo(string Firmware, string Board, bool TeensyConnected);
+public readonly record struct PicoMachineSettings(
+    double StepsPerMmX,
+    double StepsPerMmY,
+    double StepsPerMmZ,
+    double MaxFeedRateX,
+    double MaxFeedRateY,
+    double MaxFeedRateZ,
+    double AccelerationX,
+    double AccelerationY,
+    double AccelerationZ,
+    double MaxTravelX,
+    double MaxTravelY,
+    double MaxTravelZ,
+    bool SoftLimitsEnabled,
+    bool HardLimitsEnabled,
+    double SpindleMinRpm,
+    double SpindleMaxRpm,
+    double WarningTemperature,
+    double MaxTemperature);
 
 public readonly record struct FileTransferReady(string Name, long Size, byte TransferId, int ChunkSize);
 public readonly record struct FileTransferComplete(byte TransferId, string Name, long Size);
@@ -40,6 +59,7 @@ public sealed class PicoProtocolService
     public event Action<string, IReadOnlyDictionary<string, string>>? EventReceived;
     public event Action<PicoPos>? PositionChanged;
     public event Action<PicoInfo>? InfoReceived;
+    public event Action<PicoMachineSettings>? MachineSettingsReceived;
     public event Action? PongReceived;
     public event Action<string, IReadOnlyDictionary<string, string>>? OkReceived;
     public event Action<string>? ErrorReceived;
@@ -73,6 +93,30 @@ public sealed class PicoProtocolService
     public void SendBeginJob() => SendCommandFrame(new CmdBeginJob { MessageType = (byte)CommandMessageType.BeginJob });
     public void SendEndJob()   => SendCommandFrame(new CmdEndJob   { MessageType = (byte)CommandMessageType.EndJob });
     public void SendClearJob() => SendCommandFrame(new CmdClearJob { MessageType = (byte)CommandMessageType.ClearJob });
+    public void SendSettingsGet() => SendCommandFrame(new CmdSettingsGet { MessageType = (byte)CommandMessageType.SettingsGet });
+    public void SendSettingsSet(PicoMachineSettings settings)
+        => SendCommandFrame(new CmdSettingsSet
+        {
+            MessageType = (byte)CommandMessageType.SettingsSet,
+            StepsPerMmX = (float)settings.StepsPerMmX,
+            StepsPerMmY = (float)settings.StepsPerMmY,
+            StepsPerMmZ = (float)settings.StepsPerMmZ,
+            MaxFeedRateX = (float)settings.MaxFeedRateX,
+            MaxFeedRateY = (float)settings.MaxFeedRateY,
+            MaxFeedRateZ = (float)settings.MaxFeedRateZ,
+            AccelerationX = (float)settings.AccelerationX,
+            AccelerationY = (float)settings.AccelerationY,
+            AccelerationZ = (float)settings.AccelerationZ,
+            MaxTravelX = (float)settings.MaxTravelX,
+            MaxTravelY = (float)settings.MaxTravelY,
+            MaxTravelZ = (float)settings.MaxTravelZ,
+            SoftLimitsEnabled = settings.SoftLimitsEnabled ? (byte)1 : (byte)0,
+            HardLimitsEnabled = settings.HardLimitsEnabled ? (byte)1 : (byte)0,
+            SpindleMinRpm = (float)settings.SpindleMinRpm,
+            SpindleMaxRpm = (float)settings.SpindleMaxRpm,
+            WarningTemperature = (float)settings.WarningTemperature,
+            MaxTemperature = (float)settings.MaxTemperature
+        });
 
     public void SendHome() => SendCommandFrame(new CmdHome { MessageType = (byte)CommandMessageType.Home });
 
@@ -374,6 +418,29 @@ public sealed class PicoProtocolService
             case ResponseMessageType.Wait:
                 if (!TryReadPayload(payload, out RespWait wait)) return;
                 WaitReceived?.Invoke(ReadFixedString(wait.Reason, ProtocolConstants.MaxReasonBytes));
+                break;
+
+            case ResponseMessageType.MachineSettings:
+                if (!TryReadPayload(payload, out RespMachineSettings settings)) return;
+                MachineSettingsReceived?.Invoke(new PicoMachineSettings(
+                    settings.StepsPerMmX,
+                    settings.StepsPerMmY,
+                    settings.StepsPerMmZ,
+                    settings.MaxFeedRateX,
+                    settings.MaxFeedRateY,
+                    settings.MaxFeedRateZ,
+                    settings.AccelerationX,
+                    settings.AccelerationY,
+                    settings.AccelerationZ,
+                    settings.MaxTravelX,
+                    settings.MaxTravelY,
+                    settings.MaxTravelZ,
+                    settings.SoftLimitsEnabled != 0,
+                    settings.HardLimitsEnabled != 0,
+                    settings.SpindleMinRpm,
+                    settings.SpindleMaxRpm,
+                    settings.WarningTemperature,
+                    settings.MaxTemperature));
                 break;
         }
     }
@@ -718,6 +785,7 @@ public sealed class PicoProtocolService
         CommandMessageType.SpindleOn         => "SPINDLE_ON",
         CommandMessageType.SpindleOff        => "SPINDLE_OFF",
         CommandMessageType.Override          => "OVERRIDE",
+        CommandMessageType.SettingsSet       => "SETTINGS_SET",
         CommandMessageType.FileUnload        => "FILE_UNLOAD",
         CommandMessageType.FileUploadAbort   => "FILE_UPLOAD_ABORT",
         CommandMessageType.FileDownloadAbort => "FILE_DOWNLOAD_ABORT",

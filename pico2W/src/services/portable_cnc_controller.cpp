@@ -3,8 +3,9 @@
 PortableCncController::PortableCncController(MachineFsm& machine,
                                              JogStateMachine& jog,
                                              JobStateMachine& jobs,
+                                             MachineSettingsStore& machine_settings,
                                              StorageService& storage)
-    : machine_(machine), jog_(jog), jobs_(jobs), storage_(storage) {}
+    : machine_(machine), jog_(jog), jobs_(jobs), machine_settings_(machine_settings), storage_(storage) {}
 
 bool PortableCncController::begin_calibration() {
     return true;
@@ -87,6 +88,10 @@ const JobStateMachine& PortableCncController::jobs() const {
     return jobs_;
 }
 
+const MachineSettings& PortableCncController::machine_settings() const {
+    return machine_settings_.current();
+}
+
 StorageState PortableCncController::storage_state() const {
     return storage_.state();
 }
@@ -110,6 +115,10 @@ bool PortableCncController::can_load_file() const {
 
 bool PortableCncController::can_run_loaded_job() const {
     return machine_.state() == MachineOperationState::Idle && jobs_.can_run();
+}
+
+bool PortableCncController::save_machine_settings(const MachineSettings& settings, const char** error_reason) {
+    return machine_settings_.apply(settings, error_reason);
 }
 
 PrimaryAction PortableCncController::primary_action() const {

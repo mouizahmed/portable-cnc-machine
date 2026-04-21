@@ -241,6 +241,7 @@ DesktopProtocol::DesktopProtocol(UsbCdcTransport& transport,
                                  JogStateMachine& jogs,
                                  JobStateMachine& jobs,
                                  LoadedJobStorage& loaded_job_storage,
+                                 MachineSettingsStore& machine_settings,
                                  StorageService& storage,
                                  SdSpiCard& sd)
     : transport_(transport),
@@ -248,6 +249,7 @@ DesktopProtocol::DesktopProtocol(UsbCdcTransport& transport,
       jogs_(jogs),
       jobs_(jobs),
       loaded_job_storage_(loaded_job_storage),
+      machine_settings_(machine_settings),
       storage_(storage),
       sd_(sd) {
     critical_section_init(&upload_worker_lock_);
@@ -494,6 +496,18 @@ void DesktopProtocol::dispatch_command_frame(const UsbCdcTransport::FramePacket&
             handle_file_download_abort();
             break;
         }
+        case CMD_SETTINGS_GET: {
+            CmdSettingsGet cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_settings_get();
+            break;
+        }
+        case CMD_SETTINGS_SET: {
+            CmdSettingsSet cmd{};
+            if (!copy_command_payload(frame, cmd)) { emit_error("MALFORMED_CMD"); return; }
+            handle_settings_set(cmd);
+            break;
+        }
         case CMD_PROBE_Z:
         case CMD_BEGIN_JOB:
         case CMD_END_JOB:
@@ -638,6 +652,39 @@ void DesktopProtocol::emit_job() {
     }
     send_binary_payload([&](const uint8_t* data, uint16_t len) {
         transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+    }, payload);
+}
+
+void DesktopProtocol::emit_machine_settings() {
+    const MachineSettings& current = machine_settings_.current();
+
+    RespMachineSettings payload{};
+    payload.message_type = RESP_MACHINE_SETTINGS;
+    payload.request_seq = handling_command_ ? current_request_seq_ : 0;
+    payload.steps_per_mm_x = current.steps_per_mm_x;
+    payload.steps_per_mm_y = current.steps_per_mm_y;
+    payload.steps_per_mm_z = current.steps_per_mm_z;
+    payload.max_feed_rate_x = current.max_feed_rate_x;
+    payload.max_feed_rate_y = current.max_feed_rate_y;
+    payload.max_feed_rate_z = current.max_feed_rate_z;
+    payload.acceleration_x = current.acceleration_x;
+    payload.acceleration_y = current.acceleration_y;
+    payload.acceleration_z = current.acceleration_z;
+    payload.max_travel_x = current.max_travel_x;
+    payload.max_travel_y = current.max_travel_y;
+    payload.max_travel_z = current.max_travel_z;
+    payload.soft_limits_enabled = current.soft_limits_enabled ? 1 : 0;
+    payload.hard_limits_enabled = current.hard_limits_enabled ? 1 : 0;
+    payload.spindle_min_rpm = current.spindle_min_rpm;
+    payload.spindle_max_rpm = current.spindle_max_rpm;
+    payload.warning_temperature = current.warning_temperature;
+    payload.max_temperature = current.max_temperature;
+    send_binary_payload([&](const uint8_t* data, uint16_t len) {
+        transport_.send_frame(kResponseFrameType,
+                              PCNC_TRANSFER_ID_NONE,
+                              payload.request_seq,
+                              data,
+                              len);
     }, payload);
 }
 
@@ -1118,6 +1165,41 @@ void DesktopProtocol::handle_status() {
     emit_state_update(false);
     emit_position();
     emit_job();
+}
+
+void DesktopProtocol::handle_settings_get() {
+    emit_machine_settings();
+}
+
+void DesktopProtocol::handle_settings_set(const CmdSettingsSet& cmd) {
+    MachineSettings candidate{
+        cmd.steps_per_mm_x,
+        cmd.steps_per_mm_y,
+        cmd.steps_per_mm_z,
+        cmd.max_feed_rate_x,
+        cmd.max_feed_rate_y,
+        cmd.max_feed_rate_z,
+        cmd.acceleration_x,
+        cmd.acceleration_y,
+        cmd.acceleration_z,
+        cmd.max_travel_x,
+        cmd.max_travel_y,
+        cmd.max_travel_z,
+        cmd.soft_limits_enabled != 0,
+        cmd.hard_limits_enabled != 0,
+        cmd.spindle_min_rpm,
+        cmd.spindle_max_rpm,
+        cmd.warning_temperature,
+        cmd.max_temperature
+    };
+
+    const char* error_reason = nullptr;
+    if (!machine_settings_.apply(candidate, &error_reason)) {
+        emit_error(error_reason != nullptr ? error_reason : "SETTINGS_ERR");
+        return;
+    }
+
+    emit_ok("SETTINGS_SET");
 }
 
 void DesktopProtocol::handle_home() {

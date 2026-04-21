@@ -250,20 +250,23 @@ void TouchCalibrationApp::render_touch_test_screen(const TouchCalibration& calib
 TouchCalibrationApp::ReviewAction TouchCalibrationApp::review_calibration(const TouchCalibration& calibration) const {
     render_touch_test_screen(calibration, false, true);
 
-    uint32_t last_touch_ms = 0;
+    bool was_touching = false;
 
     while (true) {
         TouchPoint mapped{};
         RawTouchPoint raw{};
         const bool have_mapped = touch_.read_touch(mapped);
         const bool have_raw = touch_.read_raw_touch_relaxed(raw, 0);
+        const bool touching = have_mapped || touch_.is_touched();
 
-        if (have_mapped && have_raw) {
+        if (have_mapped) {
+            if (!have_raw) {
+                raw = RawTouchPoint{0, 0, 0};
+            }
             render_live_values(mapped, raw);
             display_.fill_rect(static_cast<int16_t>(mapped.x - 2), static_cast<int16_t>(mapped.y - 2), 5, 5, COLOR_TRACE);
 
-            const uint32_t now = to_ms_since_boot(get_absolute_time());
-            if ((now - last_touch_ms) >= 250) {
+            if (!was_touching) {
                 if (button_contains(kSaveButton, mapped)) {
                     wait_for_release();
                     return ReviewAction::Save;
@@ -272,10 +275,10 @@ TouchCalibrationApp::ReviewAction TouchCalibrationApp::review_calibration(const 
                     wait_for_release();
                     return ReviewAction::Retry;
                 }
-                last_touch_ms = now;
             }
         }
 
+        was_touching = touching;
         sleep_ms(UI_POLL_MS);
     }
 }
@@ -321,9 +324,6 @@ void TouchCalibrationApp::run_touch_test(const TouchCalibration& calibration) co
 }
 
 TouchCalibration TouchCalibrationApp::calibrate_touch() const {
-    render_status_screen("TOUCH CALIBRATION", "NO SAVED CALIBRATION OR REENTRY", "FOLLOW THE FOUR TARGETS");
-    sleep_ms(900);
-
     std::array<RawTouchPoint, 4> raw_points{};
     for (std::size_t i = 0; i < kTargets.size(); ++i) {
         collect_target_sample(kTargets[i], i, raw_points[i]);
