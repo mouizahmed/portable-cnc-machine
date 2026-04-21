@@ -41,7 +41,7 @@ public sealed class FilesViewModel : PageViewModelBase
     private bool   _toolpathHasError;
     private int    _previewLineCount;
     private bool   _isParsingToolpath;
-    private string _toolpathStatusMessage = "Use 'Preview local file' to inspect a file.";
+    private string _toolpathStatusMessage = "";
     private string _toolpathWarningSummary = "";
     private string _globalWarningSummary   = "";
     private string? _previewDisplayName;
@@ -185,6 +185,7 @@ public sealed class FilesViewModel : PageViewModelBase
 
     public bool HasSelectedFile => SelectedFile != null;
     public bool HasNoFiles      => Files.Count == 0;
+    public bool ShowDeviceFilesPanel => MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
     public bool HasLoadedJob    => !string.IsNullOrWhiteSpace(MainVm?.CurrentFileName);
     public bool HasSelectedPreview => HasSelectedFile || HasLocalPreview;
     public bool HasLocalPreview
@@ -358,7 +359,11 @@ public sealed class FilesViewModel : PageViewModelBase
     public bool IsPreviewEmpty    => !HasPreviewContent;
 
     public string PreviewEmptyMessage
-        => _previewDisplayName != null ? "No source lines to display." : "Select a device file or preview a local file.";
+        => _previewDisplayName != null
+            ? "No source lines to display."
+            : ShowDeviceFilesPanel
+                ? "Select a device file or preview a local file."
+                : "Preview a local file to inspect its source.";
 
     public string SelectedFileLineSummary
         => PreviewLineCount > 0 ? $"{PreviewLineCount} total lines" : "--";
@@ -485,6 +490,8 @@ public sealed class FilesViewModel : PageViewModelBase
                 }
 
                 RaisePropertyChanged(nameof(ShowLocalPreviewBanner));
+                RaisePropertyChanged(nameof(ShowDeviceFilesPanel));
+                RaisePropertyChanged(nameof(PreviewEmptyMessage));
                 RaiseFileStateCardProperties();
                 RaiseCanExecuteAll();
                 break;
@@ -1872,7 +1879,7 @@ public sealed class FilesViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(PreviewEmptyMessage));
         UpdateToolpathState(hasGeometry: false, hasError: false);
         ClearWarnings();
-        ToolpathStatusMessage  = "Use 'Preview local file' to inspect a file.";
+        ToolpathStatusMessage  = "";
         ToolpathWarningSummary = "";
         CancelPendingParse();
 

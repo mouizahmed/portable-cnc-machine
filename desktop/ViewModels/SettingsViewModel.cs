@@ -310,7 +310,7 @@ public sealed class SettingsViewModel : PageViewModelBase
 
     public string StatusText => _statusTextOverride ?? BuildStatusText();
     public string StatusDetail => _statusDetailOverride ?? BuildStatusDetail();
-    public string SettingsStateText => HasPendingSettingsChanges ? "PENDING" : "UNCHANGED";
+    public string SettingsStateText => HasPendingSettingsChanges ? "PENDING" : "SAVED";
     public string LastPortSummary => HasSavedPort ? LastPort! : "No saved port";
     public string UnitsSummary => Units == "in" ? "Inches" : "Millimeters";
     public string AutoConnectSummary => AutoConnect ? "Armed for startup" : "Manual connect only";

@@ -147,7 +147,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 return ThemeResources.Brush("WarningBrush", "#E0A100");
 
             if (PiConnectionStatus == ConnectionStatus.Connected)
-                return ThemeResources.Brush("WarningBrush", "#E0A100");
+                return ThemeResources.Brush("NeutralStateBrush", "#808080");
 
             return ThemeResources.Brush("NeutralStateBrush", "#808080");
         }

@@ -39,11 +39,14 @@
     </Border>
 
     <!-- ── Main content ───────────────────────────────────────── -->
-    <Grid Grid.Row="1" ColumnDefinitions="344,*" ColumnSpacing="8">
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*">
 
       <!-- ── Left: SD file list ──────────────────────────────── -->
       <controls:SectionCard Title="DEVICE FILES"
-                            Subtitle="{Binding Files.Count, StringFormat={}{0} file(s)}">
+                            Subtitle="{Binding Files.Count, StringFormat={}{0} file(s)}"
+                            Width="344"
+                            Margin="0,0,8,0"
+                            IsVisible="{Binding ShowDeviceFilesPanel}">
         <controls:SectionCard.Body>
           <Border Background="{DynamicResource InsetSurfaceSubtleBrush}"
                   CornerRadius="4"
@@ -171,32 +174,6 @@
       <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="8">
 
         <StackPanel Grid.Row="0" Spacing="8">
-
-          <!-- Local preview banner (shown when a local file is loaded + connected) -->
-          <Border IsVisible="{Binding ShowLocalPreviewBanner}"
-                  Background="{DynamicResource WarningBrush}"
-                  CornerRadius="6"
-                  Padding="12,8"
-                  Opacity="0.9">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-              <StackPanel Spacing="2" VerticalAlignment="Center">
-                <TextBlock Text="Local preview — not on device"
-                           Classes="FieldValue"
-                           Foreground="White"
-                           FontSize="12"/>
-                <TextBlock Text="This file has not been uploaded. The machine cannot run it yet."
-                           Classes="Caption"
-                           Foreground="White"
-                           Opacity="0.85"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-              <Button Grid.Column="1"
-                      Content="↑ Upload to device"
-                      Command="{Binding UploadLocalPreviewCommand}"
-                      Classes="AppButton"
-                      VerticalAlignment="Center"/>
-            </Grid>
-          </Border>
 
           <!-- Toolpath info -->
           <controls:SectionCard Title="TOOLPATH">
