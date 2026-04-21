@@ -150,16 +150,13 @@ public partial class FileStateCard : UserControl
         HeaderText.Text = Header ?? string.Empty;
         HeaderText.IsVisible = !string.IsNullOrWhiteSpace(Header);
 
-        FileNameText.Text = FileName ?? string.Empty;
-        FileNameText.IsVisible = !string.IsNullOrWhiteSpace(FileName);
-
         SizeValueText.Text = string.IsNullOrWhiteSpace(SizeText) ? "--" : SizeText;
         LinesValueText.Text = string.IsNullOrWhiteSpace(LinesText) ? "--" : LinesText;
-        InfoGrid.IsVisible = FileNameText.IsVisible;
+        InfoGrid.IsVisible = !string.IsNullOrWhiteSpace(FileName);
 
-        StatusBadge.Text = StatusText;
+        StatusBadge.Text = FileName;
         StatusBadge.PillBackground = StatusBackground;
-        StatusBadge.IsVisible = !string.IsNullOrWhiteSpace(StatusText);
+        StatusBadge.IsVisible = !string.IsNullOrWhiteSpace(FileName);
 
         ConfigureButton(PrimaryButton, PrimaryActionText, PrimaryActionCommand, ShowPrimaryAction, EmphasizePrimaryAction);
         ConfigureButton(SecondaryButton, SecondaryActionText, SecondaryActionCommand, ShowSecondaryAction, false);

@@ -144,7 +144,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
             if (PiConnectionStatus == ConnectionStatus.Connecting ||
                 TeensyConnectionStatus == ConnectionStatus.Connecting)
-                return ThemeResources.Brush("WarningBrush", "#E0A100");
+                return ThemeResources.Brush("NeutralStateBrush", "#808080");
 
             if (PiConnectionStatus == ConnectionStatus.Connected)
                 return ThemeResources.Brush("NeutralStateBrush", "#808080");
@@ -186,6 +186,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public string MotionStateLabel => MachineState switch
     {
         _ when PiConnectionStatus != ConnectionStatus.Connected => "DISCONNECTED",
+        _ when TeensyConnectionStatus != ConnectionStatus.Connected => "MOTION DISC.",
         _ when !_hasReceivedMachineState => "SYNCING",
         MachineOperationState.Booting            => "BOOTING",
         MachineOperationState.TeensyDisconnected => "MOTION DISC.",
@@ -206,6 +207,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     public IBrush MotionStateBrush => MachineState switch
     {
         _ when PiConnectionStatus != ConnectionStatus.Connected => ThemeResources.Brush("NeutralStateBrush", "#808080"),
+        _ when TeensyConnectionStatus != ConnectionStatus.Connected => ThemeResources.Brush("NeutralStateBrush", "#808080"),
         _ when !_hasReceivedMachineState => ThemeResources.Brush("WarningBrush", "#E0A100"),
         MachineOperationState.Idle      => ThemeResources.Brush("SuccessBrush",      "#3BB273"),
         MachineOperationState.Homing    => ThemeResources.Brush("InfoBrush",         "#5B9BD5"),

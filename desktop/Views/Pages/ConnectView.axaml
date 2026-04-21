@@ -49,7 +49,8 @@
             <TextBlock Text="{Binding PortInventorySummary}" Classes="Caption"/>
           </StackPanel>
 
-          <WrapPanel Orientation="Horizontal">
+          <WrapPanel Orientation="Horizontal"
+                     Margin="0,0,0,-8">
             <Button Content="Connect"
                     Command="{Binding ConnectCommand}"
                     Classes="AppButton Primary"
@@ -61,16 +62,6 @@
                     Margin="0,0,8,8"/>
           </WrapPanel>
 
-          <Border IsVisible="{Binding IsConnecting}"
-                  Background="{DynamicResource ConnectingSurfaceBrush}"
-                  BorderBrush="{DynamicResource ConnectingBorderBrush}"
-                  BorderThickness="1"
-                  CornerRadius="6"
-                  Padding="12,10">
-            <TextBlock Text="Opening the USB link, handshaking with the controller, then checking the motion controller."
-                       Classes="FieldLabel"
-                       TextWrapping="Wrap"/>
-          </Border>
         </StackPanel>
       </controls:SectionCard.Body>
     </controls:SectionCard>

@@ -109,7 +109,8 @@
 
     <controls:SectionCard Grid.Row="0" Grid.Column="1" Title="JOG SETTINGS">
       <controls:SectionCard.Body>
-        <StackPanel Spacing="8">
+        <StackPanel Spacing="8"
+                    IsEnabled="{Binding CanJogControls}">
           <StackPanel Spacing="4">
             <TextBlock Text="Step Size" Classes="FieldLabel"/>
             <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="4">

@@ -8,10 +8,6 @@
     <TextBlock x:Name="HeaderText"
                Classes="FieldLabel"/>
 
-    <TextBlock x:Name="FileNameText"
-               Classes="CodeValue"
-               TextTrimming="CharacterEllipsis"/>
-
     <controls:TwoColumnInfoGrid x:Name="InfoGrid">
       <TextBlock Text="Size" Classes="FieldLabel"/>
       <TextBlock Grid.Column="1"

@@ -156,9 +156,12 @@
                         Height="NaN"
                         MinHeight="0"
                         Padding="10">
-                  <StackPanel Spacing="8">
+                  <Grid RowDefinitions="Auto,*" RowSpacing="8">
                     <TextBlock Text="Travel Limits" Classes="SectionHeading"/>
-                    <controls:TwoColumnInfoGrid>
+                    <Grid Grid.Row="1"
+                          ColumnDefinitions="*,Auto"
+                          RowDefinitions="*,*,*"
+                          RowSpacing="8">
                       <TextBlock Text="X (mm)" Classes="FieldLabel" VerticalAlignment="Center"/>
                       <NumericUpDown Grid.Column="1"
                                      Value="{Binding MaxTravelX}"
@@ -184,8 +187,8 @@
                                      Maximum="5000"
                                      Increment="5"
                                      FormatString="F1"/>
-                    </controls:TwoColumnInfoGrid>
-                  </StackPanel>
+                    </Grid>
+                  </Grid>
                 </Border>
 
                 <Border Grid.Column="1"

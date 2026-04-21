@@ -8,10 +8,10 @@
         x:Class="PortableCncApp.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         mc:Ignorable="d"
-        Width="1024"
-        Height="700"
-        MinWidth="1024"
-        MinHeight="700"
+        Width="1080"
+        Height="800"
+        MinWidth="1080"
+        MinHeight="800"
         CanResize="False"
         Title="Portable CNC Control"
         Icon="/Assets/app-icon.png"
@@ -126,25 +126,24 @@
                   <controls:SectionCard Title="LOADED JOB"
                                         IsVisible="{Binding MainVm.FilesVm.ShowLoadedJobCard}">
                     <controls:SectionCard.Body>
-                      <controls:FileStateCard Header="{Binding MainVm.FilesVm.LoadedJobHeaderText}"
-                                              FileName="{Binding MainVm.FilesVm.LoadedJobFileName}"
-                                              SizeText="{Binding MainVm.FilesVm.LoadedJobSizeText}"
-                                              LinesText="{Binding MainVm.FilesVm.LoadedJobLinesText}"
-                                              StatusText="{Binding MainVm.FilesVm.LoadedJobStatusText}"
-                                              StatusBackground="{Binding MainVm.FilesVm.LoadedJobStatusBrush}"
-                                              PrimaryActionText="Unload File"
-                                              PrimaryActionCommand="{Binding MainVm.FilesVm.UnloadLoadedFileCommand}"/>
-                    </controls:SectionCard.Body>
-                  </controls:SectionCard>
+                      <StackPanel Spacing="6">
+                        <controls:StatusPill Text="{Binding MainVm.FilesVm.LoadedJobFileName}"
+                                             PillBackground="{Binding MainVm.FilesVm.LoadedJobStatusBrush}"/>
 
-                  <controls:SectionCard Title="JOB STATUS">
-                    <controls:SectionCard.Body>
-                      <StackPanel>
-                        <TextBlock Text="{Binding MainVm.CurrentFileName, TargetNullValue='No file loaded'}"
-                                   Classes="CodeValue"
-                                   TextTrimming="CharacterEllipsis"/>
+                        <controls:TwoColumnInfoGrid>
+                          <TextBlock Text="Size" Classes="FieldLabel"/>
+                          <TextBlock Grid.Column="1"
+                                     Text="{Binding MainVm.FilesVm.LoadedJobSizeText}"
+                                     Classes="FieldValue"/>
 
-                        <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,4">
+                          <TextBlock Grid.Row="1" Text="Lines" Classes="FieldLabel"/>
+                          <TextBlock Grid.Row="1"
+                                     Grid.Column="1"
+                                     Text="{Binding MainVm.FilesVm.LoadedJobLinesText}"
+                                     Classes="FieldValue"/>
+                        </controls:TwoColumnInfoGrid>
+
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
                           <TextBlock Text="Progress" Classes="FieldLabel"/>
                           <TextBlock Grid.Column="1"
                                      Text="{Binding MainVm.Progress, StringFormat={}{0:F1}%}"
@@ -158,6 +157,13 @@
                                    Margin="0,8,0,0"/>
                         <TextBlock Text="{Binding MainVm.ActiveToolpathBounds}" Classes="FieldLabel" Margin="0,6,0,0"/>
                         <TextBlock Text="{Binding MainVm.ActiveToolpathDepth}" Classes="FieldLabel" Margin="0,4,0,0"/>
+
+                        <Button Content="Unload File"
+                                Command="{Binding MainVm.FilesVm.UnloadLoadedFileCommand}"
+                                Classes="AppButton"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Margin="0,4,0,0"/>
                       </StackPanel>
                     </controls:SectionCard.Body>
                   </controls:SectionCard>
@@ -184,75 +190,52 @@
                   <controls:SectionCard Title="LOADED JOB"
                                         IsVisible="{Binding ShowLoadedJobCard}">
                     <controls:SectionCard.Body>
-                      <controls:FileStateCard Header="{Binding LoadedJobHeaderText}"
-                                              FileName="{Binding LoadedJobFileName}"
-                                              SizeText="{Binding LoadedJobSizeText}"
-                                              LinesText="{Binding LoadedJobLinesText}"
-                                              StatusText="{Binding LoadedJobStatusText}"
-                                              StatusBackground="{Binding LoadedJobStatusBrush}"
-                                              PrimaryActionText="Unload File"
-                                              PrimaryActionCommand="{Binding UnloadLoadedFileCommand}"/>
+                      <StackPanel Spacing="6">
+                        <controls:StatusPill Text="{Binding LoadedJobFileName}"
+                                             PillBackground="{Binding LoadedJobStatusBrush}"/>
+
+                        <controls:TwoColumnInfoGrid>
+                          <TextBlock Text="Size" Classes="FieldLabel"/>
+                          <TextBlock Grid.Column="1"
+                                     Text="{Binding LoadedJobSizeText}"
+                                     Classes="FieldValue"/>
+
+                          <TextBlock Grid.Row="1" Text="Lines" Classes="FieldLabel"/>
+                          <TextBlock Grid.Row="1"
+                                     Grid.Column="1"
+                                     Text="{Binding LoadedJobLinesText}"
+                                     Classes="FieldValue"/>
+                        </controls:TwoColumnInfoGrid>
+
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                          <TextBlock Text="Progress" Classes="FieldLabel"/>
+                          <TextBlock Grid.Column="1"
+                                     Text="{Binding MainVm.Progress, StringFormat={}{0:F1}%}"
+                                     Classes="FieldLabel"/>
+                        </Grid>
+
+                        <ProgressBar Value="{Binding MainVm.Progress}" Maximum="100" Height="8" CornerRadius="4"/>
+
+                        <TextBlock Text="{Binding MainVm.CurrentLine, StringFormat=Line {0}}"
+                                   Classes="FieldLabel Muted"
+                                   Margin="0,8,0,0"/>
+                        <TextBlock Text="{Binding MainVm.ActiveToolpathBounds}" Classes="FieldLabel" Margin="0,6,0,0"/>
+                        <TextBlock Text="{Binding MainVm.ActiveToolpathDepth}" Classes="FieldLabel" Margin="0,4,0,0"/>
+
+                        <Button Content="Unload File"
+                                Command="{Binding UnloadLoadedFileCommand}"
+                                Classes="AppButton"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Margin="0,4,0,0"/>
+                      </StackPanel>
                     </controls:SectionCard.Body>
                   </controls:SectionCard>
                 </StackPanel>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:ManualControlViewModel}">
-                <controls:SectionCard Title="MANUAL CONTROL">
-                  <controls:SectionCard.Body>
-                    <StackPanel Spacing="8">
-                      <controls:TwoColumnInfoGrid>
-                        <TextBlock Text="Step" Classes="FieldLabel"/>
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding JogStep, StringFormat={}{0} mm}"
-                                   Classes="FieldValue"/>
-
-                        <TextBlock Grid.Row="1" Text="Feed" Classes="FieldLabel"/>
-                        <TextBlock Grid.Row="1"
-                                   Grid.Column="1"
-                                   Text="{Binding JogFeedRate, StringFormat={}{0:F0} mm/min}"
-                                   Classes="FieldValue"/>
-
-                        <TextBlock Grid.Row="2" Text="Mode" Classes="FieldLabel"/>
-                        <TextBlock Grid.Row="2"
-                                   Grid.Column="1"
-                                   Text="{Binding JogModeText}"
-                                   Classes="FieldValue"/>
-
-                        <TextBlock Grid.Row="3" Text="Home" Classes="FieldLabel"/>
-                        <TextBlock Grid.Row="3"
-                                   Grid.Column="1"
-                                   Text="{Binding HomingStatusText}"
-                                   Classes="FieldValue"/>
-
-                        <TextBlock Grid.Row="4" Text="Overrides" Classes="FieldLabel"/>
-                        <TextBlock Grid.Row="4"
-                                   Grid.Column="1"
-                                   Text="{Binding FeedOverride, StringFormat=F {0}%}"
-                                   Classes="FieldValue"/>
-                        <TextBlock Grid.Row="5"
-                                   Grid.Column="1"
-                                   Text="{Binding SpindleOverride, StringFormat=S {0}%}"
-                                   Classes="FieldValue"/>
-                        <TextBlock Grid.Row="6"
-                                   Grid.Column="1"
-                                   Text="{Binding RapidOverride, StringFormat=R {0}%}"
-                                   Classes="FieldValue"/>
-
-                        <TextBlock Grid.Row="7" Text="Spindle" Classes="FieldLabel"/>
-                        <TextBlock Grid.Row="7"
-                                   Grid.Column="1"
-                                   Text="{Binding SpindleStatusText}"
-                                   Classes="FieldValue"/>
-                      </controls:TwoColumnInfoGrid>
-
-                      <TextBlock Text="{Binding CommandPreview}"
-                                 Classes="CodeText"
-                                 FontSize="10"
-                                 TextWrapping="Wrap"/>
-                    </StackPanel>
-                  </controls:SectionCard.Body>
-                </controls:SectionCard>
+                <Panel/>
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:ConnectViewModel}">
@@ -302,9 +285,10 @@
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
-                <controls:SectionCard Title="SETTINGS">
+                <controls:SectionCard Title="SETTINGS"
+                                      MinHeight="220">
                   <controls:SectionCard.Body>
-                    <StackPanel Spacing="8">
+                    <Grid RowDefinitions="Auto,8,Auto,8,Auto,*,Auto">
                       <Border Classes="InsetSurface Subtle"
                               Height="NaN"
                               MinHeight="0"
@@ -316,12 +300,15 @@
                                    TextAlignment="Center"/>
                       </Border>
 
-                      <Button Content="Save"
+                      <Button Grid.Row="2"
+                              Content="Save"
                               Command="{Binding SaveLocalSettingsCommand}"
                               Classes="AppButton Primary"
                               HorizontalAlignment="Stretch"/>
 
-                      <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                      <Grid Grid.Row="4"
+                            ColumnDefinitions="*,*"
+                            ColumnSpacing="8">
                         <Button Content="Revert"
                                 Command="{Binding RevertChangesCommand}"
                                 Classes="AppButton"
@@ -333,7 +320,9 @@
                                 HorizontalAlignment="Stretch"/>
                       </Grid>
 
-                      <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                      <Grid Grid.Row="6"
+                            ColumnDefinitions="*,*"
+                            ColumnSpacing="8">
                         <Button Content="Export"
                                 Command="{Binding ExportSettingsCommand}"
                                 Classes="AppButton"
@@ -344,7 +333,7 @@
                                 Classes="AppButton"
                                 HorizontalAlignment="Stretch"/>
                       </Grid>
-                    </StackPanel>
+                    </Grid>
                   </controls:SectionCard.Body>
                 </controls:SectionCard>
               </DataTemplate>
