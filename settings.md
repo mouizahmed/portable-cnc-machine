@@ -51,14 +51,14 @@
           - hide or disable machine sections
           - show a right rail status/error message
           - keep app/local preferences available
-  5. Track One Pending State
+  5. Track One Pending State *DONE*
       - Replace separate local/machine pending indicators with:
           - HasPendingSettingsChanges
       - This becomes true when any visible setting differs from its current clean snapshot.
       - Clean snapshot includes:
           - local app settings loaded from JSON
           - machine settings loaded from Pico, when connected
-  6. Save Behavior
+  6. Save Behavior *DONE*
       - Save does both needed operations:
           - if app fields changed, write local JSON
           - if machine fields changed and connected, send settings to Pico
@@ -67,12 +67,12 @@
           - keep state as PENDING
           - show error status
           - do not silently discard edits
-  7. Revert Behavior
+  7. Revert Behavior *DONE*
       - Revert restores values from the clean snapshot:
           - app fields from last local JSON load/save
           - machine fields from last Pico settings load/save
       - State returns to UNCHANGED.
-  8. Defaults Behavior
+  8. Defaults Behavior *DONE*
       - Decide the product rule:
           - Option A: Load defaults affects only visible settings.
           - Option B: split into App defaults and Machine defaults.
@@ -80,7 +80,7 @@
           - disconnected: defaults only app settings
           - connected: defaults app + visible machine settings
       - After loading defaults, state becomes PENDING until Save.
-  9. Code Refactor
+  9. Code Refactor *DONE*
       - Split AppSettings into clearer models:
           - AppSettings
           - MachineSettings

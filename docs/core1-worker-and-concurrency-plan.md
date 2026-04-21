@@ -858,9 +858,15 @@ Completed implementation notes:
   is documented in this phase, but full motion telemetry/background coalescing still needs
   an equivalent motion scheduler or command-in-flight metadata layer before it can be
   enforced in code.
+- Motion-side enforcement is deferred until Phase 6 introduces real stream/motion command
+  state, or until a dedicated motion telemetry scheduler is added. Phase 4.5 defines the
+  policy and implements the storage-worker half only.
 - Verified with `cmake --build build` in `pico2W`.
 
 ### Phase 5: Refactor Flash Writer
+
+Status: Complete in firmware build; calibration/settings/loaded-job persistence still needs
+hardware validation after reflash.
 
 - Introduce common reserved-flash write helper.
 - Replace calibration, loaded-job, and machine-settings duplicated flash write code.
@@ -871,9 +877,33 @@ Acceptance:
 - Calibration save, settings save, and loaded-job persistence all pass.
 - No duplicated `flash_range_erase()` outside helper.
 
+Completed implementation notes:
+
+- Added `pico2W/src/app/flash/reserved_flash_writer.h`.
+- Added `assert_reserved_flash_region()` so all reserved-flash readers/writers validate
+  their flash offset remains beyond `__flash_binary_end`.
+- Added `write_reserved_flash_sector()` to centralize:
+  reserved-sector bounds checking, shared-SPI deselection, optional core-1 lockout,
+  interrupt masking, flash erase/program, and raw sector verification.
+- `CalibrationStorage`, `LoadedJobStorage`, and `MachineSettingsStore` now all use the
+  shared helper instead of duplicating `flash_range_erase()` /
+  `flash_range_program()` sequences.
+- The final working design keeps the flash-write sequence shared but retains a local
+  `alignas(FLASH_PAGE_SIZE)` sector buffer in each store. This preserves the proven
+  per-store memory/layout pattern while still removing duplicated erase/program logic.
+- `LoadedJobStorage` now benefits from the same shared-SPI deselection path used by the
+  calibration/settings writers.
+- Each store still performs its own semantic post-write verification after the helper's
+  raw flash-sector verification.
+- Verified with `cmake --build build` in `pico2W`.
+
 ### Phase 6: Job Stream Preparation
 
 - Add job stream FSM.
+- Add motion command/telemetry scheduler state used by `OperationCoordinator`, including
+  command-in-flight, telemetry-pending, and urgent-pending inputs.
+- Classify position/status/caps polling and diagnostics as background telemetry that can
+  be dropped or coalesced under foreground motion.
 - Core 0 authorizes job start.
 - Core 1 opens selected SD file, counts valid G-code lines, and returns begin metadata.
 - Core 1 prepares batches of trimmed G-code lines.
@@ -882,6 +912,8 @@ Acceptance:
 Acceptance:
 
 - Starting a job no longer blocks UI/USB while counting/streaming the file.
+- Background motion telemetry never blocks foreground jog/home/zero/job-start requests.
+- Duplicate telemetry polls are coalesced instead of stacked.
 - Hold/abort/estop preempt streaming.
 - Teensy disconnect cancels stream and moves to `CommsFault`.
 

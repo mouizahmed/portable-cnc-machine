@@ -16,6 +16,19 @@ void release_shared_spi_devices() {
     gpio_put(PIN_TOUCH_CS, 1);
     gpio_put(PIN_SD_CS, 1);
 }
+
+uint32_t hash_bytes(uint32_t seed, const char* text) {
+    if (text == nullptr) {
+        return seed;
+    }
+
+    uint32_t hash = seed;
+    for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text); *p != '\0'; ++p) {
+        hash ^= *p;
+        hash *= 16777619u;
+    }
+    return hash;
+}
 }
 
 PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_card, CalibrationStorage& storage)
@@ -30,7 +43,7 @@ PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_c
                   operation_coordinator_,
                   core1_worker_),
       uart_client_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
-      status_provider_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
+      status_provider_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_, usb_transport_),
       calibration_app_(display, touch, storage),
       frame_(display),
       main_menu_screen_(display, frame_, controller_),
@@ -59,6 +72,7 @@ PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_c
 void PortableCncApp::run() {
     run_startup_sequence();
     sd_was_mounted_ = storage_service_.is_mounted();
+    usb_was_connected_ = usb_transport_.connected();
     machine_settings_revision_ = machine_settings_store_.revision();
     desktop_protocol_.consume_state_changed();
     render_current_screen(true);
@@ -83,6 +97,12 @@ void PortableCncApp::run() {
 
         desktop_protocol_.poll();
 
+        const bool usb_connected_now = usb_transport_.connected();
+        if (usb_connected_now != usb_was_connected_) {
+            usb_was_connected_ = usb_connected_now;
+            frame_.render_status_bar(status_provider_.current());
+        }
+
         const uint32_t machine_settings_revision_now = machine_settings_store_.revision();
         if (machine_settings_revision_now != machine_settings_revision_) {
             machine_settings_revision_ = machine_settings_revision_now;
@@ -106,7 +126,8 @@ void PortableCncApp::run() {
                 needs_render = true;
             }
         }
-        if (needs_render) {
+        if (needs_render &&
+            (upload_ended_this_tick || current_screen_content_changed())) {
             render_current_screen(upload_ended_this_tick);
         }
 
@@ -129,7 +150,8 @@ void PortableCncApp::run() {
 
         if (uart_result.machine_changed || uart_result.job_changed || uart_result.position_changed) {
             frame_.render_status_bar(status_provider_.current());
-            if (!desktop_protocol_.upload_active()) {
+            if (!desktop_protocol_.upload_active() &&
+                current_screen_content_changed()) {
                 render_current_screen(false);
                 if (uart_result.machine_changed) {
                     desktop_protocol_.consume_state_changed();
@@ -339,7 +361,8 @@ void PortableCncApp::render_storage_change() {
         return;
     }
 
-    if (router_.current().tab() == NavTab::Home) {
+    if (router_.current().tab() == NavTab::Home &&
+        current_screen_content_changed()) {
         render_current_screen(false);
     }
 }
@@ -347,6 +370,7 @@ void PortableCncApp::render_storage_change() {
 void PortableCncApp::render_current_screen(bool full) {
     if (desktop_protocol_.upload_active()) {
         upload_screen_.render(desktop_protocol_.upload_name());
+        last_render_snapshot_valid_ = false;
         return;
     }
 
@@ -357,6 +381,81 @@ void PortableCncApp::render_current_screen(bool full) {
 
     frame_.render_status_bar(status_provider_.current());
     frame_.render_nav_bar(router_.current().tab());
-    frame_.clear_content();
+    if (router_.current().tab() != NavTab::Home) {
+        frame_.clear_content();
+    }
     router_.current().render_content();
+    last_render_snapshot_ = capture_current_screen_snapshot();
+    last_render_snapshot_valid_ = true;
+}
+
+PortableCncApp::ScreenRenderSnapshot PortableCncApp::capture_current_screen_snapshot() const {
+    ScreenRenderSnapshot snapshot{};
+    snapshot.tab = router_.current().tab();
+    snapshot.machine_state = controller_.machine_state();
+    snapshot.has_loaded_job = controller_.jobs().has_loaded_job();
+    snapshot.loaded_index = controller_.jobs().loaded_index();
+    snapshot.job_count = controller_.jobs().count();
+    snapshot.job_list_signature = current_job_list_signature();
+    snapshot.storage_free_bytes = controller_.storage_free_bytes();
+    snapshot.x = controller_.jog().x();
+    snapshot.y = controller_.jog().y();
+    snapshot.z = controller_.jog().z();
+    snapshot.step_index = controller_.jog().step_index();
+    snapshot.feed_index = controller_.jog().feed_index();
+    snapshot.settings_revision = machine_settings_store_.revision();
+    snapshot.can_load_file = controller_.can_load_file();
+    return snapshot;
+}
+
+bool PortableCncApp::current_screen_content_changed() const {
+    if (!last_render_snapshot_valid_) {
+        return true;
+    }
+
+    const ScreenRenderSnapshot current = capture_current_screen_snapshot();
+    if (current.tab != last_render_snapshot_.tab) {
+        return true;
+    }
+
+    switch (current.tab) {
+        case NavTab::Home:
+            return current.machine_state != last_render_snapshot_.machine_state ||
+                   current.has_loaded_job != last_render_snapshot_.has_loaded_job;
+        case NavTab::Jog:
+            return current.machine_state != last_render_snapshot_.machine_state ||
+                   current.x != last_render_snapshot_.x ||
+                   current.y != last_render_snapshot_.y ||
+                   current.z != last_render_snapshot_.z ||
+                   current.step_index != last_render_snapshot_.step_index ||
+                   current.feed_index != last_render_snapshot_.feed_index;
+        case NavTab::Files:
+            return current.machine_state != last_render_snapshot_.machine_state ||
+                   current.has_loaded_job != last_render_snapshot_.has_loaded_job ||
+                   current.loaded_index != last_render_snapshot_.loaded_index ||
+                   current.job_count != last_render_snapshot_.job_count ||
+                   current.job_list_signature != last_render_snapshot_.job_list_signature ||
+                   current.storage_free_bytes != last_render_snapshot_.storage_free_bytes ||
+                   current.can_load_file != last_render_snapshot_.can_load_file;
+        case NavTab::Settings:
+            return current.settings_revision != last_render_snapshot_.settings_revision;
+        case NavTab::Status:
+            return false;
+    }
+
+    return true;
+}
+
+uint32_t PortableCncApp::current_job_list_signature() const {
+    uint32_t hash = 2166136261u;
+    const JobStateMachine& jobs = controller_.jobs();
+    for (std::size_t index = 0; index < jobs.count(); ++index) {
+        const FileEntry& entry = jobs.entry(index);
+        hash = hash_bytes(hash, entry.name);
+        hash = hash_bytes(hash, entry.summary);
+        hash = hash_bytes(hash, entry.size_text);
+        hash = hash_bytes(hash, entry.tool_text);
+        hash = hash_bytes(hash, entry.zero_text);
+    }
+    return hash;
 }

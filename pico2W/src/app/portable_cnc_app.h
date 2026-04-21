@@ -32,6 +32,23 @@ public:
     void run();
 
 private:
+    struct ScreenRenderSnapshot {
+        NavTab tab = NavTab::Home;
+        MachineOperationState machine_state = MachineOperationState::Booting;
+        bool has_loaded_job = false;
+        int16_t loaded_index = -1;
+        std::size_t job_count = 0;
+        uint32_t job_list_signature = 0;
+        uint64_t storage_free_bytes = 0;
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+        uint8_t step_index = 0;
+        uint8_t feed_index = 0;
+        uint32_t settings_revision = 0;
+        bool can_load_file = false;
+    };
+
     Ili9488& display_;
     Xpt2046& touch_;
     bool touch_latched_ = false;
@@ -59,7 +76,10 @@ private:
     DesktopProtocol desktop_protocol_;
     uint32_t machine_settings_revision_ = 0;
     bool sd_was_mounted_ = false;
+    bool usb_was_connected_ = false;
     bool upload_was_active_ = false;
+    bool last_render_snapshot_valid_ = false;
+    ScreenRenderSnapshot last_render_snapshot_{};
 
     void run_startup_sequence();
     void show_boot_logo();
@@ -68,4 +88,7 @@ private:
     void handle_ui_command(const UiEventResult& result);
     void render_storage_change();
     void render_current_screen(bool full = false);
+    ScreenRenderSnapshot capture_current_screen_snapshot() const;
+    bool current_screen_content_changed() const;
+    uint32_t current_job_list_signature() const;
 };

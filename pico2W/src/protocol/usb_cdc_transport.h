@@ -33,6 +33,7 @@ public:
     };
 
     PacketKind poll(char* line_buf, size_t line_max, FramePacket& frame);
+    bool connected() const;
 
     void send_frame(uint8_t type, uint8_t transfer_id, uint32_t seq,
                     const uint8_t* payload, uint16_t payload_len);

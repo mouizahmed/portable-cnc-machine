@@ -1,5 +1,27 @@
 #include "services/portable_cnc_controller.h"
 
+#include "pico/stdlib.h"
+
+namespace {
+bool suppress_background_worker_jobs(Core1Worker& worker, uint32_t timeout_ms = 250u) {
+    worker.clear_background_jobs();
+
+    const uint32_t start_ms = to_ms_since_boot(get_absolute_time());
+    while (true) {
+        const Core1WorkerSnapshot snapshot = worker.snapshot();
+        if (!snapshot.busy || snapshot.active_intent != Core1JobIntent::BackgroundDisposable) {
+            return true;
+        }
+
+        if ((to_ms_since_boot(get_absolute_time()) - start_ms) >= timeout_ms) {
+            return false;
+        }
+
+        sleep_us(100);
+    }
+}
+}  // namespace
+
 PortableCncController::PortableCncController(MachineFsm& machine,
                                              JogStateMachine& jog,
                                              JobStateMachine& jobs,
@@ -140,6 +162,14 @@ bool PortableCncController::save_machine_settings(const MachineSettings& setting
         decision.type != RequestDecisionType::SuppressBackgroundAndAccept) {
         if (error_reason != nullptr) {
             *error_reason = decision.type == RequestDecisionType::RejectBusy ? "Busy" : "Invalid state";
+        }
+        return false;
+    }
+
+    if (decision.type == RequestDecisionType::SuppressBackgroundAndAccept &&
+        !suppress_background_worker_jobs(worker_)) {
+        if (error_reason != nullptr) {
+            *error_reason = "Busy";
         }
         return false;
     }

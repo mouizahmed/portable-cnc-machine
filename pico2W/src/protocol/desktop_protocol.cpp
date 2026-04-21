@@ -232,6 +232,24 @@ const char* override_name(uint8_t target) {
     }
 }
 
+bool suppress_background_worker_jobs(Core1Worker& worker, uint32_t timeout_ms = 250u) {
+    worker.clear_background_jobs();
+
+    const uint32_t start_ms = to_ms_since_boot(get_absolute_time());
+    while (true) {
+        const Core1WorkerSnapshot snapshot = worker.snapshot();
+        if (!snapshot.busy || snapshot.active_intent != Core1JobIntent::BackgroundDisposable) {
+            return true;
+        }
+
+        if ((to_ms_since_boot(get_absolute_time()) - start_ms) >= timeout_ms) {
+            return false;
+        }
+
+        sleep_us(100);
+    }
+}
+
 } // namespace
 
 // -- Constructor --------------------------------------------------------------
@@ -272,6 +290,15 @@ bool DesktopProtocol::admit_operation(OperationRequestType type,
         decision.type == RequestDecisionType::PreemptAndAccept ||
         decision.type == RequestDecisionType::AbortCurrentAndAccept ||
         decision.type == RequestDecisionType::SuppressBackgroundAndAccept) {
+        if (decision.type == RequestDecisionType::SuppressBackgroundAndAccept &&
+            !suppress_background_worker_jobs(worker_)) {
+            if (storage_error_response) {
+                emit_storage_error(StorageTransferError::Busy, operation);
+            } else {
+                emit_error("BUSY");
+            }
+            return false;
+        }
         return true;
     }
 
@@ -1463,6 +1490,11 @@ void DesktopProtocol::handle_file_list() {
         decision.type == RequestDecisionType::PreemptAndAccept ||
         decision.type == RequestDecisionType::AbortCurrentAndAccept ||
         decision.type == RequestDecisionType::SuppressBackgroundAndAccept) {
+        if (decision.type == RequestDecisionType::SuppressBackgroundAndAccept &&
+            !suppress_background_worker_jobs(worker_)) {
+            emit_storage_error(StorageTransferError::Busy, StorageTransferOperation::List);
+            return;
+        }
         if (!begin_file_list(current_request_seq_)) {
             emit_storage_error(StorageTransferError::Busy, StorageTransferOperation::List);
         }
@@ -2141,6 +2173,10 @@ void DesktopProtocol::service_pending_file_list_request() {
         decision.type == RequestDecisionType::PreemptAndAccept ||
         decision.type == RequestDecisionType::AbortCurrentAndAccept ||
         decision.type == RequestDecisionType::SuppressBackgroundAndAccept) {
+        if (decision.type == RequestDecisionType::SuppressBackgroundAndAccept &&
+            !suppress_background_worker_jobs(worker_)) {
+            return;
+        }
         begin_file_list(pending_file_list_request_seq_);
         return;
     }

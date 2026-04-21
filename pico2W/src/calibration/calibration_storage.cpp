@@ -2,17 +2,9 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 
-#include "config.h"
+#include "app/flash/reserved_flash_writer.h"
 #include "hardware/flash.h"
-#include "hardware/gpio.h"
-#include "hardware/regs/addressmap.h"
-#include "hardware/sync.h"
-#include "pico/assert.h"
-#include "pico/multicore.h"
-
-extern "C" char __flash_binary_end;
 
 namespace {
 constexpr uint32_t kCalibrationMagic = 0x43414C31;
@@ -73,15 +65,10 @@ TouchCalibration from_persisted(const PersistedCalibration& stored) {
     };
 }
 
-void assert_storage_region_reserved() {
-    const uintptr_t flash_binary_end =
-        reinterpret_cast<uintptr_t>(&__flash_binary_end) - XIP_BASE;
-    hard_assert(flash_binary_end <= kFlashOffset);
-}
 }  // namespace
 
 bool CalibrationStorage::load(TouchCalibration& calibration) const {
-    assert_storage_region_reserved();
+    assert_reserved_flash_region(kFlashOffset);
 
     const auto* stored = reinterpret_cast<const PersistedCalibration*>(XIP_BASE + kFlashOffset);
     if (stored->magic != kCalibrationMagic || stored->version != kCalibrationVersion || stored->valid != 1) {
@@ -96,28 +83,16 @@ bool CalibrationStorage::load(TouchCalibration& calibration) const {
 }
 
 bool CalibrationStorage::save(const TouchCalibration& calibration) const {
-    assert_storage_region_reserved();
+    assert_reserved_flash_region(kFlashOffset);
 
     const PersistedCalibration stored = to_persisted(calibration);
-
-    std::memset(flash_sector_buffer, 0xFF, sizeof(flash_sector_buffer));
-    std::memcpy(flash_sector_buffer, &stored, sizeof(stored));
-
-    // Leave shared SPI peripherals deselected before flash erase/program.
-    gpio_put(PIN_LCD_CS, 1);
-    gpio_put(PIN_TOUCH_CS, 1);
-    gpio_put(PIN_SD_CS, 1);
-
-    const bool lockout_core1 = multicore_lockout_victim_is_initialized(1);
-    if (lockout_core1) {
-        multicore_lockout_start_blocking();
-    }
-    const uint32_t interrupt_state = save_and_disable_interrupts();
-    flash_range_erase(kFlashOffset, FLASH_SECTOR_SIZE);
-    flash_range_program(kFlashOffset, flash_sector_buffer, FLASH_SECTOR_SIZE);
-    restore_interrupts(interrupt_state);
-    if (lockout_core1) {
-        multicore_lockout_end_blocking();
+    if (!write_reserved_flash_sector(
+            kFlashOffset,
+            reinterpret_cast<const uint8_t*>(&stored),
+            sizeof(stored),
+            flash_sector_buffer,
+            sizeof(flash_sector_buffer))) {
+        return false;
     }
 
     TouchCalibration verify{};

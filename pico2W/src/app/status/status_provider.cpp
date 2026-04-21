@@ -38,20 +38,21 @@ const char* machine_state_text(MachineOperationState state) {
 StatusProvider::StatusProvider(const MachineFsm& machine_fsm,
                                const JogStateMachine& jog_state_machine,
                                const JobStateMachine& job_state_machine,
-                               const StorageService& storage_service)
+                               const StorageService& storage_service,
+                               const UsbCdcTransport& usb_transport)
     : machine_fsm_(machine_fsm),
       jog_state_machine_(jog_state_machine),
       job_state_machine_(job_state_machine),
-      storage_service_(storage_service) {}
+      storage_service_(storage_service),
+      usb_transport_(usb_transport) {}
 
 StatusSnapshot StatusProvider::current() const {
-    const FileEntry* loaded_file = job_state_machine_.loaded_entry();
     jog_state_machine_.format_xyz(xyz_text_, sizeof(xyz_text_));
     return StatusSnapshot{
         machine_state_text(machine_fsm_.state()),
         storage_service_.status_text(),
-        "--",
-        loaded_file != nullptr ? loaded_file->tool_text : "--",
+        usb_transport_.connected() ? "ON" : "OFF",
+        nullptr,
         xyz_text_,
         "12:34",
     };

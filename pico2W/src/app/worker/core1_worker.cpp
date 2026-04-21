@@ -282,6 +282,40 @@ void Core1Worker::clear_pending_jobs() {
     critical_section_exit(&lock_);
 }
 
+void Core1Worker::clear_background_jobs() {
+    critical_section_enter_blocking(&lock_);
+
+    auto clear_background_from_queue = [&](JobQueue& queue) {
+        if (queue.count == 0) {
+            return;
+        }
+
+        Core1Job filtered[kBulkQueueCapacity]{};
+        std::size_t filtered_count = 0;
+        std::size_t index = queue.head;
+        for (std::size_t count = 0; count < queue.count; ++count) {
+            const Core1Job& job = queue.entries[index];
+            if (!intent_is_background(effective_intent(job))) {
+                filtered[filtered_count++] = job;
+            }
+            index = (index + 1u) % queue.capacity;
+        }
+
+        queue.head = 0;
+        queue.tail = filtered_count % queue.capacity;
+        queue.count = filtered_count;
+        for (std::size_t i = 0; i < filtered_count; ++i) {
+            queue.entries[i] = filtered[i];
+        }
+    };
+
+    clear_background_from_queue(urgent_queue_);
+    clear_background_from_queue(control_queue_);
+    clear_background_from_queue(bulk_queue_);
+
+    critical_section_exit(&lock_);
+}
+
 void Core1Worker::clear_results() {
     critical_section_enter_blocking(&lock_);
     result_queue_.head = result_queue_.tail = result_queue_.count = result_queue_.high_water = 0;

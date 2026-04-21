@@ -5,14 +5,9 @@
 #include <cstdio>
 #include <cstring>
 
+#include "app/flash/reserved_flash_writer.h"
 #include "app/job/job_state_machine.h"
 #include "hardware/flash.h"
-#include "hardware/regs/addressmap.h"
-#include "hardware/sync.h"
-#include "pico/assert.h"
-#include "pico/multicore.h"
-
-extern "C" char __flash_binary_end;
 
 namespace {
 constexpr uint32_t kLoadedJobMagic = 0x4A4F4231;
@@ -40,34 +35,10 @@ uint32_t loaded_job_checksum(const PersistedLoadedJob& job) {
     return checksum;
 }
 
-void write_sector(const void* data, std::size_t size) {
-    std::memset(flash_sector_buffer, 0xFF, sizeof(flash_sector_buffer));
-    if (data != nullptr && size > 0) {
-        std::memcpy(flash_sector_buffer, data, size);
-    }
-
-    const bool lockout_core1 = multicore_lockout_victim_is_initialized(1);
-    if (lockout_core1) {
-        multicore_lockout_start_blocking();
-    }
-    const uint32_t interrupt_state = save_and_disable_interrupts();
-    flash_range_erase(kFlashOffset, FLASH_SECTOR_SIZE);
-    flash_range_program(kFlashOffset, flash_sector_buffer, FLASH_SECTOR_SIZE);
-    restore_interrupts(interrupt_state);
-    if (lockout_core1) {
-        multicore_lockout_end_blocking();
-    }
-}
-
-void assert_storage_region_reserved() {
-    const uintptr_t flash_binary_end =
-        reinterpret_cast<uintptr_t>(&__flash_binary_end) - XIP_BASE;
-    hard_assert(flash_binary_end <= kFlashOffset);
-}
 }  // namespace
 
 bool LoadedJobStorage::load(char* name, std::size_t size) const {
-    assert_storage_region_reserved();
+    assert_reserved_flash_region(kFlashOffset);
 
     if (name == nullptr || size == 0) {
         return false;
@@ -92,7 +63,7 @@ bool LoadedJobStorage::load(char* name, std::size_t size) const {
 }
 
 bool LoadedJobStorage::save(const char* name) const {
-    assert_storage_region_reserved();
+    assert_reserved_flash_region(kFlashOffset);
 
     if (name == nullptr || name[0] == '\0') {
         return clear();
@@ -105,16 +76,30 @@ bool LoadedJobStorage::save(const char* name) const {
     stored.valid = 1;
     stored.checksum = loaded_job_checksum(stored);
 
-    write_sector(&stored, sizeof(stored));
+    if (!write_reserved_flash_sector(
+            kFlashOffset,
+            reinterpret_cast<const uint8_t*>(&stored),
+            sizeof(stored),
+            flash_sector_buffer,
+            sizeof(flash_sector_buffer))) {
+        return false;
+    }
 
     char verify[sizeof(stored.name)]{};
     return load(verify, sizeof(verify)) && std::strcmp(verify, stored.name) == 0;
 }
 
 bool LoadedJobStorage::clear() const {
-    assert_storage_region_reserved();
+    assert_reserved_flash_region(kFlashOffset);
 
-    write_sector(nullptr, 0);
+    if (!write_reserved_flash_sector(
+            kFlashOffset,
+            nullptr,
+            0,
+            flash_sector_buffer,
+            sizeof(flash_sector_buffer))) {
+        return false;
+    }
 
     char verify[sizeof(FileEntry{}.name)]{};
     return !load(verify, sizeof(verify));

@@ -15,6 +15,7 @@ public:
     Core1WorkerSnapshot snapshot() const;
     bool idle() const;
 
+    void clear_background_jobs();
     void clear_pending_jobs();
     void clear_results();
 

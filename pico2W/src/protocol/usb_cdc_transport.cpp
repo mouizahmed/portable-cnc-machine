@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "pico/stdlib.h"
+#include "tusb.h"
 
 static uint32_t crc32_update_table(uint32_t crc, const uint8_t* data, size_t len) {
     static bool initialized = false;
@@ -127,6 +128,10 @@ UsbCdcTransport::PacketKind UsbCdcTransport::poll(char* line_buf, size_t line_ma
                 break;
         }
     }
+}
+
+bool UsbCdcTransport::connected() const {
+    return tud_cdc_connected();
 }
 
 void UsbCdcTransport::send_frame(uint8_t type, uint8_t transfer_id, uint32_t seq,
