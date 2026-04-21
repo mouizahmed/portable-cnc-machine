@@ -146,6 +146,53 @@ Processing rule:
 Bulk jobs must be chunked so urgent work can preempt quickly. A bulk job must not sit in
 a long loop that prevents checking `Urgent`.
 
+### Job Intent Metadata
+
+Queue priority alone is not enough. The coordinator also needs to know whether the worker
+is doing real foreground work or disposable maintenance.
+
+Every worker job should eventually carry metadata:
+
+```cpp
+enum class WorkerJobIntent : uint8_t {
+    Urgent,
+    ForegroundExclusive,
+    ForegroundPreemptible,
+    BackgroundDisposable,
+};
+
+struct WorkerJobPolicy {
+    WorkerJobIntent intent;
+    OperationSource source;
+    bool preemptible;
+    bool background;
+    bool exclusive_sd;
+};
+```
+
+Intent classes:
+
+| Intent | Meaning | Examples |
+|---|---|---|
+| `Urgent` | Must run before all normal work. | abort transfer, cancel download/list, close active file after SD removal |
+| `ForegroundExclusive` | User-visible operation that owns SD and should block other foreground SD work. | upload open/write/finalize, delete, explicit download, job-stream file ownership |
+| `ForegroundPreemptible` | User-visible operation that can yield between bounded units. | file-list pages, preview/download chunks |
+| `BackgroundDisposable` | Maintenance that can be skipped, delayed, coalesced, or discarded. | SD health check, free-space refresh, TFT/job-list cache refresh |
+
+The worker snapshot should expose richer state than `worker_idle()`:
+
+- `has_foreground_work`
+- `has_exclusive_sd_work`
+- `has_preemptible_foreground_work`
+- `has_background_only_work`
+- `urgent_pending`
+- `active_intent`
+- `active_operation`
+
+The coordinator should use `worker_foreground_idle()` or equivalent instead of treating
+queued health checks, free-space refreshes, and active upload writes as the same kind of
+busy.
+
 ### Result Queue
 
 Core 1 reports all completions to core 0:
@@ -268,6 +315,28 @@ Rules:
 - Stream sending must pause while hold/abort/estop is pending.
 - Only core 0 writes `uart1` in this phase. If core 1 ever owns UART TX later, that must be a separate redesign where all TX moves together.
 - UART RX state updates should continue to feed core 0 FSMs.
+- Background telemetry/probe work must never block urgent or foreground motion commands.
+- Foreground motion commands are mutually exclusive unless the target FSM explicitly
+  defines a legal transition.
+- Long-running foreground motion work must expose preemption points, but not all motion
+  work is casually preemptible.
+
+Motion intent classes:
+
+| Intent | Examples | Policy |
+|---|---|---|
+| Safety / urgent | ESTOP, reset, feed hold, job abort, jog cancel, hard-limit/alarm handling | Preempts everything. |
+| Foreground motion | job start, job streaming, homing, probing, jogging, zeroing | Mutually exclusive; controlled by machine/job/stream FSMs. |
+| Background telemetry | position polling, caps/status polling, diagnostics, UI refresh | Droppable/coalescible; never blocks foreground or urgent work. |
+
+Motion-specific constraints:
+
+- Homing should only be interrupted by ESTOP, abort, or reset.
+- Probing should only be interrupted by ESTOP, abort, or reset.
+- Active job streaming should only be interrupted through hold, abort, ESTOP, or defined
+  stream-cancel semantics.
+- Jog should be cancellable, but a new jog should not replace an active jog without a
+  clean cancel/idle boundary.
 
 ### Job Streaming State
 
@@ -286,17 +355,44 @@ Add a job-stream state machine or extend existing job state explicitly:
 
 Core 0 should map this into `MachineFsm` events, not replace `MachineFsm`.
 
+### Pico <-> Teensy Binary Framing Scope
+
+This Core1Worker/concurrency refactor does not include converting the Pico <-> Teensy
+UART protocol from ASCII lines to binary frames.
+
+Reason:
+
+- The immediate risk is scheduling and ownership, not wire encoding.
+- The current ASCII protocol is easier to debug while refactoring concurrency.
+- Changing transport framing at the same time would make failures harder to isolate.
+- Core 0 UART ownership and request arbitration should be stable before changing the
+  wire protocol.
+
+Binary Pico <-> Teensy framing should be a later protocol migration with its own plan,
+test matrix, and rollback point. That future migration can reuse the same core-0 UART
+ownership rule: only one actor writes `uart1`, regardless of whether the bytes are ASCII
+or binary.
+
 ## Request Arbitration
 
-All incoming requests should pass through one admission function on core 0 before doing
-work:
+All incoming requests must pass through one central coordinator on core 0 before doing
+work. This is mandatory, not advisory.
+
+Target files:
+
+- `pico2W/src/app/operations/operation_coordinator.h`
+- `pico2W/src/app/operations/operation_coordinator.cpp`
+- `pico2W/src/app/operations/operation_request.h`
+
+The coordinator should become the only place that decides whether a desktop, TFT,
+storage, stream, or motion request is accepted, queued, rejected, or preempted.
 
 ```cpp
-RequestDecision RequestArbiter::decide(const Request& request,
-                                       const MachineFsm& machine,
-                                       const StorageTransferStateMachine& storage,
-                                       const JobStreamStateMachine& stream,
-                                       const WorkerSnapshot& worker);
+RequestDecision OperationCoordinator::decide(const OperationRequest& request,
+                                             const MachineFsm& machine,
+                                             const StorageTransferStateMachine& storage,
+                                             const JobStreamStateMachine& stream,
+                                             const Core1WorkerSnapshot& worker);
 ```
 
 Decision types:
@@ -307,8 +403,68 @@ Decision types:
 - `RejectInvalidState`
 - `PreemptAndAccept`
 - `AbortCurrentAndAccept`
+- `SuppressBackgroundAndAccept`
+- `CoalesceWithExisting`
 
 This prevents desktop and TFT paths from applying different rules.
+
+Implementation rule:
+
+- `DesktopProtocol` may parse protocol frames, but it should not independently decide
+  whether an operation is legal.
+- TFT screens may create UI commands, but they should not independently decide whether an
+  operation is legal.
+- `PicoUartClient` may send authorized commands to Teensy, but it should not independently
+  decide job-start legality.
+- Storage classes may defensively validate state, but the coordinator is the canonical
+  decision point.
+- Scattered checks should be reduced to assertions, sanity validation, or final defense
+  against misuse.
+- Background maintenance must not produce user-visible busy responses unless it is already
+  inside a non-preemptible hardware operation.
+- Duplicate background/telemetry requests should be coalesced rather than stacked.
+- Foreground requests may suppress pending background jobs before deciding whether the
+  system is busy.
+
+Operation request examples:
+
+```cpp
+enum class OperationRequestType : uint8_t {
+    FileList,
+    FileLoad,
+    FileUnload,
+    FileDelete,
+    UploadBegin,
+    UploadAbort,
+    DownloadBegin,
+    DownloadAbort,
+    JobStart,
+    JobHold,
+    JobResume,
+    JobAbort,
+    Jog,
+    JogCancel,
+    HomeAll,
+    ZeroAll,
+    Estop,
+    Reset,
+    SettingsSave,
+    CalibrationSave
+};
+```
+
+The coordinator needs richer inputs than a single `worker_idle()` flag:
+
+| Input | Meaning |
+|---|---|
+| `worker_foreground_idle` | No active or queued foreground storage work. Background jobs do not make this false. |
+| `worker_background_only` | Worker has only health/free-space/cache work active or queued. |
+| `worker_exclusive_sd_active` | Upload write/finalize, delete, explicit download, or stream file ownership is active. |
+| `storage_transfer_active` | User-visible desktop/TFT storage transfer is active. |
+| `stream_active` | Job stream state is not idle/complete. |
+| `motion_command_in_flight` | A foreground motion command has been sent and is waiting on Teensy/GRBL state. |
+| `telemetry_pending` | Background poll/probe/status work exists but can be dropped/coalesced. |
+| `urgent_pending` | Safety or abort request pending. |
 
 ## Concurrency Matrix
 
@@ -328,9 +484,14 @@ Legend:
 | Download preview | Upload/list/delete/load | `BUSY` | Or cancel preview explicitly first. |
 | Download preview | Preview cancel | `PREEMPT` | Stop sending chunks, close file. |
 | File list | Upload/download/delete/load | `BUSY` | List should be short or paged. |
+| File list page | Upload/delete/job start | `PREEMPT`/`QUEUE` | Finish current page at most, then cancel/defer list. |
+| Background health/free-space/cache | Upload/delete/job start | `PREEMPT`/`OK` | Suppress or delay background work; do not surface busy. |
+| Background telemetry/probe | Foreground motion command | `PREEMPT`/`OK` | Drop/coalesce telemetry; foreground command wins. |
 | Delete file | Any SD request | `BUSY` | Delete is short but exclusive. |
 | Job running | Upload/download/delete/load | `NO` | Keep SD free for active job/stream. |
 | Job running | Pause/abort/estop | `PREEMPT` | Must bypass all queues. |
+| Homing/probing | New motion command | `NO`/`BUSY` | Only ESTOP/abort/reset may interrupt. |
+| Jog active | New jog | `BUSY` | Require cancel/idle boundary first. |
 | Job streaming | File list/upload/download/delete | `BUSY` | SD file is active for stream. |
 | Job streaming | Hold/abort/estop | `PREEMPT` | Must pause/cancel stream immediately. |
 | Job hold | Resume/abort/estop | `PREEMPT`/`OK` | Resume allowed when hold complete. |
@@ -432,6 +593,8 @@ Core 1 should not directly emit USB protocol responses.
 
 ### Phase 1: Worker Skeleton
 
+Status: Complete in firmware build.
+
 - Create `Core1Worker` files.
 - Move core-1 launch and stack out of `DesktopProtocol`.
 - Register `multicore_lockout_victim_init()` in worker entry.
@@ -446,7 +609,69 @@ Acceptance:
 - Calibration save still works.
 - Worker heartbeat visible in diagnostics/logs if enabled.
 
+Completed implementation notes:
+
+- Added `pico2W/src/app/worker/core1_worker_types.h`.
+- Added `pico2W/src/app/worker/core1_worker.h`.
+- Added `pico2W/src/app/worker/core1_worker.cpp`.
+- `Core1Worker` owns the explicit 8 KB core-1 stack, core-1 launch,
+  `multicore_lockout_victim_init()`, urgent/control/bulk queues, result queue,
+  heartbeat, busy state, active job state, and snapshots.
+- `PortableCncApp` now owns `Core1Worker` as an app-level service.
+- `DesktopProtocol` no longer owns core-1 launch, stack, worker lock, upload queue,
+  upload result queue, or the core-1 entry loop.
+- Existing upload chunk writes now submit `StorageWriteUploadChunk` bulk jobs and consume
+  `UploadChunkCommitted` results through `Core1Worker`.
+- Verified with `cmake --build build` in `pico2W`.
+
+### Phase 1.5: OperationCoordinator
+
+Status: Complete in firmware build.
+
+- Create `OperationCoordinator` and `OperationRequest` files.
+- Add one request enum covering desktop, TFT, storage, stream, and motion requests.
+- Add one decision function using `MachineFsm`, `StorageTransferStateMachine`,
+  `JobStreamStateMachine`, `Core1WorkerSnapshot`, SD mount state, and Teensy link state.
+- Route desktop file requests through the coordinator.
+- Route desktop motion/job requests through the coordinator.
+- Route TFT file/job commands through the coordinator.
+- Route job start/hold/resume/abort through the coordinator.
+- Route settings and calibration save through the coordinator.
+- Keep low-level guards as defensive validation only.
+- Return consistent `BUSY`, `INVALID_STATE`, `NOT_ALLOWED`, and `PREEMPTED` outcomes.
+
+Acceptance:
+
+- No storage or motion operation starts from `DesktopProtocol` without a coordinator
+  decision.
+- No storage or motion operation starts from a TFT screen without a coordinator decision.
+- File load while running is rejected through the coordinator.
+- Upload/download/list/delete overlap is rejected through the coordinator.
+- ESTOP, abort, and hold decisions preempt lower-priority storage/stream work.
+
+Completed implementation notes:
+
+- Added `pico2W/src/app/operations/operation_request.h`.
+- Added `pico2W/src/app/operations/operation_coordinator.h`.
+- Added `pico2W/src/app/operations/operation_coordinator.cpp`.
+- `OperationCoordinator::decide()` now accepts `MachineFsm`,
+  `StorageTransferStateMachine`, `JobStreamState`, `Core1WorkerSnapshot`, and
+  `StorageState`.
+- `JobStreamState` is present as a placeholder enum; current callers pass `Idle` until
+  the real job-stream FSM exists.
+- Desktop storage, motion/job, reset/estop, and settings-save handlers call the
+  coordinator before starting work.
+- TFT file/job/jog/home/zero commands are gated through the same coordinator.
+- TFT settings save is gated through `PortableCncController`.
+- Startup calibration save path checks `CalibrationSave` admission before entering the
+  save-capable calibration workflow.
+- Normal storage, motion, and flash-save work is rejected while storage transfer, worker,
+  or stream work is active; estop and abort-style requests remain preemptive.
+- Verified with `cmake --build build` in `pico2W`.
+
 ### Phase 2: Move Upload Worker
+
+Status: Complete in firmware build; hardware upload and abort validation still required.
 
 - Replace `DesktopProtocol` upload queue fields with `Core1Worker` upload jobs.
 - Keep same upload frame format and ACK behavior.
@@ -462,7 +687,26 @@ Acceptance:
 - Upload can be aborted from TFT upload screen.
 - Calibration/settings save still work before and after upload.
 
+Completed implementation notes:
+
+- Added `StorageOpenUpload`, `StorageFinalizeUpload`, and `StorageAbortTransfer` worker
+  jobs alongside `StorageWriteUploadChunk`.
+- Added `FileOpened`, `FileClosed`, and `TransferAborted` worker results.
+- `Core1Worker` now owns the active upload `FIL`, transfer id, and filename.
+- Upload open, existing-file check, overwrite unlink, free-space check, `f_open()`, and
+  `f_expand()` now execute on core 1.
+- Upload chunk writes continue to execute on core 1 through `StorageWriteUploadChunk`.
+- Upload finalize now submits `StorageFinalizeUpload`; `f_sync()` and `f_close()` run on
+  core 1, then core 0 emits the upload profile and completion response.
+- Upload abort now submits `StorageAbortTransfer`; partial-file close/delete cleanup runs
+  on core 1.
+- `DesktopProtocol` applies upload worker results to `StorageTransferStateMachine` and
+  remains responsible for protocol ACKs, errors, events, and UI state change flags.
+- Verified with `cmake --build build` in `pico2W`.
+
 ### Phase 3: Move Download and Preview Reads
+
+Status: Complete in firmware build; hardware download/preview and cancel validation still required.
 
 - Add `StorageOpenDownload` and `StorageReadDownloadChunk`.
 - Core 0 sends download frames from result data.
@@ -474,7 +718,26 @@ Acceptance:
 - Cancel preview works immediately.
 - Upload and download cannot overlap.
 
+Completed implementation notes:
+
+- Added `StorageOpenDownload`, `StorageReadDownloadChunk`, and `StorageCloseDownload`
+  worker jobs.
+- Added `DownloadOpened`, `DownloadChunkRead`, and `DownloadClosed` worker results.
+- `Core1Worker` now owns the active download `FIL`, transfer id, and filename.
+- Download stat/open now executes on core 1 and returns size/open status to core 0.
+- Download reads now execute on core 1 and return bounded chunk payloads to core 0.
+- Core 0 keeps the existing download frame format, ACK/session handling, retry timeout,
+  CRC accumulation, and completion response behavior.
+- Core 0 tracks pending read jobs separately from chunks already sent so the existing
+  download ACK window remains bounded.
+- Download abort/cancel clears pending worker jobs and closes the worker-owned download
+  file through the worker path.
+- Remaining direct FatFS calls in `DesktopProtocol` are file list/delete paths for Phase 4.
+- Verified with `cmake --build build` in `pico2W`.
+
 ### Phase 4: Move File List, Delete, Free Space, Health
+
+Status: Complete in firmware build; hardware file list/delete/SD-removal validation still required.
 
 - Make file listing paged to avoid large result bursts.
 - Move delete to worker.
@@ -485,6 +748,117 @@ Acceptance:
 
 - TFT and desktop remain responsive during file list.
 - SD removal during file list or health check recovers cleanly.
+
+Completed implementation notes:
+
+- Added `StorageListBegin`, `StorageListNextPage`, `StorageDeleteFile`,
+  `StorageFreeSpace`, and `StorageHealthCheck` worker jobs.
+- Added `FileListPage`, `FileDeleted`, `FreeSpaceReady`, and `StorageHealthReady`
+  worker results.
+- File listing is internally paged at 8 entries per worker result.
+- Desktop file-list behavior is preserved externally: core 0 still emits the existing
+  `RESP_FILE_ENTRY` frames as entries arrive and the existing `RESP_FILE_LIST_END` when
+  the worker reports completion.
+- No desktop API pagination or TFT pagination UI was added.
+- `Core1Worker` owns active directory scan state and closes the directory when listing
+  completes or is aborted.
+- Desktop delete now runs `f_unlink()` on core 1 and core 0 applies the result, unloads a
+  deleted active job if needed, and emits the existing delete response.
+- `f_getfree()` now runs on core 1 through list completion and `StorageFreeSpace`; core 0
+  stores the latest free-space value in `StorageService`.
+- `StorageService::free_bytes()` now returns cached worker-provided free-space data
+  instead of calling FatFS directly.
+- TFT/job-list refresh now consumes internally paged worker file-list results rather than
+  calling `f_opendir()`/`f_readdir()` directly.
+- Periodic SD health sector reads now run as `StorageHealthCheck` worker jobs; core 0
+  applies the health result to `StorageService`.
+- Desktop auto-connect file-list requests are now deferred inside `DesktopProtocol` if
+  they race with worker startup/cache/health work, then started when the worker becomes
+  available. This preserves the existing desktop file-list API and avoids surfacing
+  transient `STORAGE_BUSY` during startup.
+- Verified with `cmake --build build` in `pico2W`.
+
+### Phase 4.5: Scheduler Policy and Intent Classification
+
+Status: Partially complete in firmware build; motion telemetry coalescing and explicit
+preemptible-list/download cancellation still required.
+
+This phase removes the remaining "transient busy from maintenance work" cases by
+classifying worker and motion work by intent instead of using one generic busy/idle signal.
+
+Storage policy:
+
+- Mark SD health checks as `BackgroundDisposable`.
+- Mark free-space refresh as `BackgroundDisposable`.
+- Mark TFT/job-list cache refresh as `BackgroundDisposable` or `ForegroundPreemptible`
+  depending on whether the user explicitly requested it.
+- Mark desktop/TFT explicit file listing as `ForegroundPreemptible`.
+- Mark preview/download chunk reads as `ForegroundPreemptible` unless the user explicitly
+  requested a blocking download.
+- Mark upload open/write/finalize and delete as `ForegroundExclusive`.
+- Let foreground commands suppress or clear pending background jobs.
+- Let file list and preview/download yield between pages/chunks.
+- Keep upload write/finalize/delete exclusive and non-preemptible except abort/removal.
+
+Motion policy:
+
+- Classify ESTOP, reset, feed hold, job abort, jog cancel, and alarm/limit handling as
+  safety/urgent.
+- Classify job start, job streaming, homing, probing, jogging, and zeroing as foreground
+  motion.
+- Classify position/status/caps polling, diagnostics, and UI refresh as background
+  telemetry.
+- Ensure urgent motion commands preempt all storage, stream, and telemetry work.
+- Ensure foreground motion commands are mutually exclusive unless the relevant FSM
+  explicitly allows the transition.
+- Coalesce duplicate telemetry/background polls instead of stacking them.
+
+Implementation tasks:
+
+- Add worker job metadata: priority, source, intent, preemptible, background, exclusive SD.
+- Add richer worker snapshot fields such as `has_foreground_work`,
+  `has_background_only_work`, `has_exclusive_sd_work`, `active_intent`, and
+  `urgent_pending`.
+- Replace coordinator use of `worker_idle()` with `worker_foreground_idle()` or equivalent.
+- Add operations to suppress or clear pending background worker jobs.
+- Add coordinator rules for background motion telemetry.
+- Add tests/logging for representative decisions:
+  `UploadBegin + health check`, `JobStart + free-space refresh`, `Jog + telemetry pending`,
+  `HomeAll + upload active`, and `Estop + anything active`.
+
+Acceptance:
+
+- Upload/delete/job-start do not return busy just because health/free-space/cache work is
+  queued or active between bounded units.
+- Explicit file list and preview/download can be cancelled or preempted at page/chunk
+  boundaries.
+- Background health/free-space/cache requests are skipped, delayed, or coalesced under
+  foreground load.
+- Background motion telemetry never blocks foreground motion or urgent commands.
+- ESTOP/abort/hold still preempt every storage/stream/background path.
+
+Completed implementation notes:
+
+- Added `Core1JobIntent` and `Core1JobSource` metadata to worker jobs.
+- Added richer `Core1WorkerSnapshot` fields: `has_foreground_work`,
+  `has_background_only_work`, `has_exclusive_sd_work`,
+  `has_preemptible_foreground_work`, `urgent_pending`, `active_intent`, and
+  `active_operation`.
+- `Core1Worker::snapshot()` now classifies active, queued, and pending-result work by
+  intent instead of exposing only generic queue counts.
+- `OperationCoordinator` now uses foreground-worker idleness for job start, storage
+  requests, settings save, and calibration save. Background-only worker work returns
+  `SuppressBackgroundAndAccept` instead of `RejectBusy`.
+- Desktop, TFT, and startup calibration admission paths treat
+  `SuppressBackgroundAndAccept` as an accepted decision.
+- SD health checks, free-space refreshes, and `StorageService` job-list cache refreshes
+  are marked `BackgroundDisposable`; explicit desktop file lists are marked
+  `ForegroundPreemptible`.
+- This slice implements storage-worker intent classification only. The motion-side policy
+  is documented in this phase, but full motion telemetry/background coalescing still needs
+  an equivalent motion scheduler or command-in-flight metadata layer before it can be
+  enforced in code.
+- Verified with `cmake --build build` in `pico2W`.
 
 ### Phase 5: Refactor Flash Writer
 
@@ -528,6 +902,25 @@ Acceptance:
   only if the optional future motion-link redesign is intentionally started.
 - Realtime commands preempt stream lines.
 
+### Phase 8: Optional Pico <-> Teensy Binary Protocol Migration
+
+Do not do this as part of the Core1Worker/storage refactor. Only consider it after the
+worker, coordinator, storage ownership, and job streaming phases are stable.
+
+- Write a separate protocol plan for binary Pico <-> Teensy frames.
+- Preserve core-0 ownership of `uart1` unless Phase 7 has intentionally changed UART TX
+  ownership first.
+- Define frame header, payload structs, CRC/checksum, resync behavior, and compatibility
+  strategy.
+- Migrate Teensy and Pico together behind a protocol version handshake.
+- Keep ASCII diagnostics or a debug decode mode until binary framing is proven.
+
+Acceptance:
+
+- ASCII protocol can be restored by reverting only the protocol migration.
+- Binary frames do not change `MachineFsm` or `OperationCoordinator` semantics.
+- ESTOP, abort, hold, resume, and stream-line priority ordering is preserved.
+
 ## Non-Goals
 
 Do not do these as part of the first worker refactor:
@@ -567,14 +960,22 @@ Run these after each phase:
   redesign move all TX to a dedicated actor?
 - How large should upload/download/stream buffers be given RAM pressure?
 - Should file listing be fully paged over the desktop protocol?
-- Should storage health checks be disabled during active streaming, or run as low-priority
-  worker jobs only when SD is idle?
+- Should storage health checks be disabled during active streaming, or remain
+  background-disposable jobs that run only when SD is idle?
 
 ## Immediate Next Step
 
-Implement Phase 1 and Phase 2 together only if the patch stays small. Otherwise:
+Phase 1, Phase 1.5, Phase 2, Phase 3, and Phase 4 are complete in the firmware build.
+Phase 4.5 is the next planned architecture cleanup before Phase 5.
 
-1. Land `Core1Worker` skeleton with heartbeat and lockout registration.
-2. Rebuild/reflash and verify calibration save.
-3. Move upload writes from `DesktopProtocol` to `Core1Worker`.
-4. Retest upload and abort paths before moving any other storage work.
+Next:
+
+1. Reflash and verify boot, calibration/settings save, and basic desktop/TFT command
+   admission on hardware.
+2. Retest `desktop/samples/test_2mb.gcode` upload, desktop upload abort, TFT upload abort,
+   desktop download/preview, preview cancel, desktop/TFT file list, delete, SD removal
+   during idle/list/health check, and post-transfer calibration/settings saves on hardware.
+3. Implement Phase 4.5 scheduler policy and intent classification so background worker
+   jobs and telemetry no longer produce generic busy decisions.
+4. Continue Phase 5 by centralizing reserved-flash writes if Phase 2-4.5 hardware storage
+   tests are stable.

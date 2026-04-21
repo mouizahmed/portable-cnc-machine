@@ -14,7 +14,6 @@ FATFS g_sd_fs;
 constexpr uint32_t kRetryIntervalMs = 1000;
 constexpr uint32_t kHealthCheckIntervalMs = 500;
 constexpr uint8_t kHealthFailureThreshold = 2;
-constexpr std::size_t kSectorSize = 512;
 
 bool has_extension(const char* name, const char* extension) {
     const char* dot = std::strrchr(name, '.');
@@ -75,9 +74,26 @@ void fill_entry(FileEntry& entry, const FILINFO& info) {
                       static_cast<unsigned long>((info.fsize + 1023u) / 1024u));
     }
 }
+
+void fill_entry(FileEntry& entry, const Core1FileListEntry& info) {
+    copy_text(entry.name, sizeof(entry.name), info.name);
+    copy_text(entry.summary, sizeof(entry.summary), "STORAGE FILE");
+    copy_text(entry.tool_text, sizeof(entry.tool_text), "--");
+    copy_text(entry.zero_text, sizeof(entry.zero_text), "--");
+
+    if (info.size < 1024) {
+        std::snprintf(entry.size_text, sizeof(entry.size_text), "%lu B", static_cast<unsigned long>(info.size));
+    } else {
+        std::snprintf(entry.size_text,
+                      sizeof(entry.size_text),
+                      "%lu KB",
+                      static_cast<unsigned long>((info.size + 1023u) / 1024u));
+    }
+}
 }  // namespace
 
-StorageService::StorageService(SdSpiCard& sd_card) : sd_card_(sd_card) {}
+StorageService::StorageService(SdSpiCard& sd_card, Core1Worker& worker)
+    : sd_card_(sd_card), worker_(worker) {}
 
 void StorageService::initialize(JobStateMachine& jobs) {
     jobs.clear_files();
@@ -96,7 +112,14 @@ bool StorageService::poll(JobStateMachine& jobs) {
             return false;
         }
         last_health_check_ms_ = now;
-        return check_health(jobs);
+        if (!worker_health_check_pending_ && worker_.idle()) {
+            Core1Job job{};
+            job.type = Core1JobType::StorageHealthCheck;
+            job.intent = Core1JobIntent::BackgroundDisposable;
+            job.source = Core1JobSource::StorageService;
+            worker_health_check_pending_ = worker_.submit_bulk(job);
+        }
+        return false;
     }
 
     if ((now - last_attempt_ms_) < kRetryIntervalMs) {
@@ -152,39 +175,68 @@ bool StorageService::refresh_job_files(JobStateMachine& jobs) {
         return false;
     }
 
-    DIR dir{};
-    FILINFO info{};
-    FRESULT result = f_opendir(&dir, "0:/");
     int16_t restored_loaded_index = -1;
-    if (result != FR_OK) {
-        state_ = StorageState::ScanError;
+
+    Core1Job list_job{};
+    list_job.type = Core1JobType::StorageListBegin;
+    list_job.intent = Core1JobIntent::BackgroundDisposable;
+    list_job.source = Core1JobSource::StorageService;
+    if (!worker_.submit_control(list_job)) {
         return false;
     }
 
-    while (jobs.count() < JobStateMachine::kMaxFiles) {
-        result = f_readdir(&dir, &info);
-        if (result != FR_OK) {
-            f_closedir(&dir);
+    const uint32_t start_ms = to_ms_since_boot(get_absolute_time());
+    bool complete = false;
+    while (!complete) {
+        Core1Result result{};
+        if (!worker_.try_pop_result(result)) {
+            if ((to_ms_since_boot(get_absolute_time()) - start_ms) > 5000u) {
+                state_ = StorageState::ScanError;
+                jobs.clear_files();
+                return false;
+            }
+            sleep_us(100);
+            continue;
+        }
+
+        if (result.type != Core1ResultType::FileListPage) {
+            continue;
+        }
+
+        if (result.file_list.result != FR_OK) {
             state_ = StorageState::ScanError;
             jobs.clear_files();
             return false;
         }
-        if (info.fname[0] == '\0') {
-            break;
-        }
-        if ((info.fattrib & AM_DIR) != 0 || !is_supported_job_file(info.fname)) {
-            continue;
+
+        for (uint8_t index = 0;
+             index < result.file_list.entry_count && jobs.count() < JobStateMachine::kMaxFiles;
+             ++index) {
+            FileEntry entry{};
+            fill_entry(entry, result.file_list.entries[index]);
+            jobs.add_file(entry);
+            if (loaded_name[0] != '\0' && std::strcmp(entry.name, loaded_name) == 0) {
+                restored_loaded_index = static_cast<int16_t>(jobs.count() - 1);
+            }
         }
 
-        FileEntry entry{};
-        fill_entry(entry, info);
-        jobs.add_file(entry);
-        if (loaded_name[0] != '\0' && std::strcmp(entry.name, loaded_name) == 0) {
-            restored_loaded_index = static_cast<int16_t>(jobs.count() - 1);
+        complete = result.file_list.complete;
+        if (complete) {
+            cached_free_bytes_ = result.file_list.free_bytes;
+            break;
+        }
+
+        Core1Job next_job{};
+        next_job.type = Core1JobType::StorageListNextPage;
+        next_job.intent = Core1JobIntent::BackgroundDisposable;
+        next_job.source = Core1JobSource::StorageService;
+        if (!worker_.submit_control(next_job)) {
+            state_ = StorageState::ScanError;
+            jobs.clear_files();
+            return false;
         }
     }
 
-    f_closedir(&dir);
     if (restored_loaded_index >= 0) {
         jobs.handle_event(JobEvent::LoadFile, restored_loaded_index);
         if (previous_state == JobState::Running) {
@@ -196,15 +248,39 @@ bool StorageService::refresh_job_files(JobStateMachine& jobs) {
 }
 
 uint64_t StorageService::free_bytes() const {
-    if (state_ != StorageState::Mounted) {
-        return 0;
+    return state_ == StorageState::Mounted ? cached_free_bytes_ : 0;
+}
+
+void StorageService::set_cached_free_bytes(uint64_t free_bytes) {
+    cached_free_bytes_ = free_bytes;
+}
+
+bool StorageService::begin_worker_health_check() {
+    if (worker_health_check_pending_) {
+        return false;
     }
-    FATFS* fs;
-    DWORD free_clust = 0;
-    if (f_getfree("0:", &free_clust, &fs) != FR_OK) {
-        return 0;
+    worker_health_check_pending_ = true;
+    return true;
+}
+
+bool StorageService::apply_worker_health_result(bool healthy, JobStateMachine& jobs) {
+    worker_health_check_pending_ = false;
+    if (healthy) {
+        health_failure_count_ = 0;
+        return false;
     }
-    return static_cast<uint64_t>(free_clust) * fs->csize * 512u;
+
+    ++health_failure_count_;
+    if (health_failure_count_ < kHealthFailureThreshold) {
+        return false;
+    }
+
+    f_unmount("0:");
+    state_ = StorageState::ScanError;
+    jobs.clear_files();
+    cached_free_bytes_ = 0;
+    health_failure_count_ = 0;
+    return true;
 }
 
 bool StorageService::try_mount(JobStateMachine& jobs) {
@@ -232,23 +308,4 @@ bool StorageService::try_mount(JobStateMachine& jobs) {
     const bool files_loaded = refresh_job_files(jobs);
     last_health_check_ms_ = last_attempt_ms_;
     return previous_state != state_ || previous_count != jobs.count() || files_loaded;
-}
-
-bool StorageService::check_health(JobStateMachine& jobs) {
-    uint8_t sector_buffer[kSectorSize]{};
-    if (sd_card_.read_blocks(0, sector_buffer, 1)) {
-        health_failure_count_ = 0;
-        return false;
-    }
-
-    ++health_failure_count_;
-    if (health_failure_count_ < kHealthFailureThreshold) {
-        return false;
-    }
-
-    f_unmount("0:");
-    state_ = StorageState::ScanError;
-    jobs.clear_files();
-    health_failure_count_ = 0;
-    return true;
 }

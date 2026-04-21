@@ -6,9 +6,11 @@
 #include "app/job/loaded_job_storage.h"
 #include "app/machine/machine_fsm.h"
 #include "app/navigation/screen_router.h"
+#include "app/operations/operation_coordinator.h"
 #include "app/settings/machine_settings_store.h"
 #include "app/status/status_provider.h"
 #include "app/storage/storage_service.h"
+#include "app/worker/core1_worker.h"
 #include "calibration/calibration_storage.h"
 #include "calibration/touch_calibration_app.h"
 #include "drivers/sd_spi_card.h"
@@ -38,6 +40,8 @@ private:
     MachineFsm machine_fsm_;
     JogStateMachine jog_state_machine_;
     JobStateMachine job_state_machine_;
+    OperationCoordinator operation_coordinator_;
+    Core1Worker core1_worker_;
     LoadedJobStorage loaded_job_storage_;
     MachineSettingsStore machine_settings_store_;
     StorageService storage_service_;

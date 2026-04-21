@@ -5,8 +5,10 @@
 #include "app/jog/jog_state_machine.h"
 #include "app/job/job_state_machine.h"
 #include "app/machine/machine_fsm.h"
+#include "app/operations/operation_coordinator.h"
 #include "app/settings/machine_settings_store.h"
 #include "app/storage/storage_service.h"
+#include "app/worker/core1_worker.h"
 
 enum class ControlCommand : uint8_t {
     Start,
@@ -28,7 +30,9 @@ public:
                           JogStateMachine& jog,
                           JobStateMachine& jobs,
                           MachineSettingsStore& machine_settings,
-                          StorageService& storage);
+                          StorageService& storage,
+                          OperationCoordinator& coordinator,
+                          Core1Worker& worker);
 
     bool begin_calibration();
     bool complete_calibration();
@@ -61,4 +65,6 @@ private:
     JobStateMachine& jobs_;
     MachineSettingsStore& machine_settings_;
     StorageService& storage_;
+    OperationCoordinator& coordinator_;
+    Core1Worker& worker_;
 };

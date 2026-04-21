@@ -21,8 +21,14 @@ void release_shared_spi_devices() {
 PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_card, CalibrationStorage& storage)
     : display_(display),
       touch_(touch),
-      storage_service_(sd_card),
-      controller_(machine_fsm_, jog_state_machine_, job_state_machine_, machine_settings_store_, storage_service_),
+      storage_service_(sd_card, core1_worker_),
+      controller_(machine_fsm_,
+                  jog_state_machine_,
+                  job_state_machine_,
+                  machine_settings_store_,
+                  storage_service_,
+                  operation_coordinator_,
+                  core1_worker_),
       uart_client_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
       status_provider_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
       calibration_app_(display, touch, storage),
@@ -39,7 +45,9 @@ PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_c
                         loaded_job_storage_,
                         machine_settings_store_,
                         storage_service_,
-                        sd_card) {
+                        sd_card,
+                        operation_coordinator_,
+                        core1_worker_) {
     files_screen_.bind_protocol(desktop_protocol_);
     router_.register_screen(main_menu_screen_);
     router_.register_screen(jog_screen_);
@@ -149,7 +157,20 @@ void PortableCncApp::run_startup_sequence() {
     if (!kSkipTouchCalibrationForDev) {
         TouchCalibration calibration{};
         controller_.begin_calibration();
-        calibration_app_.ensure_calibration(calibration);
+        StorageTransferStateMachine idle_transfer{};
+        const RequestDecision calibration_decision = operation_coordinator_.decide(
+            OperationRequest{OperationRequestType::CalibrationSave, OperationRequestSource::System},
+            machine_fsm_,
+            idle_transfer,
+            JobStreamState::Idle,
+            core1_worker_.snapshot(),
+            storage_service_.state());
+        if (calibration_decision.type == RequestDecisionType::AcceptNow ||
+            calibration_decision.type == RequestDecisionType::PreemptAndAccept ||
+            calibration_decision.type == RequestDecisionType::AbortCurrentAndAccept ||
+            calibration_decision.type == RequestDecisionType::SuppressBackgroundAndAccept) {
+            calibration_app_.ensure_calibration(calibration);
+        }
         controller_.complete_calibration();
         touch_latched_ = false;
         last_touch_point_ = TouchPoint{};
@@ -157,6 +178,7 @@ void PortableCncApp::run_startup_sequence() {
     }
 
     release_shared_spi_devices();
+    core1_worker_.start();
     storage_service_.initialize(job_state_machine_);
 
     while (storage_service_.state() == StorageState::Mounting) {
@@ -264,24 +286,45 @@ void PortableCncApp::handle_ui_command(const UiEventResult& result) {
         case UiCommandType::None:
             break;
         case UiCommandType::SelectFile:
+            if (!desktop_protocol_.allow_ui_operation(OperationRequestType::FileLoad)) {
+                break;
+            }
             uart_client_.select_file(static_cast<int16_t>(result.selected_index));
             break;
         case UiCommandType::StartJob:
+            if (!desktop_protocol_.allow_ui_operation(OperationRequestType::JobStart)) {
+                break;
+            }
             uart_client_.upload_and_run_loaded_job();
             break;
         case UiCommandType::HoldJob:
+            if (!desktop_protocol_.allow_ui_operation(OperationRequestType::JobHold)) {
+                break;
+            }
             uart_client_.hold();
             break;
         case UiCommandType::ResumeJob:
+            if (!desktop_protocol_.allow_ui_operation(OperationRequestType::JobResume)) {
+                break;
+            }
             uart_client_.resume();
             break;
         case UiCommandType::JogMove:
+            if (!desktop_protocol_.allow_ui_operation(OperationRequestType::Jog)) {
+                break;
+            }
             uart_client_.jog(result.jog_action);
             break;
         case UiCommandType::HomeAll:
+            if (!desktop_protocol_.allow_ui_operation(OperationRequestType::HomeAll)) {
+                break;
+            }
             uart_client_.home_all();
             break;
         case UiCommandType::ZeroAll:
+            if (!desktop_protocol_.allow_ui_operation(OperationRequestType::ZeroAll)) {
+                break;
+            }
             uart_client_.zero_all();
             break;
     }

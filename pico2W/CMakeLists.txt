@@ -61,11 +61,13 @@ add_executable(portable_cnc_machine
     src/app/job/loaded_job_storage.cpp
     src/app/machine/machine_fsm.cpp
     src/app/navigation/screen_router.cpp
+    src/app/operations/operation_coordinator.cpp
     src/app/settings/machine_settings_store.cpp
     src/app/status/status_line_formatter.cpp
     src/app/status/status_provider.cpp
     src/app/storage/storage_service.cpp
     src/app/storage/storage_transfer_fsm.cpp
+    src/app/worker/core1_worker.cpp
     src/protocol/desktop_protocol.cpp
     src/protocol/usb_cdc_transport.cpp
     src/services/portable_cnc_controller.cpp

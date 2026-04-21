@@ -7,17 +7,14 @@
 #include "app/job/loaded_job_storage.h"
 #include "app/job/job_state_machine.h"
 #include "app/machine/machine_fsm.h"
+#include "app/operations/operation_coordinator.h"
 #include "app/settings/machine_settings_store.h"
 #include "app/storage/storage_transfer_fsm.h"
 #include "app/storage/storage_service.h"
+#include "app/worker/core1_worker.h"
 #include "drivers/sd_spi_card.h"
 #include "protocol/protocol_defs.h"
 #include "protocol/usb_cdc_transport.h"
-#include "pico/sync.h"
-
-extern "C" {
-#include "ff.h"
-}
 
 class DesktopProtocol {
 public:
@@ -37,7 +34,9 @@ public:
                     LoadedJobStorage& loaded_job_storage,
                     MachineSettingsStore& machine_settings,
                     StorageService& storage,
-                    SdSpiCard& sd);
+                    SdSpiCard& sd,
+                    OperationCoordinator& coordinator,
+                    Core1Worker& worker);
 
     // Call every main-loop iteration. Reads pending USB input, dispatches commands.
     void poll();
@@ -110,31 +109,12 @@ public:
     // -- Storage event callbacks (called by PortableCncApp) -------------------
     void on_sd_mounted();
     void on_sd_removed();
+    bool allow_ui_operation(OperationRequestType type);
 
 private:
     static constexpr uint32_t kDownloadWindowSize = 8;
     static constexpr uint32_t kUploadAckStride = 8;
-    static constexpr size_t kUploadQueueCapacity = 16;
-    static constexpr size_t kUploadWorkerStackBytes = 8192;
     static constexpr uint32_t kDownloadResendIntervalMs = 750;
-
-    struct UploadQueueEntry {
-        uint8_t transfer_id = 0;
-        uint32_t sequence = 0;
-        uint16_t length = 0;
-        uint32_t crc_after = 0xFFFFFFFFu;
-        uint8_t payload[kTransferRawChunkSize]{};
-    };
-
-    struct UploadCommitResult {
-        uint8_t transfer_id = 0;
-        uint32_t sequence = 0;
-        uint16_t length = 0;
-        uint32_t crc_after = 0xFFFFFFFFu;
-        uint32_t write_elapsed_ms = 0;
-        FRESULT result = FR_OK;
-        UINT written = 0;
-    };
 
     UsbCdcTransport& transport_;
     MachineFsm& msm_;
@@ -144,6 +124,8 @@ private:
     MachineSettingsStore& machine_settings_;
     StorageService& storage_;
     SdSpiCard& sd_;
+    OperationCoordinator& coordinator_;
+    Core1Worker& worker_;
 
     char line_[256];
     UsbCdcTransport::FramePacket frame_{};
@@ -164,32 +146,25 @@ private:
     uint32_t upload_profile_max_write_ms_ = 0;
     uint32_t upload_profile_close_ms_ = 0;
     uint32_t upload_profile_chunks_ = 0;
-    UploadQueueEntry upload_queue_[kUploadQueueCapacity]{};
-    size_t upload_queue_head_ = 0;
-    size_t upload_queue_tail_ = 0;
-    size_t upload_queue_count_ = 0;
     size_t upload_queue_high_water_ = 0;
-    UploadCommitResult upload_results_[kUploadQueueCapacity]{};
-    size_t upload_result_head_ = 0;
-    size_t upload_result_tail_ = 0;
-    size_t upload_result_count_ = 0;
     volatile bool upload_worker_enabled_ = false;
-    volatile bool upload_worker_busy_ = false;
-    critical_section_t upload_worker_lock_{};
     uint32_t upload_next_receive_sequence_ = 0;
     uint32_t upload_bytes_received_ = 0;
     uint32_t upload_receive_crc_running_ = 0xFFFFFFFFu;
-    UploadQueueEntry upload_worker_entry_{};
+    uint32_t download_read_jobs_pending_ = 0;
 
     StorageTransferStateMachine transfer_;
     uint8_t next_transfer_id_ = 1;
     uint32_t current_request_seq_ = 0;
+    uint32_t storage_request_seq_ = 0;
+    uint32_t pending_file_list_request_seq_ = 0;
     uint8_t current_command_type_ = 0;
     bool handling_command_ = false;
+    bool pending_file_list_request_ = false;
     bool transfer_active() const { return transfer_.is_active(); }
-    static DesktopProtocol* storage_worker_instance_;
-    static volatile bool storage_worker_lockout_ready_;
-    static uint32_t upload_worker_stack_[kUploadWorkerStackBytes / sizeof(uint32_t)];
+    bool admit_operation(OperationRequestType type,
+                         StorageTransferOperation operation,
+                         bool storage_error_response);
 
 // Command dispatch
     void dispatch_frame(const UsbCdcTransport::FramePacket& frame);
@@ -235,17 +210,28 @@ private:
     void handle_settings_set(const CmdSettingsSet& cmd);
     void fill_download_window();
     void send_next_download_chunk();
+    void process_download_opened(const Core1Result& result);
+    void process_download_chunk_read(const Core1Result& result);
+    void submit_download_close_job(uint8_t transfer_id);
+    void process_file_list_page(const Core1Result& result);
+    void process_file_deleted(const Core1Result& result);
+    void process_free_space_ready(const Core1Result& result);
+    void process_storage_health_ready(const Core1Result& result);
+    bool begin_file_list(uint32_t request_seq);
+    void service_pending_file_list_request();
     void tick_transfer_retries();
+    uint32_t response_request_seq() const;
 
 // Upload helpers
     void upload_abort_cleanup();
     void handle_upload_chunk_data(uint8_t transfer_id, uint32_t sequence, const uint8_t* payload, uint16_t payload_len);
     void process_upload_results();
     bool enqueue_upload_chunk(uint8_t transfer_id, uint32_t sequence, const uint8_t* payload, uint16_t payload_len);
-    void commit_upload_result(const UploadCommitResult& result);
+    void commit_upload_result(const Core1Result& result);
+    void handle_upload_opened(const Core1Result& result);
+    void handle_upload_finalized(const Core1Result& result);
+    void submit_upload_abort_job(uint8_t transfer_id, const char* filename, bool delete_partial);
     void reset_upload_queue();
-    void storage_worker_loop();
-    static void storage_worker_entry();
     void reset_upload_completion();
     void reset_download_completion();
     void send_upload_ready();

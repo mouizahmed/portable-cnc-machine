@@ -620,6 +620,8 @@ public sealed class PicoProtocolService
             UploadFailedReceived?.Invoke(code == ProtocolErrorCode.StorageNoSd
                 ? "SD card not present"
                 : FriendlyStorageMessage(code, detail, message));
+            if (code == ProtocolErrorCode.StorageBusy)
+                return;
         }
         else if (operation == ProtocolStorageOperation.Download)
         {

@@ -4,8 +4,16 @@ PortableCncController::PortableCncController(MachineFsm& machine,
                                              JogStateMachine& jog,
                                              JobStateMachine& jobs,
                                              MachineSettingsStore& machine_settings,
-                                             StorageService& storage)
-    : machine_(machine), jog_(jog), jobs_(jobs), machine_settings_(machine_settings), storage_(storage) {}
+                                             StorageService& storage,
+                                             OperationCoordinator& coordinator,
+                                             Core1Worker& worker)
+    : machine_(machine),
+      jog_(jog),
+      jobs_(jobs),
+      machine_settings_(machine_settings),
+      storage_(storage),
+      coordinator_(coordinator),
+      worker_(worker) {}
 
 bool PortableCncController::begin_calibration() {
     return true;
@@ -118,6 +126,24 @@ bool PortableCncController::can_run_loaded_job() const {
 }
 
 bool PortableCncController::save_machine_settings(const MachineSettings& settings, const char** error_reason) {
+    StorageTransferStateMachine idle_transfer{};
+    const RequestDecision decision = coordinator_.decide(
+        OperationRequest{OperationRequestType::SettingsSave, OperationRequestSource::Tft},
+        machine_,
+        idle_transfer,
+        JobStreamState::Idle,
+        worker_.snapshot(),
+        storage_.state());
+    if (decision.type != RequestDecisionType::AcceptNow &&
+        decision.type != RequestDecisionType::PreemptAndAccept &&
+        decision.type != RequestDecisionType::AbortCurrentAndAccept &&
+        decision.type != RequestDecisionType::SuppressBackgroundAndAccept) {
+        if (error_reason != nullptr) {
+            *error_reason = decision.type == RequestDecisionType::RejectBusy ? "Busy" : "Invalid state";
+        }
+        return false;
+    }
+
     return machine_settings_.apply(settings, error_reason);
 }
 
