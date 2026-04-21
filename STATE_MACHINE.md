@@ -34,6 +34,83 @@ GRBL state change (Teensy)
 trigger commands to GRBL; GRBL's confirmed state change drives the Pico's state transition.
 The Pico stays in its current state until a `@GRBL_STATE` event arrives.
 
+### ASCII — GRBL motion states (Teensy / grblHAL)
+
+High-level relationships (not every legal transition). `STATE_IDLE` is the usual hub after successful completion or soft reset.
+
+```
+                        ┌──────────────────┐
+                        │   STATE_IDLE     │◄── soft reset 0x18 (blocked while ESTOP pin held)
+                        └────────┬─────────┘
+                                 │ $H
+                                 ▼
+                          ┌─────────────┐
+              success     │STATE_HOMING │──── fail ───► STATE_ALARM
+                 │         └─────────────┘
+                 └──────────────────────────────► STATE_IDLE
+
+  STATE_IDLE ◄──► STATE_CYCLE          (G-code / motion stream)
+  STATE_IDLE ◄──► STATE_JOG            (cancel 0x85 → decel → IDLE)
+  STATE_IDLE ──► STATE_HOLD          (Pending → Complete; resume ~)
+  STATE_IDLE ──► STATE_CHECK_MODE     (dry-run, no motion)
+  STATE_IDLE ──► STATE_SAFETY_DOOR / STATE_TOOL_CHANGE / STATE_SLEEP
+
+       ┌─────────────┐
+       │ STATE_ALARM │◄── homing fail, limits, parser faults, …
+       └──────┬──────┘
+              │  $X unlock → STATE_IDLE
+              ▼
+       ┌─────────────┐   pin release, then 0x18   ┌─────────────┐
+       │ STATE_ESTOP │──────────────────────────►│ STATE_IDLE  │
+       └─────────────┘                            └─────────────┘
+```
+
+### ASCII — Pico `MachineStateMachine` (operation states)
+
+Arrows show common paths only (full event×state matrix is in the transition tables below).
+
+```
+                    ┌──────────────┐
+                    │   BOOTING    │
+                    └───┬──────┬───┘
+           BootTimeout │      │ TeensyConnected
+                        ▼      ▼
+              ┌─────────────┐ ┌──────────────┐
+              │ TEENSY_     │ │   SYNCING    │◄────────────────┐
+              │DISCONNECTED │ └──────┬───────┘                 │
+              └──────┬──────┘        │ first @GRBL_STATE        │
+                     │               │ + timeouts               │
+         TeensyConn  │               ▼                          │
+                     └──────────────►┌──────────────┐            │
+                                     │     IDLE     │────────────┘
+                                     └───┬───┬───┬──┘
+                                         │   │   │
+                        StartCmd(guards) │   │   └──► HOMING / JOG / …
+                                         │   │        (via Grbl* events)
+                                         │   │
+                                         ▼   │
+                                    ┌─────────┴───┐
+                                    │  STARTING   │──GrblCycle──►┌─────────┐
+                                    └─────────────┘              │ RUNNING │
+                                             │                   └────┬────┘
+                                             │ GrblHold/Door/Tool   │ │
+                                             └─────────────────────►│ │
+                                                                    │ │ Pause/…
+                                                                    ▼ ▼
+                                                                 ┌───────┐
+                                                                 │ HOLD  │──GrblCycle──► RUNNING
+                                                                 └───────┘
+
+  RUNNING or STARTING ──TeensyDisconnected(job)──► COMMS_FAULT ──TeensyConnected──► SYNCING
+  HOMING or JOG       ──TeensyDisconnected────────► TEENSY_DISCONNECTED
+
+  FAULT ◄── GrblAlarm from many states          ESTOP ◄── HwEstop / GrblEstop
+    │                                              │
+    └── GrblIdle after $X / ResetCmd               └── GrblIdle / ResetCmd path (see **ESTOP** below)
+
+  IDLE ◄── normal completion, fault clear, sync, end of job session (flags in doc)
+```
+
 ---
 
 ## GRBL State Reference

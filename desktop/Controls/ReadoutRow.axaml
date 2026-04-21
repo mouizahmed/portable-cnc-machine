@@ -6,7 +6,11 @@
                Classes="SectionHeading"
                VerticalAlignment="Center"/>
     <Border Grid.Column="1" Classes="InsetSurface">
-      <TextBlock x:Name="ValueText" Classes="ReadoutValue"/>
+      <TextBlock x:Name="ValueText"
+                 Classes="ReadoutValue"
+                 HorizontalAlignment="Stretch"
+                 TextAlignment="Right"
+                 TextWrapping="NoWrap"/>
     </Border>
   </Grid>
 </UserControl>

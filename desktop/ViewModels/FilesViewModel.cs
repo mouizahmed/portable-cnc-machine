@@ -161,9 +161,7 @@ public sealed class FilesViewModel : PageViewModelBase
 
             if (value == null)
             {
-                _selectionDebounceCts?.Cancel();
-                _selectionDebounceCts?.Dispose();
-                _selectionDebounceCts = null;
+                CancelSelectedFilePreviewRequest();
 
                 if (!IsLocalPreviewFile)
                 {
@@ -178,8 +176,7 @@ public sealed class FilesViewModel : PageViewModelBase
                 if (IsPreviewDownloadActive)
                     CancelPendingPreviewDownload();
 
-                _selectionDebounceCts?.Cancel();
-                _selectionDebounceCts?.Dispose();
+                CancelSelectedFilePreviewRequest();
                 _selectionDebounceCts = new CancellationTokenSource();
                 _ = BeginSelectedFilePreviewAsync(value, _selectionDebounceCts.Token);
             }
@@ -207,7 +204,7 @@ public sealed class FilesViewModel : PageViewModelBase
     public string SelectedPreviewLinesText => TryGetDocumentLineSummary(SelectedPreviewFileName);
     public string? LoadedJobFileName => MainVm?.CurrentFileName;
     public string LoadedJobSizeText => ResolveLoadedJobInfo()?.Size ?? "--";
-    public string LoadedJobLinesText => TryGetDocumentLineSummary(MainVm?.CurrentFileName);
+    public string LoadedJobLinesText => GetLoadedJobLineSummary();
     public string SelectedPreviewHeaderText => "";
     public string LoadedJobHeaderText => "";
     public string SelectedPreviewStatusText => HasLocalPreview ? "LOCAL" : "PREVIEW";
@@ -521,6 +518,7 @@ public sealed class FilesViewModel : PageViewModelBase
         if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
             return;
 
+        CancelSelectedFilePreviewRequest();
         await StopPreviewDownloadBeforeStorageCommandAsync();
         await _storageOperationGate.WaitAsync();
         var refreshSucceeded = false;
@@ -543,7 +541,7 @@ public sealed class FilesViewModel : PageViewModelBase
         }
 
         if (refreshSucceeded)
-            QueueLoadedJobPreviewIfNeeded();
+            QueueSelectedFilePreviewIfNeeded();
     }
 
     private void HandleFileListEntry(string name, long sizeBytes)
@@ -933,12 +931,17 @@ public sealed class FilesViewModel : PageViewModelBase
     private Task BeginLocalPreviewAsync(string filePath)
         => BeginPreviewFromFileAsync(filePath, $"{Path.GetFileName(filePath)} (local)", isLocalPreview: true);
 
-    private async Task BeginSelectedFilePreviewAsync(GCodeFileInfo file, CancellationToken debounceCt = default)
+    private async Task BeginSelectedFilePreviewAsync(GCodeFileInfo file, CancellationToken debounceCt = default, bool debounce = true)
     {
-        // Debounce: hold off while the user is rapidly switching files.
-        // During the delay the previously displayed content stays visible.
-        try { await Task.Delay(300, debounceCt); }
-        catch (OperationCanceledException) { return; }
+        try
+        {
+        if (debounce)
+        {
+            // Debounce: hold off while the user is rapidly switching files.
+            // During the delay the previously displayed content stays visible.
+            try { await Task.Delay(300, debounceCt); }
+            catch (OperationCanceledException) { return; }
+        }
 
         if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
             return;
@@ -985,6 +988,16 @@ public sealed class FilesViewModel : PageViewModelBase
         _previewCache[file.Name] = (file.SizeBytes, tempPath);
 
         await BeginPreviewFromFileAsync(tempPath, file.Name, isLocalPreview: false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ChannelClosedException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     private async Task BeginPreviewFromFileAsync(string filePath, string displayName, bool isLocalPreview)
@@ -1918,6 +1931,12 @@ public sealed class FilesViewModel : PageViewModelBase
         ClearTransferStateToIdle();
     }
 
+    private void CancelSelectedFilePreviewRequest()
+    {
+        _selectionDebounceCts?.Cancel();
+        _selectionDebounceCts = null;
+    }
+
     private void DrainDownloadChannel()
     {
         if (_downloadChannel == null)
@@ -1932,9 +1951,7 @@ public sealed class FilesViewModel : PageViewModelBase
     {
         CancelLoadedJobPreviewRequest();
         CancelPendingPreviewDownload();
-        _selectionDebounceCts?.Cancel();
-        _selectionDebounceCts?.Dispose();
-        _selectionDebounceCts = null;
+        CancelSelectedFilePreviewRequest();
         ClearPreviewCache();
         _overwriteTcs?.TrySetResult(false);
         _overwriteTcs = null;
@@ -2009,6 +2026,9 @@ public sealed class FilesViewModel : PageViewModelBase
         if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
             return;
 
+        if (SelectedFile != null && !IsSelectedFileLoaded && !IsLocalPreviewFile)
+            return;
+
         var loadedName = MainVm.CurrentFileName;
         if (string.IsNullOrWhiteSpace(loadedName))
         {
@@ -2037,6 +2057,29 @@ public sealed class FilesViewModel : PageViewModelBase
         _loadedJobPreviewCts = new CancellationTokenSource();
         _loadedJobPreviewInFlightName = loadedName;
         _ = BeginLoadedJobPreviewAsync(loadedFile, _loadedJobPreviewCts);
+    }
+
+    private void QueueSelectedFilePreviewIfNeeded()
+    {
+        if (MainVm?.PiConnectionStatus != ConnectionStatus.Connected)
+            return;
+
+        if (IsLocalPreviewFile || SelectedFile == null)
+        {
+            QueueLoadedJobPreviewIfNeeded();
+            return;
+        }
+
+        if (HasActiveStorageOperation && !IsPreviewDownloadActive)
+            return;
+
+        if (IsCurrentPreviewForDeviceFile(SelectedFile.Name))
+            return;
+
+        CancelLoadedJobPreviewRequest();
+        CancelSelectedFilePreviewRequest();
+        _selectionDebounceCts = new CancellationTokenSource();
+        _ = BeginSelectedFilePreviewAsync(SelectedFile, _selectionDebounceCts.Token, debounce: false);
     }
 
     private async Task BeginLoadedJobPreviewAsync(GCodeFileInfo file, CancellationTokenSource cancellation)
@@ -2132,6 +2175,20 @@ public sealed class FilesViewModel : PageViewModelBase
 
         var totalLines = MainVm?.ActiveGCodeDocument?.TotalLines ?? 0;
         return totalLines > 0 ? $"{totalLines} total lines" : "--";
+    }
+
+    private string GetLoadedJobLineSummary()
+    {
+        var loadedName = MainVm?.CurrentFileName;
+        if (string.IsNullOrWhiteSpace(loadedName))
+            return "--";
+
+        var activeDocumentLines = MainVm?.ActiveGCodeDocument?.TotalLines ?? 0;
+        if (activeDocumentLines > 0 && IsPreviewIdentityForFile(loadedName))
+            return $"{activeDocumentLines} total lines";
+
+        var reportedLines = MainVm?.TotalLines ?? 0;
+        return reportedLines > 0 ? $"{reportedLines} total lines" : "--";
     }
 
     private string? GetLocalPreviewName()

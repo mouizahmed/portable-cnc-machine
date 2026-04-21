@@ -12,7 +12,7 @@ public partial class ReadoutRow : UserControl
         AvaloniaProperty.Register<ReadoutRow, string?>(nameof(Value));
 
     public static readonly StyledProperty<double> LabelWidthProperty =
-        AvaloniaProperty.Register<ReadoutRow, double>(nameof(LabelWidth), 64);
+        AvaloniaProperty.Register<ReadoutRow, double>(nameof(LabelWidth), 32);
 
     public static readonly StyledProperty<bool> IsMutedProperty =
         AvaloniaProperty.Register<ReadoutRow, bool>(nameof(IsMuted));

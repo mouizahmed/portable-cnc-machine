@@ -23,15 +23,45 @@ public sealed class SettingsViewModel : PageViewModelBase
     private readonly RelayCommand _saveLocalSettingsCommand;
     private readonly RelayCommand _revertChangesCommand;
     private readonly RelayCommand _loadDefaultsCommand;
-    private readonly RelayCommand _applyMachineSettingsCommand;
     private readonly RelayCommand _importSettingsCommand;
     private readonly RelayCommand _exportSettingsCommand;
     private readonly RelayCommand _refreshPortsCommand;
 
     private AppSettings _persistedSnapshot = new();
+    private MachineSettingsSnapshot _machineSnapshot = MachineSettingsSnapshot.Default;
     private bool _isApplyingSnapshot;
     private string? _statusTextOverride;
     private string? _statusDetailOverride;
+
+    private sealed record MachineSettingsSnapshot(
+        double StepsPerMmX,
+        double StepsPerMmY,
+        double StepsPerMmZ,
+        double MaxFeedRateX,
+        double MaxFeedRateY,
+        double MaxFeedRateZ,
+        double AccelerationX,
+        double AccelerationY,
+        double AccelerationZ,
+        double MaxTravelX,
+        double MaxTravelY,
+        double MaxTravelZ,
+        bool SoftLimitsEnabled,
+        bool HardLimitsEnabled,
+        double SpindleMinRpm,
+        double SpindleMaxRpm,
+        double WarningTemperature,
+        double MaxTemperature)
+    {
+        public static MachineSettingsSnapshot Default { get; } = new(
+            800, 800, 800,
+            5000, 5000, 1000,
+            200, 200, 100,
+            300, 200, 100,
+            true, true,
+            1000, 24000,
+            40, 50);
+    }
 
     public ObservableCollection<string> AvailablePorts { get; } = new();
     public IReadOnlyList<string> UnitsOptions { get; } = ["mm", "in"];
@@ -266,31 +296,21 @@ public sealed class SettingsViewModel : PageViewModelBase
         }
     }
 
-    private bool _hasUnsavedLocalChanges;
-    public bool HasUnsavedLocalChanges
+    private bool _hasPendingSettingsChanges;
+    public bool HasPendingSettingsChanges
     {
-        get => _hasUnsavedLocalChanges;
-        private set => SetProperty(ref _hasUnsavedLocalChanges, value);
-    }
-
-    private bool _hasPendingMachineChanges;
-    public bool HasPendingMachineChanges
-    {
-        get => _hasPendingMachineChanges;
-        private set => SetProperty(ref _hasPendingMachineChanges, value);
+        get => _hasPendingSettingsChanges;
+        private set => SetProperty(ref _hasPendingSettingsChanges, value);
     }
 
     public bool HasSavedPort => !string.IsNullOrWhiteSpace(LastPort);
     public bool HasLimitsSafetyWarning => !SoftLimitsEnabled || !HardLimitsEnabled;
-    public bool CanApplyMachineSettings => false;
+    public bool IsPicoConnected => MainVm?.PiConnectionStatus == ConnectionStatus.Connected;
+    public bool HasMachineSettingsLoaded => IsPicoConnected;
 
     public string StatusText => _statusTextOverride ?? BuildStatusText();
     public string StatusDetail => _statusDetailOverride ?? BuildStatusDetail();
-    public string LocalPersistenceText => HasUnsavedLocalChanges ? "Local save pending" : "Saved on this computer";
-    public string MachineSyncStatusText => HasPendingMachineChanges ? "Not yet synced to machine" : "Controller profile unchanged";
-    public string MachineSyncCaption => HasPendingMachineChanges
-        ? "Machine-facing values are staged locally. Apply to machine is not implemented in v1."
-        : "No controller profile changes are waiting for machine writeback.";
+    public string SettingsStateText => HasPendingSettingsChanges ? "PENDING" : "UNCHANGED";
     public string LastPortSummary => HasSavedPort ? LastPort! : "No saved port";
     public string UnitsSummary => Units == "in" ? "Inches" : "Millimeters";
     public string AutoConnectSummary => AutoConnect ? "Armed for startup" : "Manual connect only";
@@ -312,17 +332,15 @@ public sealed class SettingsViewModel : PageViewModelBase
     public ICommand SaveLocalSettingsCommand => _saveLocalSettingsCommand;
     public ICommand RevertChangesCommand => _revertChangesCommand;
     public ICommand LoadDefaultsCommand => _loadDefaultsCommand;
-    public ICommand ApplyMachineSettingsCommand => _applyMachineSettingsCommand;
     public ICommand ImportSettingsCommand => _importSettingsCommand;
     public ICommand ExportSettingsCommand => _exportSettingsCommand;
     public ICommand RefreshPortsCommand => _refreshPortsCommand;
 
     public SettingsViewModel()
     {
-        _saveLocalSettingsCommand = new RelayCommand(SaveLocalSettings, () => HasUnsavedLocalChanges);
-        _revertChangesCommand = new RelayCommand(RevertChanges, () => HasUnsavedLocalChanges);
+        _saveLocalSettingsCommand = new RelayCommand(SaveLocalSettings, () => HasPendingSettingsChanges);
+        _revertChangesCommand = new RelayCommand(RevertChanges, () => HasPendingSettingsChanges);
         _loadDefaultsCommand = new RelayCommand(LoadDefaults);
-        _applyMachineSettingsCommand = new RelayCommand(ApplyMachineSettings, () => CanApplyMachineSettings);
         _importSettingsCommand = new RelayCommand(ImportSettings);
         _exportSettingsCommand = new RelayCommand(ExportSettings);
         _refreshPortsCommand = new RelayCommand(RefreshAvailablePorts);
@@ -337,6 +355,15 @@ public sealed class SettingsViewModel : PageViewModelBase
         UpdateDerivedState();
     }
 
+    protected override void OnMainViewModelPropertyChanged(string? propertyName)
+    {
+        if (propertyName != nameof(MainWindowViewModel.PiConnectionStatus))
+            return;
+
+        ClearStatusOverride();
+        UpdateDerivedState();
+    }
+
     public void ApplyFrom(AppSettings settings)
     {
         _isApplyingSnapshot = true;
@@ -345,24 +372,6 @@ public sealed class SettingsViewModel : PageViewModelBase
         AutoConnect = settings.AutoConnect;
         Units = settings.Units;
         ThemeMode = settings.ThemeMode;
-        StepsPerMmX = settings.StepsPerMmX;
-        StepsPerMmY = settings.StepsPerMmY;
-        StepsPerMmZ = settings.StepsPerMmZ;
-        MaxFeedRateX = settings.MaxFeedRateX;
-        MaxFeedRateY = settings.MaxFeedRateY;
-        MaxFeedRateZ = settings.MaxFeedRateZ;
-        AccelerationX = settings.AccelerationX;
-        AccelerationY = settings.AccelerationY;
-        AccelerationZ = settings.AccelerationZ;
-        MaxTravelX = settings.MaxTravelX;
-        MaxTravelY = settings.MaxTravelY;
-        MaxTravelZ = settings.MaxTravelZ;
-        SoftLimitsEnabled = settings.SoftLimitsEnabled;
-        HardLimitsEnabled = settings.HardLimitsEnabled;
-        SpindleMinRpm = settings.SpindleMinRpm;
-        SpindleMaxRpm = settings.SpindleMaxRpm;
-        WarningTemperature = settings.WarningTemperature;
-        MaxTemperature = settings.MaxTemperature;
 
         _isApplyingSnapshot = false;
         _persistedSnapshot = settings.Clone();
@@ -375,11 +384,11 @@ public sealed class SettingsViewModel : PageViewModelBase
     {
         RefreshAvailablePorts();
 
-        if (MainVm == null || HasUnsavedLocalChanges)
+        if (MainVm == null || HasPendingSettingsChanges)
             return;
 
         var persisted = MainVm.Settings.Current;
-        if (!MatchesAllSettings(persisted))
+        if (!MatchesLocalSettings(persisted))
             ApplyFrom(persisted);
     }
 
@@ -388,30 +397,30 @@ public sealed class SettingsViewModel : PageViewModelBase
         if (MainVm == null)
             return;
 
-        var machinePendingAfterSave = _persistedSnapshot.MachineSettingsSyncPending || HasUnsavedMachineDifferences();
         var current = BuildCurrentSettings();
-        current.MachineSettingsSyncPending = machinePendingAfterSave;
 
         MainVm.Settings.Current.CopyFrom(current);
         MainVm.Settings.Save();
 
         _persistedSnapshot = current.Clone();
+        if (HasMachineSettingsLoaded)
+            _machineSnapshot = BuildCurrentMachineSettings();
         ClearStatusOverride();
         UpdateDerivedState();
         RefreshAvailablePorts();
         MainVm.NotifySettingsChanged();
-        MainVm.StatusMessage = machinePendingAfterSave
-            ? "Settings saved locally. Machine sync is still pending."
-            : "Settings saved locally.";
+        MainVm.StatusMessage = "Settings saved.";
     }
 
     private void RevertChanges()
     {
         ApplyFrom(_persistedSnapshot);
+        if (HasMachineSettingsLoaded)
+            ApplyMachineSettingsSnapshot(_machineSnapshot, updateSnapshot: false);
 
         SetStatusOverride(
-            "Saved locally",
-            "Page values were reverted to the last settings saved on this computer.");
+            "Reverted",
+            "Settings were restored to the last unchanged values.");
 
         if (MainVm != null)
             MainVm.StatusMessage = "Unsaved settings changes reverted.";
@@ -420,23 +429,15 @@ public sealed class SettingsViewModel : PageViewModelBase
     private void LoadDefaults()
     {
         ApplyValuesWithoutChangingSnapshot(new AppSettings());
+        if (HasMachineSettingsLoaded)
+            ApplyMachineSettingsSnapshot(MachineSettingsSnapshot.Default, updateSnapshot: false);
 
         SetStatusOverride(
             "Defaults loaded",
-            "Factory-style defaults are loaded in memory. Save locally when you are ready.");
+            "Defaults are loaded in memory. Save when you are ready.");
 
         if (MainVm != null)
             MainVm.StatusMessage = "Default settings loaded into the page.";
-    }
-
-    private void ApplyMachineSettings()
-    {
-        SetStatusOverride(
-            "Apply not yet implemented",
-            "Controller writeback has not been wired up yet. Save locally stores the staged profile only.");
-
-        if (MainVm != null)
-            MainVm.StatusMessage = "Apply to machine is not implemented yet.";
     }
 
     private void ImportSettings()
@@ -466,24 +467,7 @@ public sealed class SettingsViewModel : PageViewModelBase
         LastPort = settings.LastPort;
         AutoConnect = settings.AutoConnect;
         Units = settings.Units;
-        StepsPerMmX = settings.StepsPerMmX;
-        StepsPerMmY = settings.StepsPerMmY;
-        StepsPerMmZ = settings.StepsPerMmZ;
-        MaxFeedRateX = settings.MaxFeedRateX;
-        MaxFeedRateY = settings.MaxFeedRateY;
-        MaxFeedRateZ = settings.MaxFeedRateZ;
-        AccelerationX = settings.AccelerationX;
-        AccelerationY = settings.AccelerationY;
-        AccelerationZ = settings.AccelerationZ;
-        MaxTravelX = settings.MaxTravelX;
-        MaxTravelY = settings.MaxTravelY;
-        MaxTravelZ = settings.MaxTravelZ;
-        SoftLimitsEnabled = settings.SoftLimitsEnabled;
-        HardLimitsEnabled = settings.HardLimitsEnabled;
-        SpindleMinRpm = settings.SpindleMinRpm;
-        SpindleMaxRpm = settings.SpindleMaxRpm;
-        WarningTemperature = settings.WarningTemperature;
-        MaxTemperature = settings.MaxTemperature;
+        ThemeMode = settings.ThemeMode;
 
         _isApplyingSnapshot = false;
         RefreshAvailablePorts();
@@ -515,21 +499,18 @@ public sealed class SettingsViewModel : PageViewModelBase
 
         ClearStatusOverride();
         UpdateDerivedState();
-
-        if (isMachineField && MainVm != null)
-            MainVm.StatusMessage = "Machine profile edited locally. Save locally does not write to the controller.";
     }
 
     private void UpdateDerivedState()
     {
-        HasUnsavedLocalChanges = HasUnsavedLocalDifferences();
-        HasPendingMachineChanges = _persistedSnapshot.MachineSettingsSyncPending || HasUnsavedMachineDifferences();
+        HasPendingSettingsChanges = HasUnsavedLocalDifferences() ||
+                                    (HasMachineSettingsLoaded && HasUnsavedMachineDifferences());
 
         RaisePropertyChanged(nameof(StatusText));
         RaisePropertyChanged(nameof(StatusDetail));
-        RaisePropertyChanged(nameof(LocalPersistenceText));
-        RaisePropertyChanged(nameof(MachineSyncStatusText));
-        RaisePropertyChanged(nameof(MachineSyncCaption));
+        RaisePropertyChanged(nameof(SettingsStateText));
+        RaisePropertyChanged(nameof(IsPicoConnected));
+        RaisePropertyChanged(nameof(HasMachineSettingsLoaded));
         RaisePropertyChanged(nameof(HasSavedPort));
         RaisePropertyChanged(nameof(LastPortSummary));
         RaisePropertyChanged(nameof(UnitsSummary));
@@ -544,11 +525,9 @@ public sealed class SettingsViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(LimitsProtectionSummary));
         RaisePropertyChanged(nameof(HasLimitsSafetyWarning));
         RaisePropertyChanged(nameof(LimitsSafetyWarningText));
-        RaisePropertyChanged(nameof(CanApplyMachineSettings));
 
         _saveLocalSettingsCommand.RaiseCanExecuteChanged();
         _revertChangesCommand.RaiseCanExecuteChanged();
-        _applyMachineSettingsCommand.RaiseCanExecuteChanged();
     }
 
     private void RefreshAvailablePorts()
@@ -576,53 +555,16 @@ public sealed class SettingsViewModel : PageViewModelBase
         => !StringEquals(LastPort, _persistedSnapshot.LastPort)
            || AutoConnect != _persistedSnapshot.AutoConnect
            || !StringEquals(Units, _persistedSnapshot.Units)
-           || !StringEquals(ThemeMode, _persistedSnapshot.ThemeMode)
-           || HasUnsavedMachineDifferences();
+           || !StringEquals(ThemeMode, _persistedSnapshot.ThemeMode);
 
     private bool HasUnsavedMachineDifferences()
-        => StepsPerMmX != _persistedSnapshot.StepsPerMmX
-           || StepsPerMmY != _persistedSnapshot.StepsPerMmY
-           || StepsPerMmZ != _persistedSnapshot.StepsPerMmZ
-           || MaxFeedRateX != _persistedSnapshot.MaxFeedRateX
-           || MaxFeedRateY != _persistedSnapshot.MaxFeedRateY
-           || MaxFeedRateZ != _persistedSnapshot.MaxFeedRateZ
-           || AccelerationX != _persistedSnapshot.AccelerationX
-           || AccelerationY != _persistedSnapshot.AccelerationY
-           || AccelerationZ != _persistedSnapshot.AccelerationZ
-           || MaxTravelX != _persistedSnapshot.MaxTravelX
-           || MaxTravelY != _persistedSnapshot.MaxTravelY
-           || MaxTravelZ != _persistedSnapshot.MaxTravelZ
-           || SoftLimitsEnabled != _persistedSnapshot.SoftLimitsEnabled
-           || HardLimitsEnabled != _persistedSnapshot.HardLimitsEnabled
-           || SpindleMinRpm != _persistedSnapshot.SpindleMinRpm
-           || SpindleMaxRpm != _persistedSnapshot.SpindleMaxRpm
-           || WarningTemperature != _persistedSnapshot.WarningTemperature
-           || MaxTemperature != _persistedSnapshot.MaxTemperature;
+        => BuildCurrentMachineSettings() != _machineSnapshot;
 
-    private bool MatchesAllSettings(AppSettings settings)
+    private bool MatchesLocalSettings(AppSettings settings)
         => StringEquals(settings.LastPort, LastPort)
            && settings.AutoConnect == AutoConnect
            && StringEquals(settings.Units, Units)
-           && StringEquals(settings.ThemeMode, ThemeMode)
-           && settings.StepsPerMmX == StepsPerMmX
-           && settings.StepsPerMmY == StepsPerMmY
-           && settings.StepsPerMmZ == StepsPerMmZ
-           && settings.MaxFeedRateX == MaxFeedRateX
-           && settings.MaxFeedRateY == MaxFeedRateY
-           && settings.MaxFeedRateZ == MaxFeedRateZ
-           && settings.AccelerationX == AccelerationX
-           && settings.AccelerationY == AccelerationY
-           && settings.AccelerationZ == AccelerationZ
-           && settings.MaxTravelX == MaxTravelX
-           && settings.MaxTravelY == MaxTravelY
-           && settings.MaxTravelZ == MaxTravelZ
-           && settings.SoftLimitsEnabled == SoftLimitsEnabled
-           && settings.HardLimitsEnabled == HardLimitsEnabled
-           && settings.SpindleMinRpm == SpindleMinRpm
-           && settings.SpindleMaxRpm == SpindleMaxRpm
-           && settings.WarningTemperature == WarningTemperature
-           && settings.MaxTemperature == MaxTemperature
-           && settings.MachineSettingsSyncPending == _persistedSnapshot.MachineSettingsSyncPending;
+           && StringEquals(settings.ThemeMode, ThemeMode);
 
     private AppSettings BuildCurrentSettings()
         => new()
@@ -630,51 +572,66 @@ public sealed class SettingsViewModel : PageViewModelBase
             LastPort = NormalizePort(LastPort),
             AutoConnect = AutoConnect,
             Units = NormalizeUnits(Units),
-            ThemeMode = NormalizeThemeMode(ThemeMode),
-            StepsPerMmX = StepsPerMmX,
-            StepsPerMmY = StepsPerMmY,
-            StepsPerMmZ = StepsPerMmZ,
-            MaxFeedRateX = MaxFeedRateX,
-            MaxFeedRateY = MaxFeedRateY,
-            MaxFeedRateZ = MaxFeedRateZ,
-            AccelerationX = AccelerationX,
-            AccelerationY = AccelerationY,
-            AccelerationZ = AccelerationZ,
-            MaxTravelX = MaxTravelX,
-            MaxTravelY = MaxTravelY,
-            MaxTravelZ = MaxTravelZ,
-            SoftLimitsEnabled = SoftLimitsEnabled,
-            HardLimitsEnabled = HardLimitsEnabled,
-            SpindleMinRpm = SpindleMinRpm,
-            SpindleMaxRpm = SpindleMaxRpm,
-            WarningTemperature = WarningTemperature,
-            MaxTemperature = MaxTemperature
+            ThemeMode = NormalizeThemeMode(ThemeMode)
         };
 
-    private string BuildStatusText()
+    private MachineSettingsSnapshot BuildCurrentMachineSettings()
+        => new(
+            StepsPerMmX,
+            StepsPerMmY,
+            StepsPerMmZ,
+            MaxFeedRateX,
+            MaxFeedRateY,
+            MaxFeedRateZ,
+            AccelerationX,
+            AccelerationY,
+            AccelerationZ,
+            MaxTravelX,
+            MaxTravelY,
+            MaxTravelZ,
+            SoftLimitsEnabled,
+            HardLimitsEnabled,
+            SpindleMinRpm,
+            SpindleMaxRpm,
+            WarningTemperature,
+            MaxTemperature);
+
+    private void ApplyMachineSettingsSnapshot(MachineSettingsSnapshot settings, bool updateSnapshot)
     {
-        if (HasUnsavedLocalChanges && HasPendingMachineChanges)
-            return "Machine changes pending";
+        _isApplyingSnapshot = true;
 
-        if (HasUnsavedLocalChanges)
-            return "Local changes pending";
+        StepsPerMmX = settings.StepsPerMmX;
+        StepsPerMmY = settings.StepsPerMmY;
+        StepsPerMmZ = settings.StepsPerMmZ;
+        MaxFeedRateX = settings.MaxFeedRateX;
+        MaxFeedRateY = settings.MaxFeedRateY;
+        MaxFeedRateZ = settings.MaxFeedRateZ;
+        AccelerationX = settings.AccelerationX;
+        AccelerationY = settings.AccelerationY;
+        AccelerationZ = settings.AccelerationZ;
+        MaxTravelX = settings.MaxTravelX;
+        MaxTravelY = settings.MaxTravelY;
+        MaxTravelZ = settings.MaxTravelZ;
+        SoftLimitsEnabled = settings.SoftLimitsEnabled;
+        HardLimitsEnabled = settings.HardLimitsEnabled;
+        SpindleMinRpm = settings.SpindleMinRpm;
+        SpindleMaxRpm = settings.SpindleMaxRpm;
+        WarningTemperature = settings.WarningTemperature;
+        MaxTemperature = settings.MaxTemperature;
 
-        return "Saved locally";
+        _isApplyingSnapshot = false;
+        if (updateSnapshot)
+            _machineSnapshot = settings;
+        UpdateDerivedState();
     }
+
+    private string BuildStatusText()
+        => HasPendingSettingsChanges ? "Settings pending" : "Settings unchanged";
 
     private string BuildStatusDetail()
-    {
-        if (HasUnsavedLocalChanges && HasPendingMachineChanges)
-            return "Machine-facing values were edited in the page. Save locally stores them on this computer, but controller sync is still separate.";
-
-        if (HasUnsavedLocalChanges)
-            return "Local preferences were edited and have not been saved on this computer yet.";
-
-        if (HasPendingMachineChanges)
-            return "The stored profile includes machine-facing changes that are not yet synced to the controller.";
-
-        return "The page matches the last settings saved on this computer.";
-    }
+        => HasPendingSettingsChanges
+            ? "Visible settings have unsaved changes."
+            : "Visible settings match the current unchanged snapshot.";
 
     private string BuildLimitsSafetyWarning()
     {

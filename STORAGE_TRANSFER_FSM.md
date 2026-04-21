@@ -28,6 +28,69 @@ Current implementation status: **complete**. `StorageTransferStateMachine` owns 
 | `Aborting` | Abort requested; active file/session cleanup is in progress. |
 | `Faulted` | Transfer FSM detected an unrecovered storage/protocol fault. Cleanup or reset is required before accepting new transfer work. |
 
+## ASCII diagram
+
+Session-style operations (upload/download) progress left-to-right; `Aborting` and `Faulted` are global escape paths from the contract table.
+
+```
+                         ┌───────────────────────────────────────┐
+                         │                 Idle                  │
+                         └───┬─────────┬─────────┬──────────┬────┘
+              FileListReq   │         │         │          │ FileDeleteReq
+                             │ FileLoad│FileUnload         │
+                             │         │         │          ▼
+                             │         │         │    ┌──────────┐
+                             │         │         │    │ Deleting │──OpComplete──► Idle
+                             │         │         │    └──────────┘
+                             │         │         │
+                             │         │         ▼
+                             │         │   ┌─────────┐
+                             │         └──► Loading │──OpComplete──► Idle
+                             │             └─────────┘
+                             ▼
+                      ┌──────────┐
+                      │ Listing  │──OpComplete──► Idle
+                      └──────────┘
+
+
+  Idle ──UploadRequested──► ┌────────────┐
+                              │ UploadOpen │
+                              └─────┬──────┘
+                                    │ OpComplete (file ready → emit upload-ready)
+                                    ▼
+                              ┌────────────┐
+                              │ Uploading  │──┐
+                              └─────┬──────┘  │  UploadChunkReceived (stay in Uploading; ACK)
+                                    │◄───────┘
+                                    │ UploadEndRequested
+                                    ▼
+                                   ┌─────────────────┐
+                                   │ UploadFinalizing│──OpComplete──► Idle
+                                   └─────────────────┘
+
+
+  Idle ──DownloadRequested──► ┌──────────────┐
+                               │ DownloadOpen │
+                               └──────┬───────┘
+                                      │ OpComplete (emit download-ready / first chunk)
+                                      ▼
+                               ┌──────────────┐
+                               │ Downloading  │──┐
+                               └──────┬───────┘  │  DownloadAckReceived (stay in Downloading; send next chunk)
+                                      │◄────────┘
+                                      │ OpComplete (EOF + final ACK)
+                                      └──► Idle
+
+
+  Any active state ──AbortRequested──► ┌───────────┐ ──OpComplete──► Idle
+                                       │ Aborting  │
+                                       └───────────┘
+
+  Any active state ──SdRemoved──────────────────────────────────► Idle
+
+  Any state ──StorageError──► Faulted  (or Idle for handled errors; see contract)
+```
+
 ## Events
 
 | Event | Meaning |

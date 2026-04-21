@@ -74,8 +74,8 @@
           <controls:SectionCard Title="COORDINATES">
             <controls:SectionCard.Body>
               <StackPanel Spacing="8">
-                <controls:ReadoutRow Label="Work" Value="{Binding WorkCoordinatesText}"/>
-                <controls:ReadoutRow Label="Machine" Value="{Binding MachineCoordinatesText}" IsMuted="True"/>
+                <controls:ReadoutRow Label="W" Value="{Binding WorkCoordinatesText}"/>
+                <controls:ReadoutRow Label="M" Value="{Binding MachineCoordinatesText}" IsMuted="True"/>
               </StackPanel>
             </controls:SectionCard.Body>
           </controls:SectionCard>
@@ -302,45 +302,21 @@
               </DataTemplate>
 
               <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
-                <controls:SectionCard Title="SETTINGS"
-                                      Subtitle="Local save and machine apply stay separate in this page.">
+                <controls:SectionCard Title="SETTINGS">
                   <controls:SectionCard.Body>
                     <StackPanel Spacing="8">
                       <Border Classes="InsetSurface Subtle"
                               Height="NaN"
                               MinHeight="0"
-                              Padding="10">
-                        <StackPanel Spacing="4">
-                          <TextBlock Text="{Binding StatusText}" Classes="FieldValue" FontSize="15"/>
-                          <TextBlock Text="{Binding StatusDetail}" Classes="FieldLabel" TextWrapping="Wrap"/>
-                        </StackPanel>
+                              Padding="10,8"
+                              HorizontalAlignment="Stretch">
+                        <TextBlock Text="{Binding SettingsStateText}"
+                                   Classes="FieldValue"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"/>
                       </Border>
 
-                      <controls:TwoColumnInfoGrid>
-                        <TextBlock Text="Local" Classes="FieldLabel"/>
-                        <TextBlock Grid.Column="1" Text="{Binding LocalPersistenceText}" Classes="FieldValue"/>
-
-                        <TextBlock Grid.Row="1" Text="Machine" Classes="FieldLabel"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MachineSyncStatusText}" Classes="FieldValue"/>
-
-                        <TextBlock Grid.Row="2" Text="Port" Classes="FieldLabel"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LastPortSummary}" Classes="FieldValue"/>
-
-                        <TextBlock Grid.Row="3" Text="Units" Classes="FieldLabel"/>
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding UnitsSummary}" Classes="FieldValue"/>
-
-                        <TextBlock Grid.Row="4" Text="Theme" Classes="FieldLabel"/>
-                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ThemeModeSummary}" Classes="FieldValue"/>
-
-                        <TextBlock Grid.Row="5" Text="Profile" Classes="FieldLabel"/>
-                        <TextBlock Grid.Row="5"
-                                   Grid.Column="1"
-                                   Text="{Binding MachineProfileSummary}"
-                                   Classes="FieldValue"
-                                   TextWrapping="Wrap"/>
-                      </controls:TwoColumnInfoGrid>
-
-                      <Button Content="Save locally"
+                      <Button Content="Save"
                               Command="{Binding SaveLocalSettingsCommand}"
                               Classes="AppButton Primary"
                               HorizontalAlignment="Stretch"/>
@@ -357,9 +333,7 @@
                                 HorizontalAlignment="Stretch"/>
                       </Grid>
 
-                      <TextBlock Text="Secondary actions" Classes="Caption"/>
-
-                      <Grid ColumnDefinitions="*,*" ColumnSpacing="8" RowDefinitions="Auto,Auto" RowSpacing="8">
+                      <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                         <Button Content="Export"
                                 Command="{Binding ExportSettingsCommand}"
                                 Classes="AppButton"
@@ -369,18 +343,7 @@
                                 Command="{Binding ImportSettingsCommand}"
                                 Classes="AppButton"
                                 HorizontalAlignment="Stretch"/>
-                        <Button Grid.Row="1"
-                                Grid.ColumnSpan="2"
-                                Content="Apply to machine"
-                                Command="{Binding ApplyMachineSettingsCommand}"
-                                IsEnabled="{Binding CanApplyMachineSettings}"
-                                Classes="AppButton"
-                                HorizontalAlignment="Stretch"/>
                       </Grid>
-
-                      <TextBlock Text="{Binding MachineSyncCaption}"
-                                 Classes="Caption"
-                                 TextWrapping="Wrap"/>
                     </StackPanel>
                   </controls:SectionCard.Body>
                 </controls:SectionCard>

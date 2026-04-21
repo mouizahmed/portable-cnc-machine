@@ -8,71 +8,11 @@
              x:DataType="vm:SettingsViewModel"
              mc:Ignorable="d">
 
-  <Grid RowDefinitions="Auto,*" RowSpacing="8">
-    <Border Classes="PanelCard">
-      <controls:SectionHeaderBlock Title="SETTINGS"
-                                   Subtitle="Local preferences are saved on this computer. Machine-facing values are staged separately so Save locally is never confused with controller sync.">
-        <controls:SectionHeaderBlock.Actions>
-          <WrapPanel ItemSpacing="6" LineSpacing="6">
-            <Border Classes="InsetSurface Subtle"
-                    Height="NaN"
-                    MinHeight="0"
-                    Padding="10,8">
-              <StackPanel Spacing="2">
-                <TextBlock Text="LOCAL" Classes="PanelTitle"/>
-                <TextBlock Text="{Binding LocalPersistenceText}" Classes="FieldValue"/>
-              </StackPanel>
-            </Border>
-
-            <Border Classes="InsetSurface Subtle"
-                    Height="NaN"
-                    MinHeight="0"
-                    Padding="10,8">
-              <StackPanel Spacing="2">
-                <TextBlock Text="MACHINE" Classes="PanelTitle"/>
-                <TextBlock Text="{Binding MachineSyncStatusText}" Classes="FieldValue"/>
-              </StackPanel>
-            </Border>
-          </WrapPanel>
-        </controls:SectionHeaderBlock.Actions>
-      </controls:SectionHeaderBlock>
-    </Border>
-
-    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+  <Grid>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
       <StackPanel Spacing="8">
-        <controls:SectionCard Title="CONNECTION"
-                              Subtitle="Saved on this computer only. This does not open the port or write anything to the controller.">
-          <controls:SectionCard.Actions>
-            <Button Content="Refresh ports"
-                    Command="{Binding RefreshPortsCommand}"
-                    Classes="AppButton"/>
-          </controls:SectionCard.Actions>
-
-          <controls:SectionCard.Body>
-            <Border Classes="InsetSurface Subtle"
-                    Height="NaN"
-                    MinHeight="0"
-                    Padding="10">
-              <StackPanel Spacing="10">
-                <controls:TwoColumnInfoGrid>
-                  <TextBlock Text="Last port" Classes="FieldLabel" VerticalAlignment="Center"/>
-                  <ComboBox Grid.Column="1"
-                            ItemsSource="{Binding AvailablePorts}"
-                            SelectedItem="{Binding LastPort}"
-                            HorizontalAlignment="Stretch"
-                            PlaceholderText="Select COM port..."/>
-                </controls:TwoColumnInfoGrid>
-
-                <TextBlock Text="This saved port is only used for local startup preferences and connect-page defaults."
-                           Classes="Caption"
-                           TextWrapping="Wrap"/>
-              </StackPanel>
-            </Border>
-          </controls:SectionCard.Body>
-        </controls:SectionCard>
-
         <controls:SectionCard Title="MACHINE PROFILE"
-                              Subtitle="Applies to the controller profile. Save locally stores a staged copy on this computer only.">
+                              IsVisible="{Binding HasMachineSettingsLoaded}">
           <controls:SectionCard.Body>
             <StackPanel Spacing="8">
               <Border Classes="InsetSurface Subtle"
@@ -128,7 +68,7 @@
         </controls:SectionCard>
 
         <controls:SectionCard Title="MOTION"
-                              Subtitle="Staged machine motion limits. These values are not pushed to the controller in v1.">
+                              IsVisible="{Binding HasMachineSettingsLoaded}">
           <controls:SectionCard.Body>
             <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
               <Border Classes="InsetSurface Subtle"
@@ -208,7 +148,7 @@
         </controls:SectionCard>
 
         <controls:SectionCard Title="LIMITS &amp; SAFETY"
-                              Subtitle="Use warnings sparingly. Only clearly unsafe combinations are called out in this page.">
+                              IsVisible="{Binding HasMachineSettingsLoaded}">
           <controls:SectionCard.Body>
             <StackPanel Spacing="8">
               <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
@@ -303,7 +243,7 @@
         </controls:SectionCard>
 
         <controls:SectionCard Title="SPINDLE"
-                              Subtitle="These RPM limits are saved locally and also define the staged controller profile.">
+                              IsVisible="{Binding HasMachineSettingsLoaded}">
           <controls:SectionCard.Body>
             <Border Classes="InsetSurface Subtle"
                     Height="NaN"
@@ -329,16 +269,12 @@
                                  FormatString="F0"/>
                 </controls:TwoColumnInfoGrid>
 
-                <TextBlock Text="Manual Control reads the persisted spindle bounds after Save locally."
-                           Classes="Caption"
-                           TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
           </controls:SectionCard.Body>
         </controls:SectionCard>
 
-        <controls:SectionCard Title="APP"
-                              Subtitle="Local operator preferences that only affect this desktop app.">
+        <controls:SectionCard Title="APP">
           <controls:SectionCard.Body>
             <Border Classes="InsetSurface Subtle"
                     Height="NaN"
@@ -366,9 +302,6 @@
                             HorizontalAlignment="Stretch"/>
                 </controls:TwoColumnInfoGrid>
 
-                <TextBlock Text="Units, startup behavior, and theme are local app preferences. They do not write to GRBL or the controller profile."
-                           Classes="Caption"
-                           TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
           </controls:SectionCard.Body>

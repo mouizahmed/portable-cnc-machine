@@ -145,8 +145,8 @@ public sealed class ManualControlViewModel : PageViewModelBase
 
     public bool SpindleOn          => MainVm?.SpindleOn      == true;
     public string SpindleStatusText => MainVm?.SpindleStatusText ?? "OFF";
-    public double SpindleMinRpm    => MainVm?.Settings.Current.SpindleMinRpm ?? 1000;
-    public double SpindleMaxRpm    => MainVm?.Settings.Current.SpindleMaxRpm ?? 24000;
+    public double SpindleMinRpm    => MainVm?.SettingsVm.SpindleMinRpm ?? 1000;
+    public double SpindleMaxRpm    => MainVm?.SettingsVm.SpindleMaxRpm ?? 24000;
 
     // ════════════════════════════════════════════════════════════════
     // CAPABILITY FLAGS  (bound directly to Caps — no local re-derivation)
