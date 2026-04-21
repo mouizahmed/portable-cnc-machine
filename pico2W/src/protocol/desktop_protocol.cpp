@@ -922,6 +922,10 @@ void DesktopProtocol::abort_active_storage_transfer(bool clear_completion,
 
     const auto operation = transfer_.operation();
     const auto ctx = transfer_.context();
+    if (operation == StorageTransferOperation::Upload) {
+        reset_upload_queue();
+    }
+
     if (close_file && (operation == StorageTransferOperation::Upload ||
                        operation == StorageTransferOperation::Download)) {
         f_close(&transfer_.file());
@@ -931,10 +935,6 @@ void DesktopProtocol::abort_active_storage_transfer(bool clear_completion,
         char path[80];
         std::snprintf(path, sizeof(path), "0:/%s", ctx.filename);
         f_unlink(path);
-    }
-
-    if (operation == StorageTransferOperation::Upload) {
-        reset_upload_queue();
     }
 
     transfer_.finish_operation();
@@ -1653,9 +1653,33 @@ void DesktopProtocol::handle_file_upload(const char* params) {
         return;
     }
 
+    if (size > 0) {
+        const uint32_t prealloc_start_ms = to_ms_since_boot(get_absolute_time());
+        fr = f_expand(&transfer_.file(), size, 1);
+        upload_profile_prealloc_ms_ = to_ms_since_boot(get_absolute_time()) - prealloc_start_ms;
+        if (fr != FR_OK) {
+            char kv[96];
+            std::snprintf(kv,
+                          sizeof(kv),
+                          "PHASE=PREALLOC FRESULT=%d SIZE=%lu",
+                          static_cast<int>(fr),
+                          static_cast<unsigned long>(size));
+            f_close(&transfer_.file());
+            f_unlink(path);
+            transfer_.finish_operation();
+            emit_storage_error(fr == FR_DENIED
+                ? StorageTransferError::NoSpace
+                : StorageTransferError::WriteFail,
+                StorageTransferOperation::Upload,
+                kv);
+            return;
+        }
+    }
+
     transfer_.set_expected_sequence(0);
     transfer_.set_last_ack_sequence(0xFFFFFFFFu);
     transfer_.set_retry_count(0);
+    upload_worker_enabled_ = true;
 
     state_changed_ = true;
     send_upload_ready();
@@ -2154,70 +2178,56 @@ bool DesktopProtocol::enqueue_upload_chunk(uint8_t transfer_id,
         state_changed_ = true;
         return false;
     }
-    const uint32_t next_crc = crc32_update(ctx.crc_running, payload, payload_len);
+    const uint32_t next_crc = crc32_update(upload_receive_crc_running_, payload, payload_len);
 
-    UINT written = 0;
-    const uint32_t write_start_ms = to_ms_since_boot(get_absolute_time());
-    const FRESULT fr = f_write(&transfer_.file(), payload, payload_len, &written);
-    const uint32_t write_elapsed_ms = to_ms_since_boot(get_absolute_time()) - write_start_ms;
+    UploadQueueEntry entry{};
+    entry.transfer_id = transfer_id;
+    entry.sequence = sequence;
+    entry.length = payload_len;
+    entry.crc_after = next_crc;
+    std::memcpy(entry.payload, payload, payload_len);
 
-    upload_profile_write_ms_ += write_elapsed_ms;
-    if (write_elapsed_ms > upload_profile_max_write_ms_) {
-        upload_profile_max_write_ms_ = write_elapsed_ms;
+    const uint32_t enqueue_start_ms = to_ms_since_boot(get_absolute_time());
+    while (true) {
+        process_upload_results();
+        if (!transfer_.is_upload()) {
+            return false;
+        }
+
+        bool queued = false;
+        critical_section_enter_blocking(&upload_worker_lock_);
+        if (upload_queue_count_ < kUploadQueueCapacity) {
+            upload_queue_[upload_queue_tail_] = entry;
+            upload_queue_tail_ = (upload_queue_tail_ + 1u) % kUploadQueueCapacity;
+            ++upload_queue_count_;
+            if (upload_queue_count_ > upload_queue_high_water_) {
+                upload_queue_high_water_ = upload_queue_count_;
+            }
+            queued = true;
+        }
+        critical_section_exit(&upload_worker_lock_);
+
+        if (queued) {
+            ++upload_next_receive_sequence_;
+            upload_bytes_received_ += payload_len;
+            upload_receive_crc_running_ = next_crc;
+            return true;
+        }
+
+        if ((to_ms_since_boot(get_absolute_time()) - enqueue_start_ms) > 10000u) {
+            upload_abort_cleanup();
+            char kv[64];
+            std::snprintf(kv,
+                          sizeof(kv),
+                          "SEQ=%lu REASON=QUEUE_FULL",
+                          static_cast<unsigned long>(sequence));
+            emit_storage_error(StorageTransferError::WriteFail, StorageTransferOperation::Upload, kv);
+            state_changed_ = true;
+            return false;
+        }
+
+        sleep_us(100);
     }
-    ++upload_profile_chunks_;
-
-    if (fr != FR_OK || written != payload_len) {
-        upload_abort_cleanup();
-        char kv[64];
-        std::snprintf(kv,
-                      sizeof(kv),
-                      "SEQ=%lu FRESULT=%d WRITTEN=%lu LEN=%lu",
-                      static_cast<unsigned long>(sequence),
-                      static_cast<int>(fr),
-                      static_cast<unsigned long>(written),
-                      static_cast<unsigned long>(payload_len));
-        emit_storage_error(StorageTransferError::WriteFail, StorageTransferOperation::Upload, kv);
-        state_changed_ = true;
-        return false;
-    }
-
-    const uint32_t bytes_written = ctx.bytes_written + written;
-    transfer_.note_upload_chunk_committed(sequence, bytes_written, next_crc);
-    ++upload_next_receive_sequence_;
-    upload_bytes_received_ += payload_len;
-    upload_receive_crc_running_ = next_crc;
-    upload_queue_high_water_ = upload_queue_high_water_ == 0 ? 1 : upload_queue_high_water_;
-
-    if ((sequence % 64u) == 0u || bytes_written >= ctx.expected_size) {
-        const uint32_t total_ms = to_ms_since_boot(get_absolute_time()) - upload_profile_start_ms_;
-        const uint32_t bps = total_ms > 0
-            ? static_cast<uint32_t>((static_cast<uint64_t>(bytes_written) * 1000u) / total_ms)
-            : 0u;
-        char profile_kv[192];
-        std::snprintf(profile_kv,
-                      sizeof(profile_kv),
-                      "SEQ=%lu BYTES=%lu TOTAL_MS=%lu WRITE_MS=%lu LAST_WRITE_MS=%lu MAX_WRITE_MS=%lu CHUNKS=%lu QUEUE=0 QUEUE_MAX=%lu BPS=%lu",
-                      static_cast<unsigned long>(sequence),
-                      static_cast<unsigned long>(bytes_written),
-                      static_cast<unsigned long>(total_ms),
-                      static_cast<unsigned long>(upload_profile_write_ms_),
-                      static_cast<unsigned long>(write_elapsed_ms),
-                      static_cast<unsigned long>(upload_profile_max_write_ms_),
-                      static_cast<unsigned long>(upload_profile_chunks_),
-                      static_cast<unsigned long>(upload_queue_high_water_),
-                      static_cast<unsigned long>(bps));
-        emit_event_kv("STORAGE_UPLOAD_CHUNK_PROFILE", profile_kv);
-    }
-
-    const bool should_ack =
-        ((sequence + 1u) % kUploadAckStride) == 0u ||
-        bytes_written >= ctx.expected_size;
-    if (should_ack) {
-        send_upload_chunk_ack(sequence, bytes_written);
-    }
-
-    return true;
 }
 
 void DesktopProtocol::process_upload_results() {

@@ -108,7 +108,7 @@ public:
 private:
     static constexpr uint32_t kDownloadWindowSize = 8;
     static constexpr uint32_t kUploadAckStride = 8;
-    static constexpr size_t kUploadQueueCapacity = 2;
+    static constexpr size_t kUploadQueueCapacity = 16;
     static constexpr uint32_t kDownloadResendIntervalMs = 750;
 
     struct UploadQueueEntry {

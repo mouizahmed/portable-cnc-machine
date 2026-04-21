@@ -32,3 +32,4 @@ The build produces `portable_cnc_machine.uf2` in `pico2W/build`.
 - Pin assignments match [WIRING.md](../WIRING.md).
 - Calibration data is stored in the final flash sector on the Pico 2W.
 - The touch test screen shows both mapped coordinates and raw `X / Y / Z`.
+- MVP upload performance notes are documented in [docs/storage-upload-performance.md](../docs/storage-upload-performance.md).

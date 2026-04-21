@@ -37,6 +37,21 @@ set(LOG 0 CACHE STRING "TinyUSB debug log level" FORCE)
 pico_sdk_init()
 
 set(PICO_TINYUSB_FATFS_DIR ${PICO_SDK_PATH}/lib/tinyusb/lib/fatfs/source)
+set(PORTABLE_CNC_FATFS_DIR ${CMAKE_CURRENT_BINARY_DIR}/fatfs)
+file(MAKE_DIRECTORY ${PORTABLE_CNC_FATFS_DIR})
+foreach(PORTABLE_CNC_FATFS_FILE ff.c ffunicode.c ff.h ffconf.h diskio.h)
+    configure_file(
+        ${PICO_TINYUSB_FATFS_DIR}/${PORTABLE_CNC_FATFS_FILE}
+        ${PORTABLE_CNC_FATFS_DIR}/${PORTABLE_CNC_FATFS_FILE}
+        COPYONLY)
+endforeach()
+file(READ ${PORTABLE_CNC_FATFS_DIR}/ffconf.h PORTABLE_CNC_FFCONF)
+string(REPLACE
+    "#define FF_USE_EXPAND\t0"
+    "#define FF_USE_EXPAND\t1"
+    PORTABLE_CNC_FFCONF
+    "${PORTABLE_CNC_FFCONF}")
+file(WRITE ${PORTABLE_CNC_FATFS_DIR}/ffconf.h "${PORTABLE_CNC_FFCONF}")
 
 add_executable(portable_cnc_machine
     src/app/comm/pico_uart_client.cpp
@@ -70,8 +85,8 @@ add_executable(portable_cnc_machine
     src/ui/screens/jog_screen.cpp
     src/ui/screens/main_menu_screen.cpp
     src/ui/screens/upload_screen.cpp
-    ${PICO_TINYUSB_FATFS_DIR}/ff.c
-    ${PICO_TINYUSB_FATFS_DIR}/ffunicode.c
+    ${PORTABLE_CNC_FATFS_DIR}/ff.c
+    ${PORTABLE_CNC_FATFS_DIR}/ffunicode.c
 )
 
 set(PORTABLE_CNC_RESERVED_FLASH_BYTES 8192)
@@ -95,7 +110,7 @@ pico_set_linker_script(portable_cnc_machine "${PORTABLE_CNC_LINKER_SCRIPT}")
 
 target_include_directories(portable_cnc_machine PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src
-    ${PICO_TINYUSB_FATFS_DIR}
+    ${PORTABLE_CNC_FATFS_DIR}
 )
 
 target_link_libraries(portable_cnc_machine PRIVATE
