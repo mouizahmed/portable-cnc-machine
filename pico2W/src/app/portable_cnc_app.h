@@ -10,6 +10,7 @@
 #include "app/settings/machine_settings_store.h"
 #include "app/status/status_provider.h"
 #include "app/storage/storage_service.h"
+#include "app/stream/job_stream_state_machine.h"
 #include "app/worker/core1_worker.h"
 #include "calibration/calibration_storage.h"
 #include "calibration/touch_calibration_app.h"
@@ -57,6 +58,7 @@ private:
     MachineFsm machine_fsm_;
     JogStateMachine jog_state_machine_;
     JobStateMachine job_state_machine_;
+    JobStreamStateMachine job_stream_state_machine_;
     OperationCoordinator operation_coordinator_;
     Core1Worker core1_worker_;
     LoadedJobStorage loaded_job_storage_;

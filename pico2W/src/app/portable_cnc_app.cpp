@@ -42,7 +42,12 @@ PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_c
                   storage_service_,
                   operation_coordinator_,
                   core1_worker_),
-      uart_client_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_),
+      uart_client_(machine_fsm_,
+                   jog_state_machine_,
+                   job_state_machine_,
+                   storage_service_,
+                   core1_worker_,
+                   job_stream_state_machine_),
       status_provider_(machine_fsm_, jog_state_machine_, job_state_machine_, storage_service_, usb_transport_),
       calibration_app_(display, touch, storage),
       frame_(display),
@@ -59,6 +64,7 @@ PortableCncApp::PortableCncApp(Ili9488& display, Xpt2046& touch, SdSpiCard& sd_c
                         machine_settings_store_,
                         storage_service_,
                         sd_card,
+                        uart_client_,
                         operation_coordinator_,
                         core1_worker_) {
     files_screen_.bind_protocol(desktop_protocol_);
@@ -184,8 +190,9 @@ void PortableCncApp::run_startup_sequence() {
             OperationRequest{OperationRequestType::CalibrationSave, OperationRequestSource::System},
             machine_fsm_,
             idle_transfer,
-            JobStreamState::Idle,
+            job_stream_state_machine_.state(),
             core1_worker_.snapshot(),
+            uart_client_.motion_snapshot(),
             storage_service_.state());
         if (calibration_decision.type == RequestDecisionType::AcceptNow ||
             calibration_decision.type == RequestDecisionType::PreemptAndAccept ||
@@ -317,7 +324,9 @@ void PortableCncApp::handle_ui_command(const UiEventResult& result) {
             if (!desktop_protocol_.allow_ui_operation(OperationRequestType::JobStart)) {
                 break;
             }
-            uart_client_.upload_and_run_loaded_job();
+            if (uart_client_.upload_and_run_loaded_job()) {
+                render_current_screen(false);
+            }
             break;
         case UiCommandType::HoldJob:
             if (!desktop_protocol_.allow_ui_operation(OperationRequestType::JobHold)) {
@@ -335,13 +344,17 @@ void PortableCncApp::handle_ui_command(const UiEventResult& result) {
             if (!desktop_protocol_.allow_ui_operation(OperationRequestType::Jog)) {
                 break;
             }
-            uart_client_.jog(result.jog_action);
+            if (uart_client_.jog(result.jog_action)) {
+                render_current_screen(false);
+            }
             break;
         case UiCommandType::HomeAll:
             if (!desktop_protocol_.allow_ui_operation(OperationRequestType::HomeAll)) {
                 break;
             }
-            uart_client_.home_all();
+            if (uart_client_.home_all()) {
+                render_current_screen(false);
+            }
             break;
         case UiCommandType::ZeroAll:
             if (!desktop_protocol_.allow_ui_operation(OperationRequestType::ZeroAll)) {

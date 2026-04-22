@@ -16,6 +16,8 @@
 #include "protocol/protocol_defs.h"
 #include "protocol/usb_cdc_transport.h"
 
+class PicoUartClient;
+
 class DesktopProtocol {
 public:
     static constexpr size_t kTransferRawChunkSize = UsbCdcTransport::kMaxTransferPayloadSize;
@@ -35,6 +37,7 @@ public:
                     MachineSettingsStore& machine_settings,
                     StorageService& storage,
                     SdSpiCard& sd,
+                    PicoUartClient& uart_client,
                     OperationCoordinator& coordinator,
                     Core1Worker& worker);
 
@@ -110,6 +113,7 @@ public:
     void on_sd_mounted();
     void on_sd_removed();
     bool allow_ui_operation(OperationRequestType type);
+    void handle_worker_result(const Core1Result& result);
 
 private:
     static constexpr uint32_t kDownloadWindowSize = 8;
@@ -124,6 +128,7 @@ private:
     MachineSettingsStore& machine_settings_;
     StorageService& storage_;
     SdSpiCard& sd_;
+    PicoUartClient& uart_client_;
     OperationCoordinator& coordinator_;
     Core1Worker& worker_;
 

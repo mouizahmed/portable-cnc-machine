@@ -5,10 +5,6 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C" {
-#include "ff.h"
-}
-
 #include "config.h"
 #include "hardware/gpio.h"
 #include "hardware/uart.h"
@@ -20,66 +16,41 @@ bool starts_with(const char* text, const char* prefix) {
            prefix != nullptr &&
            std::strncmp(text, prefix, std::strlen(prefix)) == 0;
 }
-
-bool read_file_line(FIL& file, char* buffer, std::size_t size) {
-    if (buffer == nullptr || size == 0) {
-        return false;
-    }
-
-    std::size_t index = 0;
-    while (index + 1 < size) {
-        char c = '\0';
-        UINT bytes_read = 0;
-        const FRESULT fr = f_read(&file, &c, 1, &bytes_read);
-        if (fr != FR_OK || bytes_read == 0) {
-            break;
-        }
-        if (c == '\r') {
-            continue;
-        }
-        if (c == '\n') {
-            break;
-        }
-        buffer[index++] = c;
-    }
-
-    buffer[index] = '\0';
-    return index > 0;
-}
 }  // namespace
 
 PicoUartClient::PicoUartClient(MachineFsm& machine_fsm,
                                JogStateMachine& jog_state_machine,
                                JobStateMachine& job_state_machine,
-                               const StorageService& storage_service)
+                               const StorageService& storage_service,
+                               Core1Worker& worker,
+                               JobStreamStateMachine& job_stream)
     : machine_fsm_(machine_fsm),
       jog_state_machine_(jog_state_machine),
       job_state_machine_(job_state_machine),
-      storage_service_(storage_service) {
+      storage_service_(storage_service),
+      worker_(worker),
+      job_stream_(job_stream) {
     init_transport();
     const uint32_t now = to_ms_since_boot(get_absolute_time());
     last_rx_ms_ = now;
     last_probe_ms_ = 0;
+    motion_snapshot_.linked = false;
 }
 
 PicoUartPollResult PicoUartClient::poll() {
     const uint32_t now = to_ms_since_boot(get_absolute_time());
     PicoUartPollResult result = process_input(now);
 
+    if (motion_snapshot_.command_in_flight &&
+        (now - command_started_ms_) >= kForegroundCommandTimeoutMs) {
+        clear_command_in_flight();
+    }
+
+    service_background_telemetry(now);
+
     const uint32_t quiet_for = now - last_rx_ms_;
     if (quiet_for < kSilentLinkThresholdMs) {
         return result;
-    }
-
-    if (now - last_probe_ms_ < kProbeIntervalMs) {
-        return result;
-    }
-
-    if (send_probe()) {
-        last_probe_ms_ = now;
-        if (missed_probes_ < kMaxMissedProbes) {
-            ++missed_probes_;
-        }
     }
 
     if (linked_ && missed_probes_ >= kMaxMissedProbes) {
@@ -102,25 +73,63 @@ bool PicoUartClient::select_file(int16_t index) {
 }
 
 bool PicoUartClient::upload_and_run_loaded_job() {
+    if (job_stream_.is_active() || !linked_) {
+        return false;
+    }
+
     const FileEntry* entry = job_state_machine_.loaded_entry();
     const int16_t index = job_state_machine_.loaded_index();
     if (entry == nullptr || index < 0 || !storage_service_.is_mounted()) {
         return false;
     }
 
-    if (!upload_job_file(*entry, index)) {
+    Core1Job job{};
+    job.type = Core1JobType::JobStreamPrepareBegin;
+    job.intent = Core1JobIntent::ForegroundExclusive;
+    job.source = Core1JobSource::System;
+    job.stream_prepare.loaded_index = index;
+    std::strncpy(job.stream_prepare.filename, entry->name, sizeof(job.stream_prepare.filename) - 1u);
+
+    if (!worker_.submit_control(job)) {
         return false;
     }
 
-    return send_command("@CMD SEQ=%lu OP=RUN", static_cast<unsigned long>(next_seq()));
+    machine_fsm_.handle_event(MachineEvent::StartCmd);
+    job_stream_.start_prepare(index, entry->name);
+    stream_batch_pending_ = false;
+    stream_cancel_pending_ = false;
+    note_command_started(MotionCommandType::JobStart, false, to_ms_since_boot(get_absolute_time()));
+    return true;
 }
 
 bool PicoUartClient::hold() {
-    return send_command("@CMD SEQ=%lu OP=HOLD", static_cast<unsigned long>(next_seq()));
+    const bool sent = send_command("@CMD SEQ=%lu OP=HOLD", static_cast<unsigned long>(next_seq()));
+    if (sent) {
+        note_command_started(MotionCommandType::Hold, true, to_ms_since_boot(get_absolute_time()));
+    }
+    return sent;
 }
 
 bool PicoUartClient::resume() {
-    return send_command("@CMD SEQ=%lu OP=RESUME", static_cast<unsigned long>(next_seq()));
+    const bool sent = send_command("@CMD SEQ=%lu OP=RESUME", static_cast<unsigned long>(next_seq()));
+    if (sent) {
+        note_command_started(MotionCommandType::Resume, false, to_ms_since_boot(get_absolute_time()));
+    }
+    return sent;
+}
+
+bool PicoUartClient::abort() {
+    if (job_stream_.is_active()) {
+        cancel_stream(true);
+        return true;
+    }
+
+    const bool sent = send_command("@CMD SEQ=%lu OP=ABORT", static_cast<unsigned long>(next_seq()));
+    if (sent) {
+        note_command_started(MotionCommandType::Abort, true, to_ms_since_boot(get_absolute_time()));
+        machine_fsm_.handle_event(MachineEvent::AbortCmd);
+    }
+    return sent;
 }
 
 bool PicoUartClient::jog(JogAction action) {
@@ -156,23 +165,118 @@ bool PicoUartClient::jog(JogAction action) {
             return false;
     }
 
-    return send_command("@CMD SEQ=%lu OP=JOG AXIS=%c DIST_MM=%.3f FEED=%d",
-                        static_cast<unsigned long>(next_seq()),
-                        axis,
-                        static_cast<double>(distance),
-                        static_cast<int>(jog_state_machine_.feed_rate_mm_min()));
+    const bool sent = send_command("@CMD SEQ=%lu OP=JOG AXIS=%c DIST_MM=%.3f FEED=%d",
+                                   static_cast<unsigned long>(next_seq()),
+                                   axis,
+                                   static_cast<double>(distance),
+                                   static_cast<int>(jog_state_machine_.feed_rate_mm_min()));
+    if (sent) {
+        note_command_started(MotionCommandType::Jog, false, to_ms_since_boot(get_absolute_time()));
+        machine_fsm_.handle_event(MachineEvent::JogCmd);
+    }
+    return sent;
 }
 
 bool PicoUartClient::home_all() {
-    return send_command("@CMD SEQ=%lu OP=HOME_ALL", static_cast<unsigned long>(next_seq()));
+    const bool sent = send_command("@CMD SEQ=%lu OP=HOME_ALL", static_cast<unsigned long>(next_seq()));
+    if (sent) {
+        note_command_started(MotionCommandType::HomeAll, false, to_ms_since_boot(get_absolute_time()));
+        machine_fsm_.handle_event(MachineEvent::HomeCmd);
+    }
+    return sent;
 }
 
 bool PicoUartClient::zero_all() {
-    return send_command("@CMD SEQ=%lu OP=ZERO_ALL", static_cast<unsigned long>(next_seq()));
+    const bool sent = send_command("@CMD SEQ=%lu OP=ZERO_ALL", static_cast<unsigned long>(next_seq()));
+    if (sent) {
+        note_command_started(MotionCommandType::ZeroAll, false, to_ms_since_boot(get_absolute_time()));
+    }
+    return sent;
 }
 
 const char* PicoUartClient::link_status() const {
     return linked_ ? "UART" : "DISC";
+}
+
+JobStreamState PicoUartClient::job_stream_state() const {
+    return job_stream_.state();
+}
+
+MotionLinkSnapshot PicoUartClient::motion_snapshot() const {
+    return motion_snapshot_;
+}
+
+void PicoUartClient::handle_worker_result(const Core1Result& result) {
+    const uint32_t now = to_ms_since_boot(get_absolute_time());
+
+    switch (result.type) {
+        case Core1ResultType::StreamPrepareReady:
+            if (result.stream_prepare.result != FR_OK || result.stream_prepare.total_lines == 0) {
+                mark_stream_fault();
+                return;
+            }
+            job_stream_.note_prepare_ready(result.stream_prepare.total_lines);
+            if (!send_job_begin_sequence(result.stream_prepare.loaded_index,
+                                         result.stream_prepare.filename,
+                                         result.stream_prepare.total_lines,
+                                         now)) {
+                mark_stream_fault();
+                return;
+            }
+            job_stream_.note_beginning();
+            request_next_stream_batch();
+            return;
+
+        case Core1ResultType::StreamLineBatchReady:
+            stream_batch_pending_ = false;
+            if (result.stream_batch.result != FR_OK) {
+                mark_stream_fault();
+                return;
+            }
+
+            for (uint8_t i = 0; i < result.stream_batch.line_count; ++i) {
+                if (!send_raw_line(result.stream_batch.lines[i])) {
+                    mark_stream_fault();
+                    return;
+                }
+            }
+            job_stream_.note_lines_sent(result.stream_batch.line_count);
+
+            if (result.stream_batch.complete) {
+                if (!send_command("@CMD SEQ=%lu OP=JOB_END", static_cast<unsigned long>(next_seq())) ||
+                    !send_command("@CMD SEQ=%lu OP=RUN", static_cast<unsigned long>(next_seq()))) {
+                    mark_stream_fault();
+                    return;
+                }
+                note_command_started(MotionCommandType::JobStart, false, now);
+                return;
+            }
+
+            request_next_stream_batch();
+            return;
+
+        case Core1ResultType::StreamCancelled:
+            stream_batch_pending_ = false;
+            stream_cancel_pending_ = false;
+            if (job_stream_.state() == JobStreamState::Cancelling &&
+                machine_fsm_.state() == MachineOperationState::Starting) {
+                machine_fsm_.handle_event(MachineEvent::GrblIdle);
+            }
+            job_stream_.reset();
+            clear_command_in_flight();
+            return;
+
+        case Core1ResultType::WorkerFault:
+            if (result.source_job == Core1JobType::JobStreamPrepareBegin ||
+                result.source_job == Core1JobType::JobStreamPrepareNextBatch ||
+                result.source_job == Core1JobType::JobStreamCancel) {
+                mark_stream_fault();
+            }
+            return;
+
+        default:
+            return;
+    }
 }
 
 void PicoUartClient::init_transport() {
@@ -190,8 +294,6 @@ void PicoUartClient::init_transport() {
 }
 
 bool PicoUartClient::send_probe() {
-    // Keep compatibility with the existing @HELLO/@EVT flow while preferring
-    // a simple ping probe for quiet-link liveness.
     const bool ping_ok = send_ping();
     const bool hello_ok = send_hello();
     return ping_ok || hello_ok;
@@ -269,6 +371,10 @@ PicoUartPollResult PicoUartClient::handle_line(const char* line, uint32_t now) {
         return mark_link_connected(now);
     }
 
+    if (starts_with(line, "@ACK")) {
+        return handle_ack_line(line, now);
+    }
+
     if (starts_with(line, "@BOOT")) {
         return handle_boot_line(line, now);
     }
@@ -282,7 +388,28 @@ PicoUartPollResult PicoUartClient::handle_line(const char* line, uint32_t now) {
     }
 
     if (starts_with(line, "@ERR")) {
-        return handle_error_line(now);
+        return handle_error_line(line, now);
+    }
+
+    return result;
+}
+
+PicoUartPollResult PicoUartClient::handle_ack_line(const char* line, uint32_t now) {
+    PicoUartPollResult result = mark_link_connected(now);
+
+    if (std::strstr(line, "PONG=1") != nullptr) {
+        motion_snapshot_.telemetry_pending = false;
+        return result;
+    }
+
+    if (motion_snapshot_.active_command == MotionCommandType::ZeroAll) {
+        clear_command_in_flight();
+    }
+
+    if (motion_snapshot_.active_command == MotionCommandType::Abort &&
+        job_stream_.state() == JobStreamState::Cancelling &&
+        machine_fsm_.state() == MachineOperationState::Starting) {
+        result.machine_changed = machine_fsm_.handle_event(MachineEvent::GrblIdle) || result.machine_changed;
     }
 
     return result;
@@ -360,62 +487,16 @@ PicoUartPollResult PicoUartClient::handle_event_line(const char* line, uint32_t 
     return result;
 }
 
-PicoUartPollResult PicoUartClient::handle_error_line(uint32_t now) {
+PicoUartPollResult PicoUartClient::handle_error_line(const char* line, uint32_t now) {
+    (void)line;
     PicoUartPollResult result = mark_link_connected(now);
+    clear_command_in_flight();
+    if (job_stream_.is_active()) {
+        mark_stream_fault();
+    }
     const bool fault_changed = machine_fsm_.handle_event(MachineEvent::GrblAlarm);
     result.machine_changed = result.machine_changed || fault_changed;
     return result;
-}
-
-bool PicoUartClient::upload_job_file(const FileEntry& entry, int16_t index) {
-    FIL file{};
-    char path[64];
-    std::snprintf(path, sizeof(path), "0:/%s", entry.name);
-    if (f_open(&file, path, FA_READ) != FR_OK) {
-        return false;
-    }
-
-    uint32_t line_count = 0;
-    char line[kFileLineSize];
-    while (read_file_line(file, line, sizeof(line))) {
-        trim_line(line);
-        if (line[0] == '\0') {
-            continue;
-        }
-        ++line_count;
-    }
-
-    f_close(&file);
-    if (line_count == 0) {
-        return false;
-    }
-
-    send_command("@CMD SEQ=%lu OP=JOB_SELECT INDEX=%d NAME=%s",
-                 static_cast<unsigned long>(next_seq()),
-                 static_cast<int>(index),
-                 entry.name);
-    send_command("@CMD SEQ=%lu OP=JOB_BEGIN INDEX=%d LINES=%lu",
-                 static_cast<unsigned long>(next_seq()),
-                 static_cast<int>(index),
-                 static_cast<unsigned long>(line_count));
-
-    if (f_open(&file, path, FA_READ) != FR_OK) {
-        return false;
-    }
-
-    while (read_file_line(file, line, sizeof(line))) {
-        trim_line(line);
-        if (line[0] == '\0') {
-            continue;
-        }
-
-        send_raw_line(line);
-        sleep_ms(2);
-    }
-
-    f_close(&file);
-    send_command("@CMD SEQ=%lu OP=JOB_END", static_cast<unsigned long>(next_seq()));
-    return true;
 }
 
 void PicoUartClient::mark_valid_traffic(uint32_t now) {
@@ -426,6 +507,7 @@ void PicoUartClient::mark_valid_traffic(uint32_t now) {
 PicoUartPollResult PicoUartClient::mark_link_connected(uint32_t now) {
     PicoUartPollResult result{};
     mark_valid_traffic(now);
+    motion_snapshot_.linked = true;
 
     if (!linked_) {
         linked_ = true;
@@ -445,6 +527,11 @@ PicoUartPollResult PicoUartClient::mark_link_disconnected() {
 
     linked_ = false;
     missed_probes_ = 0;
+    motion_snapshot_.linked = false;
+    clear_command_in_flight();
+    if (job_stream_.is_active()) {
+        cancel_stream(false);
+    }
     result.link_transition = MotionLinkTransition::Disconnected;
     result.machine_changed = machine_fsm_.handle_event(MachineEvent::TeensyDisconnected);
     return result;
@@ -456,6 +543,114 @@ void PicoUartClient::merge(PicoUartPollResult& into, const PicoUartPollResult& f
     into.position_changed = into.position_changed || from.position_changed;
     if (from.link_transition != MotionLinkTransition::None) {
         into.link_transition = from.link_transition;
+    }
+}
+
+void PicoUartClient::note_command_started(MotionCommandType command, bool urgent, uint32_t now) {
+    motion_snapshot_.active_command = command;
+    motion_snapshot_.command_in_flight = command != MotionCommandType::TelemetryProbe;
+    motion_snapshot_.urgent_pending = urgent;
+    command_started_ms_ = now;
+}
+
+void PicoUartClient::clear_command_in_flight() {
+    motion_snapshot_.active_command = MotionCommandType::None;
+    motion_snapshot_.command_in_flight = false;
+    motion_snapshot_.urgent_pending = false;
+    command_started_ms_ = 0;
+}
+
+void PicoUartClient::mark_stream_fault() {
+    stream_batch_pending_ = false;
+    stream_cancel_pending_ = false;
+    clear_command_in_flight();
+    if (job_stream_.is_active()) {
+        job_stream_.note_fault();
+    }
+    if (machine_fsm_.state() == MachineOperationState::Starting) {
+        machine_fsm_.handle_event(MachineEvent::AbortCmd);
+        machine_fsm_.handle_event(MachineEvent::GrblIdle);
+    }
+}
+
+void PicoUartClient::cancel_stream(bool send_abort_command) {
+    if (!job_stream_.is_active()) {
+        return;
+    }
+
+    job_stream_.note_cancelling();
+    if (!stream_cancel_pending_) {
+        Core1Job cancel_job{};
+        cancel_job.type = Core1JobType::JobStreamCancel;
+        cancel_job.intent = Core1JobIntent::Urgent;
+        cancel_job.source = Core1JobSource::System;
+        cancel_job.stream_cancel.loaded_index = job_stream_.loaded_index();
+        if (worker_.submit_urgent(cancel_job)) {
+            stream_cancel_pending_ = true;
+        }
+    }
+
+    if (send_abort_command && linked_) {
+        send_command("@CMD SEQ=%lu OP=ABORT", static_cast<unsigned long>(next_seq()));
+        note_command_started(MotionCommandType::Abort, true, to_ms_since_boot(get_absolute_time()));
+        machine_fsm_.handle_event(MachineEvent::AbortCmd);
+    }
+}
+
+bool PicoUartClient::request_next_stream_batch() {
+    if (stream_batch_pending_) {
+        return true;
+    }
+
+    Core1Job job{};
+    job.type = Core1JobType::JobStreamPrepareNextBatch;
+    job.intent = Core1JobIntent::ForegroundExclusive;
+    job.source = Core1JobSource::System;
+    job.stream_batch.loaded_index = job_stream_.loaded_index();
+    stream_batch_pending_ = worker_.submit_bulk(job);
+    return stream_batch_pending_;
+}
+
+bool PicoUartClient::send_job_begin_sequence(int16_t index,
+                                             const char* name,
+                                             uint32_t line_count,
+                                             uint32_t now) {
+    if (!send_command("@CMD SEQ=%lu OP=JOB_SELECT INDEX=%d NAME=%s",
+                      static_cast<unsigned long>(next_seq()),
+                      static_cast<int>(index),
+                      name) ||
+        !send_command("@CMD SEQ=%lu OP=JOB_BEGIN INDEX=%d LINES=%lu",
+                      static_cast<unsigned long>(next_seq()),
+                      static_cast<int>(index),
+                      static_cast<unsigned long>(line_count))) {
+        return false;
+    }
+
+    note_command_started(MotionCommandType::JobStart, false, now);
+    return true;
+}
+
+void PicoUartClient::service_background_telemetry(uint32_t now) {
+    if ((now - last_rx_ms_) < kSilentLinkThresholdMs) {
+        motion_snapshot_.telemetry_pending = false;
+        return;
+    }
+
+    if ((now - last_probe_ms_) < kProbeIntervalMs) {
+        return;
+    }
+
+    motion_snapshot_.telemetry_pending = true;
+    if (motion_snapshot_.command_in_flight || motion_snapshot_.urgent_pending || job_stream_.is_active()) {
+        return;
+    }
+
+    if (send_probe()) {
+        last_probe_ms_ = now;
+        if (missed_probes_ < kMaxMissedProbes) {
+            ++missed_probes_;
+        }
+        motion_snapshot_.telemetry_pending = false;
     }
 }
 
@@ -497,21 +692,6 @@ bool PicoUartClient::extract_float(const char* line, const char* key, float& out
     return true;
 }
 
-void PicoUartClient::trim_line(char* line) {
-    if (line == nullptr) {
-        return;
-    }
-
-    std::size_t length = std::strlen(line);
-    while (length > 0 &&
-           (line[length - 1] == '\r' ||
-            line[length - 1] == '\n' ||
-            line[length - 1] == ' ' ||
-            line[length - 1] == '\t')) {
-        line[--length] = '\0';
-    }
-}
-
 PicoUartPollResult PicoUartClient::handle_machine_state(const char* text,
                                                         const char* substate,
                                                         uint32_t now) {
@@ -522,12 +702,28 @@ PicoUartPollResult PicoUartClient::handle_machine_state(const char* text,
 
     bool changed = false;
     if (std::strcmp(text, "IDLE") == 0) {
+        clear_command_in_flight();
+        if (job_stream_.state() == JobStreamState::Streaming ||
+            job_stream_.state() == JobStreamState::PausedByHold) {
+            machine_fsm_.notify_stream_complete();
+        }
         changed = machine_fsm_.handle_event(MachineEvent::GrblIdle);
+        if (job_stream_.state() == JobStreamState::Cancelling) {
+            job_stream_.reset();
+        } else if (job_stream_.state() == JobStreamState::Streaming ||
+                   job_stream_.state() == JobStreamState::PausedByHold) {
+            job_stream_.note_complete();
+        }
     } else if (std::strcmp(text, "HOMING") == 0) {
+        clear_command_in_flight();
         changed = machine_fsm_.handle_event(MachineEvent::GrblHoming);
     } else if (std::strcmp(text, "CYCLE") == 0 || std::strcmp(text, "RUNNING") == 0) {
+        clear_command_in_flight();
+        job_stream_.note_run_started();
         changed = machine_fsm_.handle_event(MachineEvent::GrblCycle);
     } else if (std::strcmp(text, "HOLD") == 0) {
+        clear_command_in_flight();
+        job_stream_.note_hold();
         if (std::strcmp(substate, "COMPLETE") == 0 ||
             std::strcmp(substate, "C") == 0 ||
             std::strcmp(substate, "1") == 0) {
@@ -536,16 +732,26 @@ PicoUartPollResult PicoUartClient::handle_machine_state(const char* text,
             changed = machine_fsm_.handle_event(MachineEvent::GrblHoldPending);
         }
     } else if (std::strcmp(text, "JOG") == 0) {
+        clear_command_in_flight();
         changed = machine_fsm_.handle_event(MachineEvent::GrblJog);
     } else if (std::strcmp(text, "ALARM") == 0 || std::strcmp(text, "FAULT") == 0) {
+        clear_command_in_flight();
+        job_stream_.note_fault();
         changed = machine_fsm_.handle_event(MachineEvent::GrblAlarm);
     } else if (std::strcmp(text, "ESTOP") == 0) {
+        clear_command_in_flight();
+        job_stream_.note_fault();
         changed = machine_fsm_.handle_event(MachineEvent::GrblEstop);
     } else if (std::strcmp(text, "DOOR") == 0) {
+        clear_command_in_flight();
+        job_stream_.note_hold();
         changed = machine_fsm_.handle_event(MachineEvent::GrblDoor);
     } else if (std::strcmp(text, "TOOL_CHANGE") == 0) {
+        clear_command_in_flight();
+        job_stream_.note_hold();
         changed = machine_fsm_.handle_event(MachineEvent::GrblToolChange);
     } else if (std::strcmp(text, "SLEEP") == 0) {
+        clear_command_in_flight();
         changed = machine_fsm_.handle_event(MachineEvent::GrblSleep);
     }
 
@@ -572,6 +778,9 @@ PicoUartPollResult PicoUartClient::handle_job_state(const char* text, int index,
         job_state_machine_.set_state(JobState::JobLoaded, static_cast<int16_t>(index));
         result.machine_changed = result.machine_changed || job_changed;
         result.job_changed = true;
+        if (job_stream_.state() == JobStreamState::Complete) {
+            job_stream_.reset();
+        }
         return result;
     }
 
@@ -580,6 +789,7 @@ PicoUartPollResult PicoUartClient::handle_job_state(const char* text, int index,
         job_state_machine_.set_state(JobState::Running, static_cast<int16_t>(index));
         result.machine_changed = result.machine_changed || job_changed;
         result.job_changed = true;
+        job_stream_.note_run_started();
         return result;
     }
 

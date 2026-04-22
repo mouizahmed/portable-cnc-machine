@@ -89,10 +89,20 @@ private:
     void execute_free_space(const Core1Job& job);
     void execute_health_check(const Core1Job& job);
     void execute_abort_transfer(const Core1Job& job);
+    void execute_stream_prepare_begin(const Core1Job& job);
+    void execute_stream_prepare_next_batch(const Core1Job& job);
+    void execute_stream_cancel(const Core1Job& job);
     void close_upload_file(FRESULT& result);
     void close_download_file(FRESULT& result);
+    void close_stream_file();
     void close_list_dir();
     void fill_list_page(Core1Result& result);
     static bool is_supported_job_file(const char* name);
     static void query_free_space(Core1FreeSpaceResult& result);
+
+    FIL stream_file_{};
+    bool stream_file_open_ = false;
+    int16_t stream_loaded_index_ = -1;
+    char stream_filename_[64]{};
+    uint32_t stream_total_lines_ = 0;
 };

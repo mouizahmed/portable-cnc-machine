@@ -155,6 +155,7 @@ bool PortableCncController::save_machine_settings(const MachineSettings& setting
         idle_transfer,
         JobStreamState::Idle,
         worker_.snapshot(),
+        MotionLinkSnapshot{},
         storage_.state());
     if (decision.type != RequestDecisionType::AcceptNow &&
         decision.type != RequestDecisionType::PreemptAndAccept &&

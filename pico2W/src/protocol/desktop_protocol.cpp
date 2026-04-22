@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cstdlib>
 
+#include "app/comm/pico_uart_client.h"
 #include "protocol/protocol_defs.h"
 #include "pico/stdlib.h"
 
@@ -262,6 +263,7 @@ DesktopProtocol::DesktopProtocol(UsbCdcTransport& transport,
                                  MachineSettingsStore& machine_settings,
                                  StorageService& storage,
                                  SdSpiCard& sd,
+                                 PicoUartClient& uart_client,
                                  OperationCoordinator& coordinator,
                                  Core1Worker& worker)
     : transport_(transport),
@@ -272,6 +274,7 @@ DesktopProtocol::DesktopProtocol(UsbCdcTransport& transport,
       machine_settings_(machine_settings),
       storage_(storage),
       sd_(sd),
+      uart_client_(uart_client),
       coordinator_(coordinator),
       worker_(worker) {}
 
@@ -282,8 +285,9 @@ bool DesktopProtocol::admit_operation(OperationRequestType type,
         OperationRequest{type, OperationRequestSource::Desktop},
         msm_,
         transfer_,
-        JobStreamState::Idle,
+        uart_client_.job_stream_state(),
         worker_.snapshot(),
+        uart_client_.motion_snapshot(),
         storage_.state());
 
     if (decision.type == RequestDecisionType::AcceptNow ||
@@ -329,8 +333,9 @@ bool DesktopProtocol::allow_ui_operation(OperationRequestType type) {
         OperationRequest{type, OperationRequestSource::Tft},
         msm_,
         transfer_,
-        JobStreamState::Idle,
+        uart_client_.job_stream_state(),
         worker_.snapshot(),
+        uart_client_.motion_snapshot(),
         storage_.state());
 
     return decision.type == RequestDecisionType::AcceptNow ||
@@ -1295,18 +1300,11 @@ void DesktopProtocol::handle_home() {
         return;
     }
 
-    CapsFlags c = msm_.caps();
-    if (!c.motion) {
-        emit_error("INVALID_STATE");
+    if (!uart_client_.home_all()) {
+        emit_error("HOME_FAILED");
         return;
     }
-    inject(MachineEvent::HomeCmd);
-    emit_state_update();
     emit_ok("HOME");
-
-    // Stub: immediately simulate homing completion (GrblIdle while in HOMING
-    // sets all_axes_homed_ = true and transitions to IDLE)
-    inject(MachineEvent::GrblIdle);
     emit_state_update();
 }
 
@@ -1315,19 +1313,32 @@ void DesktopProtocol::handle_jog(const char* params) {
         return;
     }
 
-    CapsFlags c = msm_.caps();
-    if (!c.motion) {
-        emit_error("INVALID_STATE");
+    char axis[8]{};
+    char dist_text[24]{};
+    if (!param_get(params, "AXIS", axis, sizeof(axis))) {
+        emit_error("MISSING_PARAM");
         return;
     }
-    // params contains AXIS=X DIST=10.0 FEED=500 etc. -- passed through for future use
-    (void)params;
-    inject(MachineEvent::JogCmd);
-    emit_ok_kv("JOG", "");
-    emit_state_update();
+    param_get(params, "DIST", dist_text, sizeof(dist_text));
+    const float dist = static_cast<float>(std::atof(dist_text));
 
-    // Stub: immediately complete the jog
-    inject(MachineEvent::GrblIdle);
+    JogAction action = JogAction::MoveXPositive;
+    if (std::strcmp(axis, "X") == 0) {
+        action = dist < 0.0f ? JogAction::MoveXNegative : JogAction::MoveXPositive;
+    } else if (std::strcmp(axis, "Y") == 0) {
+        action = dist < 0.0f ? JogAction::MoveYNegative : JogAction::MoveYPositive;
+    } else if (std::strcmp(axis, "Z") == 0) {
+        action = dist < 0.0f ? JogAction::MoveZNegative : JogAction::MoveZPositive;
+    } else {
+        emit_error("MISSING_PARAM");
+        return;
+    }
+
+    if (!uart_client_.jog(action)) {
+        emit_error("JOG_FAILED");
+        return;
+    }
+    emit_ok_kv("JOG", "");
     emit_state_update();
 }
 
@@ -1336,12 +1347,11 @@ void DesktopProtocol::handle_jog_cancel() {
         return;
     }
 
-    inject(MachineEvent::JogStop);
+    if (!uart_client_.abort()) {
+        emit_error("JOG_CANCEL_FAILED");
+        return;
+    }
     emit_ok("JOG_CANCEL");
-
-    // Stub: immediately return to IDLE
-    inject(MachineEvent::GrblIdle);
-    emit_state_update();
 }
 
 void DesktopProtocol::handle_zero(const char* params) {
@@ -1350,6 +1360,10 @@ void DesktopProtocol::handle_zero(const char* params) {
     }
 
     (void)params;
+    if (!uart_client_.zero_all()) {
+        emit_error("ZERO_FAILED");
+        return;
+    }
     emit_ok("ZERO");
 }
 
@@ -1358,22 +1372,11 @@ void DesktopProtocol::handle_start() {
         return;
     }
 
-    CapsFlags c = msm_.caps();
-    if (!c.job_start) {
-        emit_error("INVALID_STATE");
+    if (!uart_client_.upload_and_run_loaded_job()) {
+        emit_error("START_FAILED");
         return;
     }
-    inject(MachineEvent::StartCmd);
     emit_ok("START");
-    emit_state_update();
-
-    // Stub: simulate the full job cycle
-    inject(MachineEvent::GrblCycle);
-    emit_state_update();
-
-    inject(MachineEvent::JobStreamComplete);
-    inject(MachineEvent::GrblIdle);
-    emit_event("JOB_COMPLETE");
     emit_state_update();
 }
 
@@ -1382,17 +1385,11 @@ void DesktopProtocol::handle_pause() {
         return;
     }
 
-    if (!msm_.caps().job_pause) {
-        emit_error("INVALID_STATE");
+    if (!uart_client_.hold()) {
+        emit_error("PAUSE_FAILED");
         return;
     }
-    inject(MachineEvent::PauseCmd);
     emit_ok("PAUSE");
-
-    // Stub: simulate hold sequence
-    inject(MachineEvent::GrblHoldPending);
-    inject(MachineEvent::GrblHoldComplete);
-    emit_state_update();
 }
 
 void DesktopProtocol::handle_resume() {
@@ -1400,16 +1397,11 @@ void DesktopProtocol::handle_resume() {
         return;
     }
 
-    if (!msm_.caps().job_resume) {
-        emit_error("INVALID_STATE");
+    if (!uart_client_.resume()) {
+        emit_error("RESUME_FAILED");
         return;
     }
-    inject(MachineEvent::ResumeCmd);
     emit_ok("RESUME");
-
-    // Stub: simulate cycle resume
-    inject(MachineEvent::GrblCycle);
-    emit_state_update();
 }
 
 void DesktopProtocol::handle_abort() {
@@ -1417,16 +1409,11 @@ void DesktopProtocol::handle_abort() {
         return;
     }
 
-    CapsFlags c = msm_.caps();
-    if (!c.job_abort) {
-        emit_error("INVALID_STATE");
+    if (!uart_client_.abort()) {
+        emit_error("ABORT_FAILED");
         return;
     }
-    inject(MachineEvent::AbortCmd);
     emit_ok("ABORT");
-
-    // Stub: simulate grbl acknowledging reset
-    inject(MachineEvent::GrblIdle);
     emit_state_update();
 }
 
@@ -1482,8 +1469,9 @@ void DesktopProtocol::handle_file_list() {
         OperationRequest{OperationRequestType::FileList, OperationRequestSource::Desktop},
         msm_,
         transfer_,
-        JobStreamState::Idle,
+        uart_client_.job_stream_state(),
         worker_.snapshot(),
+        uart_client_.motion_snapshot(),
         storage_.state());
 
     if (decision.type == RequestDecisionType::AcceptNow ||
@@ -2165,8 +2153,9 @@ void DesktopProtocol::service_pending_file_list_request() {
         OperationRequest{OperationRequestType::FileList, OperationRequestSource::Desktop},
         msm_,
         transfer_,
-        JobStreamState::Idle,
+        uart_client_.job_stream_state(),
         worker_.snapshot(),
+        uart_client_.motion_snapshot(),
         storage_.state());
 
     if (decision.type == RequestDecisionType::AcceptNow ||
@@ -2437,43 +2426,54 @@ void DesktopProtocol::process_upload_results() {
         if (!worker_.try_pop_result(result)) {
             return;
         }
-        switch (result.type) {
-            case Core1ResultType::FileOpened:
-                handle_upload_opened(result);
-                break;
-            case Core1ResultType::UploadChunkCommitted:
-                commit_upload_result(result);
-                break;
-            case Core1ResultType::FileClosed:
-                handle_upload_finalized(result);
-                break;
-            case Core1ResultType::DownloadOpened:
-                process_download_opened(result);
-                break;
-            case Core1ResultType::DownloadChunkRead:
-                process_download_chunk_read(result);
-                break;
-            case Core1ResultType::DownloadClosed:
-                break;
-            case Core1ResultType::FileListPage:
-                process_file_list_page(result);
-                break;
-            case Core1ResultType::FileDeleted:
-                process_file_deleted(result);
-                break;
-            case Core1ResultType::FreeSpaceReady:
-                process_free_space_ready(result);
-                break;
-            case Core1ResultType::StorageHealthReady:
-                process_storage_health_ready(result);
-                break;
-            case Core1ResultType::TransferAborted:
-            case Core1ResultType::None:
-            case Core1ResultType::StorageError:
-            case Core1ResultType::WorkerFault:
-            default:
-                break;
-        }
+        handle_worker_result(result);
+    }
+}
+
+void DesktopProtocol::handle_worker_result(const Core1Result& result) {
+    switch (result.type) {
+        case Core1ResultType::FileOpened:
+            handle_upload_opened(result);
+            break;
+        case Core1ResultType::UploadChunkCommitted:
+            commit_upload_result(result);
+            break;
+        case Core1ResultType::FileClosed:
+            handle_upload_finalized(result);
+            break;
+        case Core1ResultType::DownloadOpened:
+            process_download_opened(result);
+            break;
+        case Core1ResultType::DownloadChunkRead:
+            process_download_chunk_read(result);
+            break;
+        case Core1ResultType::DownloadClosed:
+            break;
+        case Core1ResultType::FileListPage:
+            process_file_list_page(result);
+            break;
+        case Core1ResultType::FileDeleted:
+            process_file_deleted(result);
+            break;
+        case Core1ResultType::FreeSpaceReady:
+            process_free_space_ready(result);
+            break;
+        case Core1ResultType::StorageHealthReady:
+            process_storage_health_ready(result);
+            break;
+        case Core1ResultType::StreamPrepareReady:
+        case Core1ResultType::StreamLineBatchReady:
+        case Core1ResultType::StreamCancelled:
+            uart_client_.handle_worker_result(result);
+            break;
+        case Core1ResultType::TransferAborted:
+        case Core1ResultType::StorageError:
+        case Core1ResultType::WorkerFault:
+            uart_client_.handle_worker_result(result);
+            break;
+        case Core1ResultType::None:
+        default:
+            break;
     }
 }
 

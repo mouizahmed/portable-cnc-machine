@@ -9,6 +9,8 @@ extern "C" {
 
 constexpr std::size_t kCore1WorkerTransferChunkBytes = 4096;
 constexpr std::size_t kCore1WorkerFileListPageEntries = 8;
+constexpr std::size_t kCore1WorkerStreamBatchLines = 8;
+constexpr std::size_t kCore1WorkerStreamLineBytes = 192;
 
 enum class Core1JobIntent : uint8_t {
     Unspecified,
@@ -40,6 +42,9 @@ enum class Core1JobType : uint8_t {
     StorageFreeSpace,
     StorageHealthCheck,
     StorageAbortTransfer,
+    JobStreamPrepareBegin,
+    JobStreamPrepareNextBatch,
+    JobStreamCancel,
 };
 
 enum class Core1ResultType : uint8_t {
@@ -55,6 +60,9 @@ enum class Core1ResultType : uint8_t {
     FreeSpaceReady,
     StorageHealthReady,
     TransferAborted,
+    StreamPrepareReady,
+    StreamLineBatchReady,
+    StreamCancelled,
     StorageError,
     WorkerFault,
 };
@@ -103,6 +111,19 @@ struct Core1DeleteFileJob {
     char filename[64]{};
 };
 
+struct Core1JobStreamPrepareBeginJob {
+    int16_t loaded_index = -1;
+    char filename[64]{};
+};
+
+struct Core1JobStreamPrepareNextBatchJob {
+    int16_t loaded_index = -1;
+};
+
+struct Core1JobStreamCancelJob {
+    int16_t loaded_index = -1;
+};
+
 struct Core1Job {
     Core1JobType type = Core1JobType::None;
     Core1JobIntent intent = Core1JobIntent::Unspecified;
@@ -115,6 +136,9 @@ struct Core1Job {
     Core1DownloadCloseJob close_download{};
     Core1DeleteFileJob delete_file{};
     Core1UploadAbortJob abort_transfer{};
+    Core1JobStreamPrepareBeginJob stream_prepare{};
+    Core1JobStreamPrepareNextBatchJob stream_batch{};
+    Core1JobStreamCancelJob stream_cancel{};
 };
 
 struct Core1UploadOpenResult {
@@ -202,6 +226,26 @@ struct Core1StorageHealthResult {
     bool healthy = false;
 };
 
+struct Core1JobStreamPrepareResult {
+    int16_t loaded_index = -1;
+    uint32_t total_lines = 0;
+    FRESULT result = FR_OK;
+    char filename[64]{};
+};
+
+struct Core1JobStreamLineBatchResult {
+    int16_t loaded_index = -1;
+    uint8_t line_count = 0;
+    bool complete = false;
+    FRESULT result = FR_OK;
+    char lines[kCore1WorkerStreamBatchLines][kCore1WorkerStreamLineBytes]{};
+};
+
+struct Core1JobStreamCancelResult {
+    int16_t loaded_index = -1;
+    FRESULT result = FR_OK;
+};
+
 struct Core1Result {
     Core1ResultType type = Core1ResultType::None;
     Core1JobType source_job = Core1JobType::None;
@@ -216,6 +260,9 @@ struct Core1Result {
     Core1FreeSpaceResult free_space{};
     Core1StorageHealthResult health{};
     Core1TransferAbortResult abort_transfer{};
+    Core1JobStreamPrepareResult stream_prepare{};
+    Core1JobStreamLineBatchResult stream_batch{};
+    Core1JobStreamCancelResult stream_cancel{};
 };
 
 struct Core1WorkerSnapshot {

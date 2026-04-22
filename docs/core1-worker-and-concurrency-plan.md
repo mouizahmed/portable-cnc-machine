@@ -899,6 +899,9 @@ Completed implementation notes:
 
 ### Phase 6: Job Stream Preparation
 
+Status: Complete in firmware build; hardware UART streaming, hold/abort preemption, and
+disconnect validation still required.
+
 - Add job stream FSM.
 - Add motion command/telemetry scheduler state used by `OperationCoordinator`, including
   command-in-flight, telemetry-pending, and urgent-pending inputs.
@@ -916,6 +919,35 @@ Acceptance:
 - Duplicate telemetry polls are coalesced instead of stacked.
 - Hold/abort/estop preempt streaming.
 - Teensy disconnect cancels stream and moves to `CommsFault`.
+
+Completed implementation notes:
+
+- Added `pico2W/src/app/stream/job_stream_state_machine.h`.
+- Added `pico2W/src/app/stream/job_stream_state_machine.cpp`.
+- Added `pico2W/src/app/comm/motion_link_types.h`.
+- Added `JobStreamPrepareBegin`, `JobStreamPrepareNextBatch`, and `JobStreamCancel`
+  worker jobs.
+- Added `StreamPrepareReady`, `StreamLineBatchReady`, and `StreamCancelled` worker
+  results.
+- `Core1Worker` now owns stream-file open/count/reseek/read/cancel work for SD-backed
+  job streaming.
+- `PicoUartClient::upload_and_run_loaded_job()` no longer reads the SD file
+  synchronously on core 0. It now:
+  submits a stream-prepare job, enters `Starting`/`Preparing`, sends `JOB_SELECT` and
+  `JOB_BEGIN` when metadata is ready, streams worker-prepared line batches over UART on
+  core 0, then sends `JOB_END` and `RUN`.
+- `PicoUartClient` now tracks motion-link scheduler state via `MotionLinkSnapshot`,
+  parses `@ACK` traffic, coalesces background telemetry probe work, and exposes stream
+  state plus motion-link state to the coordinator.
+- `OperationCoordinator` now gates job start and other foreground motion/storage
+  requests using real job-stream state plus motion-link command-in-flight /
+  urgent-pending inputs instead of a placeholder idle stream state.
+- `DesktopProtocol` motion/job commands now route through `PicoUartClient` instead of
+  the previous local stub transitions, and worker stream results are forwarded from the
+  protocol worker-result drain into `PicoUartClient`.
+- `PortableCncApp` and TFT start/jog/home flows now use the same worker-backed UART
+  stream path as desktop commands.
+- Verified with `cmake --build build` in `pico2W`.
 
 ### Phase 7: Optional Future Motion Link Redesign
 

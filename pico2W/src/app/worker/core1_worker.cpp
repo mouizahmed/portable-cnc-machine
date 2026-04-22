@@ -51,6 +51,49 @@ bool has_extension(const char* name, const char* extension) {
     return *dot == '\0' && *extension == '\0';
 }
 
+bool read_text_line(FIL& file, char* buffer, std::size_t size, FRESULT& line_result) {
+    line_result = FR_OK;
+    if (buffer == nullptr || size == 0) {
+        line_result = FR_INVALID_PARAMETER;
+        return false;
+    }
+
+    std::size_t index = 0;
+    while (index + 1 < size) {
+        char c = '\0';
+        UINT bytes_read = 0;
+        line_result = f_read(&file, &c, 1, &bytes_read);
+        if (line_result != FR_OK || bytes_read == 0) {
+            break;
+        }
+        if (c == '\r') {
+            continue;
+        }
+        if (c == '\n') {
+            break;
+        }
+        buffer[index++] = c;
+    }
+
+    buffer[index] = '\0';
+    return index > 0;
+}
+
+void trim_line(char* line) {
+    if (line == nullptr) {
+        return;
+    }
+
+    std::size_t length = std::strlen(line);
+    while (length > 0 &&
+           (line[length - 1] == '\r' ||
+            line[length - 1] == '\n' ||
+            line[length - 1] == ' ' ||
+            line[length - 1] == '\t')) {
+        line[--length] = '\0';
+    }
+}
+
 Core1JobIntent default_intent_for_job(Core1JobType type) {
     switch (type) {
         case Core1JobType::StorageAbortTransfer:
@@ -60,6 +103,9 @@ Core1JobIntent default_intent_for_job(Core1JobType type) {
         case Core1JobType::StorageWriteUploadChunk:
         case Core1JobType::StorageFinalizeUpload:
         case Core1JobType::StorageDeleteFile:
+        case Core1JobType::JobStreamPrepareBegin:
+        case Core1JobType::JobStreamPrepareNextBatch:
+        case Core1JobType::JobStreamCancel:
             return Core1JobIntent::ForegroundExclusive;
 
         case Core1JobType::StorageOpenDownload:
@@ -464,6 +510,18 @@ void Core1Worker::execute_job(const Core1Job& job) {
             execute_abort_transfer(job);
             return;
 
+        case Core1JobType::JobStreamPrepareBegin:
+            execute_stream_prepare_begin(job);
+            return;
+
+        case Core1JobType::JobStreamPrepareNextBatch:
+            execute_stream_prepare_next_batch(job);
+            return;
+
+        case Core1JobType::JobStreamCancel:
+            execute_stream_cancel(job);
+            return;
+
         case Core1JobType::None:
         default: {
             Core1Result result{};
@@ -614,6 +672,7 @@ void Core1Worker::execute_abort_transfer(const Core1Job& job) {
     if (download_file_open_ && job.abort_transfer.transfer_id == download_transfer_id_) {
         close_download_file(result.abort_transfer.close_result);
     }
+    close_stream_file();
     close_list_dir();
 
     if (job.abort_transfer.delete_partial) {
@@ -625,6 +684,122 @@ void Core1Worker::execute_abort_transfer(const Core1Job& job) {
         result.abort_transfer.unlink_result = f_unlink(path);
     }
 
+    push_result(result);
+}
+
+void Core1Worker::execute_stream_prepare_begin(const Core1Job& job) {
+    close_stream_file();
+
+    Core1Result result{};
+    result.type = Core1ResultType::StreamPrepareReady;
+    result.source_job = job.type;
+    result.stream_prepare.loaded_index = job.stream_prepare.loaded_index;
+    copy_text(result.stream_prepare.filename,
+              sizeof(result.stream_prepare.filename),
+              job.stream_prepare.filename);
+
+    char path[80]{};
+    make_storage_path(job.stream_prepare.filename, path, sizeof(path));
+
+    stream_file_ = FIL{};
+    result.stream_prepare.result = f_open(&stream_file_, path, FA_READ);
+    if (result.stream_prepare.result != FR_OK) {
+        push_result(result);
+        return;
+    }
+
+    char line[kCore1WorkerStreamLineBytes]{};
+    FRESULT line_result = FR_OK;
+    uint32_t total_lines = 0;
+    while (read_text_line(stream_file_, line, sizeof(line), line_result)) {
+        trim_line(line);
+        if (line[0] == '\0') {
+            continue;
+        }
+        ++total_lines;
+    }
+
+    if (line_result != FR_OK) {
+        result.stream_prepare.result = line_result;
+        close_stream_file();
+        push_result(result);
+        return;
+    }
+
+    if (total_lines == 0) {
+        result.stream_prepare.result = FR_INVALID_OBJECT;
+        close_stream_file();
+        push_result(result);
+        return;
+    }
+
+    result.stream_prepare.result = f_lseek(&stream_file_, 0);
+    if (result.stream_prepare.result != FR_OK) {
+        close_stream_file();
+        push_result(result);
+        return;
+    }
+
+    stream_file_open_ = true;
+    stream_loaded_index_ = job.stream_prepare.loaded_index;
+    stream_total_lines_ = total_lines;
+    copy_text(stream_filename_, sizeof(stream_filename_), job.stream_prepare.filename);
+    result.stream_prepare.total_lines = total_lines;
+    push_result(result);
+}
+
+void Core1Worker::execute_stream_prepare_next_batch(const Core1Job& job) {
+    Core1Result result{};
+    result.type = Core1ResultType::StreamLineBatchReady;
+    result.source_job = job.type;
+    result.stream_batch.loaded_index = job.stream_batch.loaded_index;
+
+    if (!stream_file_open_ || job.stream_batch.loaded_index != stream_loaded_index_) {
+        result.stream_batch.result = FR_INVALID_OBJECT;
+        result.stream_batch.complete = true;
+        push_result(result);
+        return;
+    }
+
+    char line[kCore1WorkerStreamLineBytes]{};
+    FRESULT line_result = FR_OK;
+    while (result.stream_batch.line_count < kCore1WorkerStreamBatchLines) {
+        const bool has_line = read_text_line(stream_file_, line, sizeof(line), line_result);
+        if (line_result != FR_OK) {
+            result.stream_batch.result = line_result;
+            result.stream_batch.complete = true;
+            close_stream_file();
+            push_result(result);
+            return;
+        }
+        if (!has_line) {
+            result.stream_batch.complete = true;
+            close_stream_file();
+            push_result(result);
+            return;
+        }
+
+        trim_line(line);
+        if (line[0] == '\0') {
+            continue;
+        }
+
+        copy_text(result.stream_batch.lines[result.stream_batch.line_count],
+                  sizeof(result.stream_batch.lines[result.stream_batch.line_count]),
+                  line);
+        ++result.stream_batch.line_count;
+    }
+
+    push_result(result);
+}
+
+void Core1Worker::execute_stream_cancel(const Core1Job& job) {
+    Core1Result result{};
+    result.type = Core1ResultType::StreamCancelled;
+    result.source_job = job.type;
+    result.stream_cancel.loaded_index = job.stream_cancel.loaded_index;
+    result.stream_cancel.result = FR_OK;
+    close_stream_file();
     push_result(result);
 }
 
@@ -800,6 +975,17 @@ void Core1Worker::close_download_file(FRESULT& result) {
     download_file_open_ = false;
     download_transfer_id_ = 0;
     download_filename_[0] = '\0';
+}
+
+void Core1Worker::close_stream_file() {
+    if (stream_file_open_) {
+        f_close(&stream_file_);
+    }
+    stream_file_ = FIL{};
+    stream_file_open_ = false;
+    stream_loaded_index_ = -1;
+    stream_filename_[0] = '\0';
+    stream_total_lines_ = 0;
 }
 
 void Core1Worker::close_list_dir() {

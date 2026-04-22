@@ -67,6 +67,7 @@ add_executable(portable_cnc_machine
     src/app/status/status_provider.cpp
     src/app/storage/storage_service.cpp
     src/app/storage/storage_transfer_fsm.cpp
+    src/app/stream/job_stream_state_machine.cpp
     src/app/worker/core1_worker.cpp
     src/protocol/desktop_protocol.cpp
     src/protocol/usb_cdc_transport.cpp

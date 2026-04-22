@@ -32,6 +32,10 @@ bool worker_foreground_idle(const Core1WorkerSnapshot& worker) {
 RequestDecision accept_or_suppress_background(const Core1WorkerSnapshot& worker) {
     return worker.has_background_only_work ? suppress_background() : accept();
 }
+
+bool motion_busy_for_foreground(const MotionLinkSnapshot& motion) {
+    return motion.command_in_flight || motion.urgent_pending;
+}
 }  // namespace
 
 const char* request_decision_text(RequestDecisionType type) {
@@ -53,6 +57,7 @@ RequestDecision OperationCoordinator::decide(const OperationRequest& request,
                                              const StorageTransferStateMachine& storage,
                                              JobStreamState stream,
                                              const Core1WorkerSnapshot& worker,
+                                             const MotionLinkSnapshot& motion,
                                              StorageState storage_state) const {
     const MachineOperationState machine_state = machine.state();
     const CapsFlags caps = machine.caps();
@@ -80,12 +85,15 @@ RequestDecision OperationCoordinator::decide(const OperationRequest& request,
             return caps.reset ? preempt() : invalid();
 
         case OperationRequestType::JobResume:
+            if (motion.urgent_pending) {
+                return busy();
+            }
             return caps.job_resume ? accept() : invalid();
 
         case OperationRequestType::HomeAll:
         case OperationRequestType::Jog:
         case OperationRequestType::ZeroAll:
-            if (storage.is_active() || stream_active(stream)) {
+            if (storage.is_active() || stream_active(stream) || motion_busy_for_foreground(motion)) {
                 return busy();
             }
             return caps.motion ? accept() : invalid();
@@ -94,13 +102,16 @@ RequestDecision OperationCoordinator::decide(const OperationRequest& request,
             if (!caps.job_start) {
                 return invalid();
             }
-            if (storage.is_active() || stream_active(stream) || !worker_foreground_idle(worker)) {
+            if (storage.is_active() ||
+                stream_active(stream) ||
+                !worker_foreground_idle(worker) ||
+                motion_busy_for_foreground(motion)) {
                 return busy();
             }
             return accept_or_suppress_background(worker);
 
         case OperationRequestType::FileUnload:
-            if (storage.is_active() || stream_active(stream)) {
+            if (storage.is_active() || stream_active(stream) || motion.urgent_pending) {
                 return busy();
             }
             return machine_allows_storage(machine_state) ? accept() : invalid();
@@ -113,7 +124,10 @@ RequestDecision OperationCoordinator::decide(const OperationRequest& request,
             if (!storage_mounted(storage_state) || !machine.sd_mounted()) {
                 return invalid();
             }
-            if (storage.is_active() || stream_active(stream) || !worker_foreground_idle(worker)) {
+            if (storage.is_active() ||
+                stream_active(stream) ||
+                !worker_foreground_idle(worker) ||
+                motion.urgent_pending) {
                 return busy();
             }
             return machine_allows_storage(machine_state)
@@ -122,7 +136,7 @@ RequestDecision OperationCoordinator::decide(const OperationRequest& request,
 
         case OperationRequestType::SettingsSave:
         case OperationRequestType::CalibrationSave:
-            if (storage.is_active() || stream_active(stream)) {
+            if (storage.is_active() || stream_active(stream) || motion.urgent_pending) {
                 return busy();
             }
             if (!worker_foreground_idle(worker)) {
