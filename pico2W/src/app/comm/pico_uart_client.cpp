@@ -770,6 +770,26 @@ PicoUartPollResult PicoUartClient::handle_gcode_error(const char* line, uint32_t
 }
 
 void PicoUartClient::service_background_telemetry(uint32_t now) {
+    if (!linked_) {
+        if ((now - last_probe_ms_) < kProbeIntervalMs) {
+            return;
+        }
+
+        motion_snapshot_.telemetry_pending = true;
+        if (motion_snapshot_.command_in_flight || motion_snapshot_.urgent_pending || job_stream_.is_active()) {
+            return;
+        }
+
+        if (send_probe()) {
+            last_probe_ms_ = now;
+            if (missed_probes_ < kMaxMissedProbes) {
+                ++missed_probes_;
+            }
+            motion_snapshot_.telemetry_pending = false;
+        }
+        return;
+    }
+
     if ((now - last_rx_ms_) < kSilentLinkThresholdMs) {
         motion_snapshot_.telemetry_pending = false;
         return;

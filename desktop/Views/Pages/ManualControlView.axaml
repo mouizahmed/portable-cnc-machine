@@ -109,11 +109,11 @@
 
     <controls:SectionCard Grid.Row="0" Grid.Column="1" Title="JOG SETTINGS">
       <controls:SectionCard.Body>
-        <StackPanel Spacing="8"
-                    IsEnabled="{Binding CanJogControls}">
+        <StackPanel Spacing="8">
           <StackPanel Spacing="4">
             <TextBlock Text="Step Size" Classes="FieldLabel"/>
-            <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="4">
+            <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="4"
+                  IsEnabled="{Binding CanJogControls}">
               <Button Content="0.01"
                       Command="{Binding SetStepCommand}"
                       CommandParameter="0.01"
@@ -152,12 +152,56 @@
                            Minimum="1"
                            Maximum="5000"
                            Increment="100"
-                           FormatString="F0"/>
+                           FormatString="F0"
+                           IsEnabled="{Binding CanJogControls}"/>
           </StackPanel>
 
           <CheckBox Content="Continuous Jog"
                     IsChecked="{Binding ContinuousJog}"
+                    IsEnabled="{Binding CanJogControls}"
                     Foreground="{DynamicResource TextSecondaryBrush}"/>
+
+          <Border Height="1" Background="{DynamicResource BorderBrush}"/>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="Z CYCLE" Classes="FieldLabel" FontWeight="SemiBold"/>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Distance (mm)" Classes="FieldLabel"/>
+                <NumericUpDown Value="{Binding ZCycleDistance}"
+                               Minimum="0.01"
+                               Maximum="50"
+                               Increment="0.1"
+                               FormatString="F2"
+                               IsEnabled="{Binding CanStartZCycle}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Text="Interval (ms)" Classes="FieldLabel"/>
+                <NumericUpDown Value="{Binding ZCycleIntervalMs}"
+                               Minimum="100"
+                               Maximum="10000"
+                               Increment="100"
+                               FormatString="F0"
+                               IsEnabled="{Binding CanStartZCycle}"/>
+              </StackPanel>
+            </Grid>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+              <Button Content="Start Z Cycle"
+                      Command="{Binding StartZCycleCommand}"
+                      Classes="AppButton Primary"
+                      IsEnabled="{Binding CanStartZCycle}"
+                      HorizontalAlignment="Stretch"/>
+              <Button Grid.Column="1"
+                      Content="Stop"
+                      Command="{Binding StopZCycleCommand}"
+                      Classes="AppButton Danger"
+                      IsEnabled="{Binding CanStopZCycle}"
+                      HorizontalAlignment="Stretch"/>
+            </Grid>
+            <TextBlock Text="Uses inverted Z wiring: physical up sends Z-, physical down sends Z+."
+                       Classes="FieldLabel"
+                       TextWrapping="Wrap"/>
+          </StackPanel>
         </StackPanel>
       </controls:SectionCard.Body>
     </controls:SectionCard>

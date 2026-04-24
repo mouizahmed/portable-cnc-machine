@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Media;
@@ -32,6 +33,40 @@ public sealed class ManualControlViewModel : PageViewModelBase
                 UpdateSelectionPreview();
         }
     }
+
+    private double _zCycleDistance = 1.0;
+    public double ZCycleDistance
+    {
+        get => _zCycleDistance;
+        set => SetProperty(ref _zCycleDistance, Math.Clamp(value, 0.01, 50.0));
+    }
+
+    private int _zCycleIntervalMs = 1000;
+    public int ZCycleIntervalMs
+    {
+        get => _zCycleIntervalMs;
+        set => SetProperty(ref _zCycleIntervalMs, Math.Clamp(value, 100, 10000));
+    }
+
+    private bool _isZCycleRunning;
+    public bool IsZCycleRunning
+    {
+        get => _isZCycleRunning;
+        private set
+        {
+            if (SetProperty(ref _isZCycleRunning, value))
+            {
+                RaisePropertyChanged(nameof(CanStartZCycle));
+                RaisePropertyChanged(nameof(CanStopZCycle));
+                RaiseZCycleCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool CanStartZCycle => MainVm?.IsConnected == true && CanJogControls && !IsZCycleRunning;
+    public bool CanStopZCycle => MainVm?.IsConnected == true && IsZCycleRunning;
+
+    private CancellationTokenSource? _zCycleCancellation;
 
     private bool _continuousJog;
     public bool ContinuousJog
@@ -230,6 +265,8 @@ public sealed class ManualControlViewModel : PageViewModelBase
     public ICommand SoftResetCommand       { get; }
     public ICommand ProbeZCommand          { get; }
     public ICommand JogCancelCommand       { get; }
+    public ICommand StartZCycleCommand     { get; }
+    public ICommand StopZCycleCommand      { get; }
     public ICommand SendCustomCommandCommand { get; }
     public ICommand FeedOverridePlusCommand   { get; }
     public ICommand FeedOverrideMinusCommand  { get; }
@@ -285,6 +322,8 @@ public sealed class ManualControlViewModel : PageViewModelBase
         SoftResetCommand    = new RelayCommand(SoftResetTracked);
         ProbeZCommand       = new RelayCommand(ProbeZ);
         JogCancelCommand    = new RelayCommand(JogCancel);
+        StartZCycleCommand  = new RelayCommand(StartZCycle, () => CanStartZCycle);
+        StopZCycleCommand   = new RelayCommand(StopZCycle, () => CanStopZCycle);
         SendCustomCommandCommand = new RelayCommand(SendCustom);
 
         FeedOverridePlusCommand    = new RelayCommand(() => SendFeedOverride(FeedOverride + 10));
@@ -362,6 +401,8 @@ public sealed class ManualControlViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(CanAlarmUnlock));
         RaisePropertyChanged(nameof(CanSoftReset));
         RaisePropertyChanged(nameof(CanCancelJog));
+        RaisePropertyChanged(nameof(CanStartZCycle));
+        RaisePropertyChanged(nameof(CanStopZCycle));
         RaisePropertyChanged(nameof(CanSendCustomCommand));
         RaisePropertyChanged(nameof(ShowJogLockout));
         RaisePropertyChanged(nameof(ShowHomeLockout));
@@ -429,6 +470,115 @@ public sealed class ManualControlViewModel : PageViewModelBase
     {
         if (MainVm == null || !CanCancelJog) return;
         await ExecuteProtocolCommandAsync("JOG_CANCEL", MainVm.Protocol.SendJogCancel, "@JOG_CANCEL", "Jog cancelled.", "Jog cancel failed");
+    }
+
+    private void StartZCycle()
+    {
+        if (MainVm == null || !CanStartZCycle)
+            return;
+
+        _zCycleCancellation?.Cancel();
+        _zCycleCancellation?.Dispose();
+        _zCycleCancellation = new CancellationTokenSource();
+        IsZCycleRunning = true;
+        _ = RunZCycleAsync(_zCycleCancellation.Token);
+    }
+
+    private void StopZCycle()
+    {
+        _zCycleCancellation?.Cancel();
+        if (MainVm != null && MainVm.IsConnected)
+            MainVm.Protocol.SendJogCancel();
+
+        IsZCycleRunning = false;
+        SetCommandPreview("Z cycle stopped");
+        if (MainVm != null)
+        {
+            MainVm.StatusMessage = "Z cycle stopped.";
+            MainVm.IsStatusError = false;
+        }
+    }
+
+    private async Task RunZCycleAsync(CancellationToken cancellationToken)
+    {
+        if (MainVm == null)
+            return;
+
+        var physicalUp = true;
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var distance = Math.Abs(ZCycleDistance);
+                var commandDistance = physicalUp ? -distance : distance;
+                var directionText = physicalUp ? "up" : "down";
+                var preview = $"@JOG AXIS=Z DIST={commandDistance:+0.000;-0.000} FEED={JogFeedRate:F0}";
+
+                SetCommandPreview(preview);
+                MainVm.StatusMessage = $"Z cycle {directionText} {distance:0.###} mm";
+                MainVm.IsStatusError = false;
+
+                var result = await MainVm.SendCommandAndWaitAsync(
+                    "JOG",
+                    () => MainVm.Protocol.SendJog('Z', (float)commandDistance, (float)JogFeedRate),
+                    TimeSpan.FromSeconds(3),
+                    cancellationToken,
+                    disconnectOnTimeout: false);
+
+                if (result.Kind == MainWindowViewModel.ControllerCommandResultKind.Busy)
+                {
+                    await Task.Delay(Math.Min(250, ZCycleIntervalMs), cancellationToken);
+                    continue;
+                }
+
+                MainVm.ApplyCommandResult(result, "Z cycle jog failed");
+                if (!result.Success)
+                    break;
+
+                physicalUp = !physicalUp;
+                var idle = await WaitForMachineIdleAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                if (!idle)
+                    break;
+
+                await Task.Delay(ZCycleIntervalMs, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (_zCycleCancellation?.Token == cancellationToken)
+            {
+                _zCycleCancellation.Dispose();
+                _zCycleCancellation = null;
+                IsZCycleRunning = false;
+            }
+        }
+    }
+
+    private async Task<bool> WaitForMachineIdleAsync(TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        if (MainVm == null)
+            return false;
+
+        var start = DateTime.UtcNow;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (MainVm.MachineState == MachineOperationState.Idle)
+                return true;
+
+            if (DateTime.UtcNow - start >= timeout)
+            {
+                MainVm.StatusMessage = "Z cycle stopped: machine did not return to idle.";
+                MainVm.IsStatusError = true;
+                return false;
+            }
+
+            await Task.Delay(50, cancellationToken);
+        }
+
+        return false;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -726,6 +876,12 @@ public sealed class ManualControlViewModel : PageViewModelBase
     {
         var mode = ContinuousJog ? "continuous" : "step";
         CommandPreview = $"Jog selection: {JogStep:0.###} mm at {JogFeedRate:F0} mm/min ({mode})";
+    }
+
+    private void RaiseZCycleCanExecuteChanged()
+    {
+        ((RelayCommand)StartZCycleCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)StopZCycleCommand).RaiseCanExecuteChanged();
     }
 
     private void HandleThemeChanged(object? sender, EventArgs e) => RaiseMainStateProperties();
