@@ -130,7 +130,7 @@ N_AXIS has default value 3 (see grbl/config.h)
 //#define WEBUI_ENABLE            3 // Enable ESP3D-WEBUI plugin along with networking and SD card plugins.
 //#define ETHERNET_ENABLE         1 // Ethernet streaming. Enables networking plugin.
 //#define SDCARD_ENABLE           1 // Run gcode programs from SD card. Set to 2 to enable YModem upload.
-#define LITTLEFS_ENABLE         1 // Enable flash based storage for uploaded Pico job files.
+#define LITTLEFS_ENABLE         0 // Pico streams jobs over UART; Teensy flash job storage is not used.
 //#define ENCODER_ENABLE          1 // Enable encoder plugin and quadrature encoder interface. Set to to 2 if select input is not required or available.
 //#define MPG_ENABLE              1 // Enable MPG interface. Requires a serial stream and means to switch between normal and MPG mode.
                                     // 1: Mode switching is by handshake pin.
