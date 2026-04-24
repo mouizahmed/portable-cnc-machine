@@ -35,6 +35,10 @@ extern "C" {
 #define PICO_UART_DEBUG_USB 0
 #endif
 
+#ifndef PICO_UART_MANUAL_DEBUG_USB
+#define PICO_UART_MANUAL_DEBUG_USB 1
+#endif
+
 namespace {
 
 struct PicoBridgeContext {
@@ -44,6 +48,7 @@ struct PicoBridgeContext {
     sys_state_t last_reported_state = (sys_state_t)0xFF;
     on_state_change_ptr previous_on_state_change = nullptr;
     on_realtime_report_ptr previous_on_realtime_report = nullptr;
+    bool manual_log_context = false;
 };
 
 PicoBridgeContext pico_ctx;
@@ -56,9 +61,18 @@ HardwareSerial& pico_uart()
 void uart_send_line(const char* line)
 {
     pico_uart().println(line);
-#if PICO_UART_DEBUG_USB
+#if PICO_UART_DEBUG_USB || PICO_UART_MANUAL_DEBUG_USB
+  #if PICO_UART_MANUAL_DEBUG_USB
+    if(pico_ctx.manual_log_context) {
+        Serial.print("[PICO-TX] ");
+        Serial.println(line);
+        return;
+    }
+  #endif
+  #if PICO_UART_DEBUG_USB
     Serial.print("[PICO-TX] ");
     Serial.println(line);
+  #endif
 #endif
 }
 
@@ -94,6 +108,21 @@ bool is_blank_line(const char* line)
         line++;
     }
     return true;
+}
+
+bool is_manual_control_line(const char* line)
+{
+    return strcmp(line, "@HOME") == 0 ||
+           strncmp(line, "@JOG ", 5) == 0 ||
+           strcmp(line, "@JOG_CANCEL") == 0 ||
+           strncmp(line, "@ZERO ", 6) == 0 ||
+           strncmp(line, "@SPINDLE_ON ", 12) == 0 ||
+           strcmp(line, "@SPINDLE_OFF") == 0 ||
+           strcmp(line, "@UNLOCK") == 0 ||
+           strcmp(line, "@RT_FEED_HOLD") == 0 ||
+           strcmp(line, "@RT_CYCLE_START") == 0 ||
+           strcmp(line, "@RT_RESET") == 0 ||
+           strcmp(line, "@RT_ESTOP") == 0;
 }
 
 bool extract_token(const char* line, const char* key, char* out, size_t size)
@@ -160,6 +189,13 @@ void report_state(sys_state_t state)
     uart_sendf("@GRBL_STATE %s", grbl_state_name(state));
 }
 
+void maybe_report_state()
+{
+    const sys_state_t state = state_get();
+    if(state != pico_ctx.last_reported_state)
+        report_state(state);
+}
+
 void report_position()
 {
     float mpos[N_AXIS] = {0.0f};
@@ -208,6 +244,12 @@ void send_enqueue_status(bool ok)
 
 void enqueue_realtime(uint8_t command)
 {
+#if PICO_UART_MANUAL_DEBUG_USB
+    if(pico_ctx.manual_log_context) {
+        Serial.print("[GRBL-RT] 0x");
+        Serial.println(command, HEX);
+    }
+#endif
     protocol_enqueue_realtime_command(command);
     uart_send_line("ok");
 }
@@ -217,6 +259,12 @@ void execute_system_line(const char* command)
     char buffer[96];
     strncpy(buffer, command, sizeof(buffer) - 1);
     buffer[sizeof(buffer) - 1] = '\0';
+#if PICO_UART_MANUAL_DEBUG_USB
+    if(pico_ctx.manual_log_context) {
+        Serial.print("[GRBL-SYS] ");
+        Serial.println(buffer);
+    }
+#endif
     send_status(system_execute_line(buffer));
 }
 
@@ -225,6 +273,12 @@ void enqueue_gcode_line(const char* command)
     char buffer[PICO_UART_LINE_LENGTH];
     strncpy(buffer, command, sizeof(buffer) - 1);
     buffer[sizeof(buffer) - 1] = '\0';
+#if PICO_UART_MANUAL_DEBUG_USB
+    if(pico_ctx.manual_log_context) {
+        Serial.print("[GRBL-GCODE] ");
+        Serial.println(buffer);
+    }
+#endif
     send_enqueue_status(protocol_enqueue_gcode(buffer));
 }
 
@@ -369,15 +423,34 @@ void handle_input_line(char* line)
     if(is_blank_line(line))
         return;
 
-#if PICO_UART_DEBUG_USB
+#if PICO_UART_DEBUG_USB || PICO_UART_MANUAL_DEBUG_USB
+  #if PICO_UART_MANUAL_DEBUG_USB
+    const bool manual_log = is_manual_control_line(line);
+    if(manual_log) {
+        Serial.print("[PICO-RX] ");
+        Serial.println(line);
+    }
+  #else
+    const bool manual_log = false;
+  #endif
+  #if PICO_UART_DEBUG_USB
     Serial.print("[PICO-RX] ");
     Serial.println(line);
+  #endif
+#else
+    const bool manual_log = false;
 #endif
 
-    if(line[0] == '@')
+    const bool previous_manual_log_context = pico_ctx.manual_log_context;
+    pico_ctx.manual_log_context = manual_log;
+
+    if(line[0] == '@') {
         handle_command(line);
-    else
+    } else {
         uart_send_line("error:2");
+    }
+
+    pico_ctx.manual_log_context = previous_manual_log_context;
 }
 
 void service_uart_rx()
@@ -427,6 +500,7 @@ void pico_framework_service_task(void* data)
 {
     (void)data;
     service_uart_rx();
+    maybe_report_state();
     maybe_report_position();
     task_add_delayed(pico_framework_service_task, NULL, PICO_UART_POLL_MS);
 }

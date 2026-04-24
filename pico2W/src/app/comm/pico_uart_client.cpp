@@ -227,19 +227,19 @@ bool PicoUartClient::jog(JogAction action) {
             return false;
     }
 
-    const bool sent = jog_axis(axis, distance, jog_state_machine_.feed_rate_mm_min());
+    return jog_axis(axis, distance, jog_state_machine_.feed_rate_mm_min());
+}
+
+bool PicoUartClient::jog_axis(char axis, float distance_mm, uint16_t feed_mm_min) {
+    const bool sent = send_command("@JOG AXIS=%c DIST=%.3f FEED=%u",
+                                   axis,
+                                   static_cast<double>(distance_mm),
+                                   static_cast<unsigned int>(feed_mm_min));
     if (sent) {
         note_command_started(MotionCommandType::Jog, false, to_ms_since_boot(get_absolute_time()));
         machine_fsm_.handle_event(MachineEvent::JogCmd);
     }
     return sent;
-}
-
-bool PicoUartClient::jog_axis(char axis, float distance_mm, uint16_t feed_mm_min) {
-    return send_command("@JOG AXIS=%c DIST=%.3f FEED=%u",
-                        axis,
-                        static_cast<double>(distance_mm),
-                        static_cast<unsigned int>(feed_mm_min));
 }
 
 bool PicoUartClient::home_all() {
