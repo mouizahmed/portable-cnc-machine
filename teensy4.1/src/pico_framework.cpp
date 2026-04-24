@@ -31,6 +31,10 @@ extern "C" {
 #define PICO_POS_REPORT_MS 200
 #endif
 
+#ifndef PICO_UART_DEBUG_USB
+#define PICO_UART_DEBUG_USB 1
+#endif
+
 namespace {
 
 struct PicoBridgeContext {
@@ -52,6 +56,10 @@ HardwareSerial& pico_uart()
 void uart_send_line(const char* line)
 {
     pico_uart().println(line);
+#if PICO_UART_DEBUG_USB
+    Serial.print("[PICO-TX] ");
+    Serial.println(line);
+#endif
 }
 
 void uart_sendf(const char* fmt, ...)
@@ -358,6 +366,11 @@ void handle_input_line(char* line)
     trim_line(line);
     if(is_blank_line(line))
         return;
+
+#if PICO_UART_DEBUG_USB
+    Serial.print("[PICO-RX] ");
+    Serial.println(line);
+#endif
 
     if(line[0] == '@')
         handle_command(line);
