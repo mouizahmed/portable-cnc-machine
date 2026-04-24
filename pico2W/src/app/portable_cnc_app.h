@@ -80,12 +80,17 @@ private:
     bool sd_was_mounted_ = false;
     bool usb_was_connected_ = false;
     bool upload_was_active_ = false;
+    bool estop_initialized_ = false;
+    bool estop_active_ = false;
+    bool estop_last_raw_active_ = false;
+    uint8_t estop_stable_count_ = 0;
     bool last_render_snapshot_valid_ = false;
     ScreenRenderSnapshot last_render_snapshot_{};
 
     void run_startup_sequence();
     void show_boot_logo();
     bool poll_event(UiEvent& event);
+    bool poll_estop();
     void handle_event(const UiEvent& event);
     void handle_ui_command(const UiEventResult& result);
     void render_storage_change();

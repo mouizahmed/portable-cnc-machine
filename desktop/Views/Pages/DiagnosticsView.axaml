@@ -80,13 +80,13 @@
           <controls:SectionCard.Body>
             <controls:TwoColumnInfoGrid>
               <TextBlock Text="Controller Temp" Classes="FieldLabel"/>
-              <TextBlock Grid.Column="1" Text="{Binding ControllerTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock Grid.Column="1" Text="{Binding ControllerTemperatureText}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
 
               <TextBlock Grid.Row="1" Text="Electronics Temp" Classes="FieldLabel"/>
-              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ElectronicsTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ElectronicsTemperatureText}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
 
               <TextBlock Grid.Row="2" Text="Spindle Temp" Classes="FieldLabel"/>
-              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SpindleTemperature, StringFormat={}{0:F1} deg C}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SpindleTemperatureText}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
             </controls:TwoColumnInfoGrid>
           </controls:SectionCard.Body>
         </controls:SectionCard>

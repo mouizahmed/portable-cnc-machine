@@ -602,8 +602,7 @@ void DesktopProtocol::dispatch_command_frame(const UsbCdcTransport::FramePacket&
         case CMD_BEGIN_JOB:
         case CMD_END_JOB:
         case CMD_CLEAR_JOB:
-            // Compatibility placeholders: the current text parser has no live
-            // handlers for these commands, so binary frames keep the same behavior.
+            // Reserved binary commands with no active handler.
             break;
         default:
             break;
@@ -807,6 +806,16 @@ void DesktopProtocol::emit_event_kv(const char* name, const char* kv) {
 
     if (std::strcmp(name, "JOB_COMPLETE") == 0) {
         EventJobComplete payload{EVENT_JOB_COMPLETE};
+        send_binary_payload([&](const uint8_t* data, uint16_t len) {
+            transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
+        }, payload);
+        return;
+    }
+    if (std::strcmp(name, "JOB_PROGRESS") == 0) {
+        EventJobProgress payload{};
+        payload.message_type = EVENT_JOB_PROGRESS;
+        payload.line = param_get_u32(kv, "LINE", 0);
+        payload.total = param_get_u32(kv, "TOTAL", 0);
         send_binary_payload([&](const uint8_t* data, uint16_t len) {
             transport_.send_frame(kEventFrameType, PCNC_TRANSFER_ID_NONE, 0, data, len);
         }, payload);
@@ -1334,7 +1343,12 @@ void DesktopProtocol::handle_jog(const char* params) {
         return;
     }
 
-    if (!uart_client_.jog(action)) {
+    uint32_t feed = param_get_u32(params, "FEED", jogs_.feed_rate_mm_min());
+    if (feed == 0) {
+        feed = jogs_.feed_rate_mm_min();
+    }
+
+    if (!uart_client_.jog_axis(axis[0], dist, static_cast<uint16_t>(feed))) {
         emit_error("JOG_FAILED");
         return;
     }
@@ -1347,7 +1361,7 @@ void DesktopProtocol::handle_jog_cancel() {
         return;
     }
 
-    if (!uart_client_.abort()) {
+    if (!uart_client_.jog_cancel()) {
         emit_error("JOG_CANCEL_FAILED");
         return;
     }
@@ -1359,8 +1373,12 @@ void DesktopProtocol::handle_zero(const char* params) {
         return;
     }
 
-    (void)params;
-    if (!uart_client_.zero_all()) {
+    char axis[8]{};
+    if (!param_get(params, "AXIS", axis, sizeof(axis))) {
+        std::strncpy(axis, "ALL", sizeof(axis) - 1u);
+    }
+
+    if (!uart_client_.zero_axis(axis)) {
         emit_error("ZERO_FAILED");
         return;
     }
@@ -1422,8 +1440,8 @@ void DesktopProtocol::handle_estop() {
         return;
     }
 
-    // Simulate E-stop assertion in stub mode
     inject(MachineEvent::HwEstopAsserted);
+    uart_client_.estop();
     emit_ok("ESTOP");
     emit_state_update();
 }
@@ -1437,20 +1455,29 @@ void DesktopProtocol::handle_reset() {
         emit_error("INVALID_STATE");
         return;
     }
+    if (!uart_client_.reset()) {
+        emit_error("RESET_FAILED");
+        return;
+    }
     inject(MachineEvent::ResetCmd);
     emit_ok("RESET");
-
-    // Stub: simulate grbl returning to idle after reset
-    inject(MachineEvent::GrblIdle);
     emit_state_update();
 }
 
 void DesktopProtocol::handle_spindle_on(const char* params) {
-    (void)params;
+    const uint32_t rpm = param_get_u32(params, "RPM", machine_settings_.current().spindle_min_rpm);
+    if (!uart_client_.spindle_on(static_cast<uint16_t>(rpm))) {
+        emit_error("SPINDLE_ON_FAILED");
+        return;
+    }
     emit_ok("SPINDLE_ON");
 }
 
 void DesktopProtocol::handle_spindle_off() {
+    if (!uart_client_.spindle_off()) {
+        emit_error("SPINDLE_OFF_FAILED");
+        return;
+    }
     emit_ok("SPINDLE_OFF");
 }
 

@@ -174,9 +174,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             if (SetProperty(ref _machineState, value))
             {
-#pragma warning disable CS0618
-                RaisePropertyChanged(nameof(MotionState));     // compat adapter
-#pragma warning restore CS0618
                 RaisePropertyChanged(nameof(MotionStateLabel));
                 RaisePropertyChanged(nameof(MotionStateBrush));
                 RaisePropertyChanged(nameof(CanStart));
@@ -226,27 +223,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         _                               => ThemeResources.Brush("NeutralStateBrush", "#808080")
     };
 
-    // ── Backward-compat adapter — remove after Phase 4 (ManualControlVm / DiagnosticsVm rework) ──
-
-    [Obsolete("Use MachineState. This adapter is kept so Phase 3-5 child VMs still compile.")]
-    public MotionState MotionState
-    {
-        get => MachineState switch
-        {
-            MachineOperationState.Idle     => MotionState.Idle,
-            MachineOperationState.Homing   => MotionState.Homing,
-            MachineOperationState.Jog      => MotionState.Jog,
-            MachineOperationState.Running  => MotionState.RunProgram,
-            MachineOperationState.Hold     => MotionState.FeedHold,
-            MachineOperationState.Fault    => MotionState.Fault,
-            MachineOperationState.Estop    => MotionState.EStopLatched,
-            _                              => MotionState.PowerUp
-        };
-        // No-op setter — MachineState is read-only, driven by @STATE from Pico.
-        [Obsolete("No-op. State is driven by @STATE from Pico. Remove after Phase 4.")]
-        set { }
-    }
-
     // ════════════════════════════════════════════════════════════════
     // SAFETY LEVEL  (driven by @SAFETY from Pico)
     // ════════════════════════════════════════════════════════════════
@@ -260,9 +236,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         {
             if (SetProperty(ref _safetyLevel, value))
             {
-#pragma warning disable CS0618
-                RaisePropertyChanged(nameof(SafetyState));     // compat adapter
-#pragma warning restore CS0618
                 RaisePropertyChanged(nameof(SafetyStateLabel));
                 RaisePropertyChanged(nameof(SafetyStateBrush));
                 RaisePropertyChanged(nameof(HasSafetyWarning));
@@ -292,23 +265,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool HasSafetyWarning => SafetyLevel == SafetyLevel.Warning ||
                                     SafetyLevel == SafetyLevel.Critical;
-
-    // ── Backward-compat adapter — remove after Phase 4 ──
-
-    [Obsolete("Use SafetyLevel. Kept so Phase 3-5 child VMs still compile.")]
-    public SafetyState SafetyState
-    {
-        get => SafetyLevel switch
-        {
-            SafetyLevel.Safe       => SafetyState.SafeIdle,
-            SafetyLevel.Monitoring => SafetyState.Monitoring,
-            SafetyLevel.Warning    => SafetyState.Warning,
-            SafetyLevel.Critical   => SafetyState.EStopActive,
-            _                      => SafetyState.SafeIdle
-        };
-        [Obsolete("No-op. Safety level is driven by @SAFETY from Pico. Remove after Phase 4.")]
-        set { }
-    }
 
     // ════════════════════════════════════════════════════════════════
     // CAPABILITY FLAGS  (driven by @CAPS from Pico)
@@ -1276,6 +1232,5 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(SafetyStateBrush));
     }
 }
-
 
 

@@ -21,6 +21,12 @@ struct PicoUartPollResult {
     bool machine_changed = false;
     bool job_changed = false;
     bool position_changed = false;
+    bool job_progress = false;
+    bool job_complete = false;
+    bool job_error = false;
+    uint32_t progress_line = 0;
+    uint32_t progress_total = 0;
+    char error_reason[32]{};
     MotionLinkTransition link_transition = MotionLinkTransition::None;
 };
 
@@ -36,12 +42,20 @@ public:
     PicoUartPollResult poll();
     bool select_file(int16_t index);
     bool upload_and_run_loaded_job();
+    bool start_streaming_loaded_job();
     bool hold();
     bool resume();
     bool abort();
+    bool estop();
+    bool reset();
+    bool jog_cancel();
     bool jog(JogAction action);
+    bool jog_axis(char axis, float distance_mm, uint16_t feed_mm_min);
     bool home_all();
     bool zero_all();
+    bool zero_axis(const char* axis);
+    bool spindle_on(uint16_t rpm);
+    bool spindle_off();
     const char* link_status() const;
     JobStreamState job_stream_state() const;
     MotionLinkSnapshot motion_snapshot() const;
@@ -74,11 +88,23 @@ private:
     uint32_t command_started_ms_ = 0;
     bool stream_batch_pending_ = false;
     bool stream_cancel_pending_ = false;
+    bool stream_waiting_for_ok_ = false;
+    bool stream_batch_complete_ = false;
+    uint8_t stream_batch_line_count_ = 0;
+    uint8_t stream_batch_next_line_ = 0;
+    char stream_batch_lines_[kCore1WorkerStreamBatchLines][kCore1WorkerStreamLineBytes]{};
+    uint32_t last_progress_emit_ms_ = 0;
+    uint32_t stream_next_eligible_ms_ = 0;
+    bool pending_job_progress_ = false;
+    bool pending_job_complete_ = false;
+    bool pending_job_error_ = false;
+    uint32_t pending_progress_line_ = 0;
+    uint32_t pending_progress_total_ = 0;
+    char pending_error_reason_[32]{};
 
     void init_transport();
     bool send_probe();
     bool send_ping();
-    bool send_hello();
     bool send_command(const char* fmt, ...);
     bool send_raw_line(const char* line);
     uint32_t next_seq();
@@ -88,7 +114,6 @@ private:
     PicoUartPollResult handle_ack_line(const char* line, uint32_t now);
     PicoUartPollResult handle_boot_line(const char* line, uint32_t now);
     PicoUartPollResult handle_grbl_state_line(const char* line, uint32_t now);
-    PicoUartPollResult handle_event_line(const char* line, uint32_t now);
     PicoUartPollResult handle_error_line(const char* line, uint32_t now);
 
     void mark_valid_traffic(uint32_t now);
@@ -99,14 +124,18 @@ private:
     void note_command_started(MotionCommandType command, bool urgent, uint32_t now);
     void clear_command_in_flight();
     void mark_stream_fault();
+    void mark_stream_fault(const char* reason);
     void cancel_stream(bool send_abort_command);
     bool request_next_stream_batch();
-    bool send_job_begin_sequence(int16_t index, const char* name, uint32_t line_count, uint32_t now);
+    bool send_next_stream_line(uint32_t now);
+    void publish_stream_progress(bool force, uint32_t now);
+    void finish_stream_if_ready();
+    PicoUartPollResult handle_gcode_ok(uint32_t now);
+    PicoUartPollResult handle_gcode_error(const char* line, uint32_t now);
     void service_background_telemetry(uint32_t now);
 
     static bool extract_token(const char* line, const char* key, char* out, std::size_t size);
     static bool extract_int(const char* line, const char* key, int& out);
     static bool extract_float(const char* line, const char* key, float& out);
     PicoUartPollResult handle_machine_state(const char* text, const char* substate, uint32_t now);
-    PicoUartPollResult handle_job_state(const char* text, int index, uint32_t now);
 };

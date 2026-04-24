@@ -1,6 +1,8 @@
 # Pico 2W firmware
 
-This firmware is now a touch calibration and test utility.
+This firmware is the embedded operator/controller layer for the portable CNC prototype.
+It owns the touchscreen UI, SD card storage, desktop USB protocol, machine capability
+state, and the UART motion link to the Teensy/grblHAL controller.
 
 The current Pico SDK drivers are based on:
 
@@ -14,6 +16,10 @@ On boot it:
 - lets you test the saved calibration on-screen
 - allows recalibration by holding the screen
 - asks you to save or retry after a fresh calibration pass
+- initializes SD storage and restored loaded-job metadata
+- opens the USB CDC binary protocol for the desktop app
+- supervises the Pico <-> Teensy UART motion link
+- polls the active-low E-stop input on `GP15`
 
 ## Build
 
@@ -33,3 +39,4 @@ The build produces `portable_cnc_machine.uf2` in `pico2W/build`.
 - Calibration data is stored in the final flash sector on the Pico 2W.
 - The touch test screen shows both mapped coordinates and raw `X / Y / Z`.
 - MVP upload performance notes are documented in [docs/storage-upload-performance.md](../docs/storage-upload-performance.md).
+- Desktop traffic is binary framed; Pico <-> Teensy motion traffic is newline ASCII at 115200 baud.

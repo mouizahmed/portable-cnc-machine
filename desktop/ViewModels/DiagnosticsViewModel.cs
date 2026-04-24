@@ -26,22 +26,37 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
     public double ControllerTemperature
     {
         get => _controllerTemperature;
-        set => SetProperty(ref _controllerTemperature, value);
+        set
+        {
+            if (SetProperty(ref _controllerTemperature, value))
+                RaisePropertyChanged(nameof(ControllerTemperatureText));
+        }
     }
+    public string ControllerTemperatureText => double.IsNaN(ControllerTemperature) ? "Unavailable" : $"{ControllerTemperature:F1} deg C";
 
     private double _electronicsTemperature;
     public double ElectronicsTemperature
     {
         get => _electronicsTemperature;
-        set => SetProperty(ref _electronicsTemperature, value);
+        set
+        {
+            if (SetProperty(ref _electronicsTemperature, value))
+                RaisePropertyChanged(nameof(ElectronicsTemperatureText));
+        }
     }
+    public string ElectronicsTemperatureText => double.IsNaN(ElectronicsTemperature) ? "Unavailable" : $"{ElectronicsTemperature:F1} deg C";
 
     private double _spindleTemperature;
     public double SpindleTemperature
     {
         get => _spindleTemperature;
-        set => SetProperty(ref _spindleTemperature, value);
+        set
+        {
+            if (SetProperty(ref _spindleTemperature, value))
+                RaisePropertyChanged(nameof(SpindleTemperatureText));
+        }
     }
+    public string SpindleTemperatureText => double.IsNaN(SpindleTemperature) ? "Unavailable" : $"{SpindleTemperature:F1} deg C";
 
     public bool XLimitTriggered => MainVm?.XLimitTriggered == true;
     public bool YLimitTriggered => MainVm?.YLimitTriggered == true;
@@ -92,22 +107,18 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
     {
         if (string.IsNullOrWhiteSpace(CommandInput)) return;
 
-        AddLog("TX", CommandInput);
-
-        // TODO: Wire this through the Pico/Teensy command path.
-        AddLog("RX", "ok");
+        AddLog("BLOCKED", $"Raw command rejected in binary protocol mode: {CommandInput}");
 
         CommandInput = string.Empty;
     }
 
     private void RefreshSensors()
     {
-        // TODO: Replace placeholder values with thermistor telemetry from the machine.
-        ControllerTemperature = MainVm?.Temperature ?? 42.5;
-        ElectronicsTemperature = 31.0;
-        SpindleTemperature = 35.0;
+        ControllerTemperature = double.NaN;
+        ElectronicsTemperature = double.NaN;
+        SpindleTemperature = double.NaN;
 
-        AddLog("INFO", "Thermal readings refreshed");
+        AddLog("INFO", "Thermal telemetry unavailable");
     }
 
     private async void ResetFault()

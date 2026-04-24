@@ -314,24 +314,6 @@ public sealed class SerialService : IDisposable
         }
     }
 
-    /// <summary>Send a single real-time byte (e.g. '?' 0x18 '!' '~') without a newline.</summary>
-    public void SendRealtime(byte b)
-    {
-        if (!IsConnected) return;
-        try
-        {
-            lock (_writeSync)
-            {
-                _port!.BaseStream.WriteByte(b);
-            }
-        }
-        catch (Exception ex)
-        {
-            var msg = ex.Message;
-            Dispatcher.UIThread.Post(() => ErrorOccurred?.Invoke(msg));
-        }
-    }
-
     private void OnDataReceived(object sender, SerialDataReceivedEventArgs e)
     {
         try

@@ -7,13 +7,12 @@
 
 extern "C" {
     #include "driver.h"
+    #include "grbl/gcode.h"
     #include "grbl/grbl.h"
     #include "grbl/protocol.h"
     #include "grbl/state_machine.h"
-    #include "grbl/stream_file.h"
     #include "grbl/system.h"
     #include "grbl/task.h"
-    #include "grbl/vfs.h"
 }
 
 #ifndef PICO_UART_BAUD
@@ -28,80 +27,34 @@ extern "C" {
 #define PICO_UART_LINE_LENGTH 192
 #endif
 
-#ifndef PICO_JOB_PATH
-#define PICO_JOB_PATH LITTLEFS_MOUNT_DIR "/pico_job.nc"
+#ifndef PICO_POS_REPORT_MS
+#define PICO_POS_REPORT_MS 200
 #endif
 
 namespace {
 
-enum class PicoMachineState : uint8_t {
-    Idle,
-    Running,
-    Hold,
-    Alarm,
-    Estop
-};
-
-enum class PicoJobState : uint8_t {
-    NoFileSelected,
-    FileSelected,
-    Running
-};
-
-struct PicoFrameworkContext {
+struct PicoBridgeContext {
     char rx_line[PICO_UART_LINE_LENGTH] = {0};
     size_t rx_length = 0;
-    bool linked = false;
-    bool upload_active = false;
-    bool upload_ready = false;
-    bool run_active = false;
-    int selected_index = -1;
-    uint32_t expected_lines = 0;
-    uint32_t received_lines = 0;
     uint32_t last_pos_report_ms = 0;
-    PicoMachineState last_machine_state = PicoMachineState::Idle;
-    PicoJobState job_state = PicoJobState::NoFileSelected;
-    vfs_file_t *upload_file = nullptr;
-    vfs_file_t *run_file = nullptr;
+    sys_state_t last_reported_state = (sys_state_t)0xFF;
+    on_state_change_ptr previous_on_state_change = nullptr;
+    on_realtime_report_ptr previous_on_realtime_report = nullptr;
 };
 
-PicoFrameworkContext pico_ctx;
+PicoBridgeContext pico_ctx;
 
-HardwareSerial &pico_uart ()
+HardwareSerial& pico_uart()
 {
     return Serial1;
 }
 
-const char *machine_state_name (PicoMachineState state)
-{
-    switch(state) {
-        case PicoMachineState::Idle: return "IDLE";
-        case PicoMachineState::Running: return "RUNNING";
-        case PicoMachineState::Hold: return "HOLD";
-        case PicoMachineState::Alarm: return "ALARM";
-        case PicoMachineState::Estop: return "ESTOP";
-    }
-
-    return "ALARM";
-}
-
-const char *job_state_name (PicoJobState state)
-{
-    switch(state) {
-        case PicoJobState::NoFileSelected: return "NO_FILE_SELECTED";
-        case PicoJobState::FileSelected: return "FILE_SELECTED";
-        case PicoJobState::Running: return "RUNNING";
-    }
-
-    return "NO_FILE_SELECTED";
-}
-
-void uart_send_line (const char *line)
+void uart_send_line(const char* line)
 {
     pico_uart().println(line);
 }
 
-void uart_sendf (const char *fmt, ...)
+void uart_sendf(const char* fmt, ...)
 {
     char buffer[220];
     va_list args;
@@ -111,35 +64,9 @@ void uart_sendf (const char *fmt, ...)
     uart_send_line(buffer);
 }
 
-void send_ack (int seq, const char *fmt = nullptr, ...)
-{
-    char suffix[128] = {0};
-
-    if(fmt != nullptr) {
-        va_list args;
-        va_start(args, fmt);
-        vsnprintf(suffix, sizeof(suffix), fmt, args);
-        va_end(args);
-    }
-
-    if(suffix[0] != '\0')
-        uart_sendf("@ACK SEQ=%d %s", seq, suffix);
-    else
-        uart_sendf("@ACK SEQ=%d", seq);
-}
-
-void send_error (int seq, const char *code)
-{
-    if(seq >= 0)
-        uart_sendf("@ERR SEQ=%d CODE=%s", seq, code);
-    else
-        uart_sendf("@ERR CODE=%s", code);
-}
-
-void trim_line (char *line)
+void trim_line(char* line)
 {
     size_t length = strlen(line);
-
     while(length > 0 && (line[length - 1] == '\r' || line[length - 1] == '\n' || isspace((unsigned char)line[length - 1])))
         line[--length] = '\0';
 
@@ -151,48 +78,35 @@ void trim_line (char *line)
         memmove(line, line + start, strlen(line + start) + 1);
 }
 
-bool is_blank_line (const char *line)
+bool is_blank_line(const char* line)
 {
     while(*line != '\0') {
         if(!isspace((unsigned char)*line))
             return false;
         line++;
     }
-
     return true;
 }
 
-bool extract_token (const char *line, const char *key, char *out, size_t size)
+bool extract_token(const char* line, const char* key, char* out, size_t size)
 {
     if(line == nullptr || key == nullptr || out == nullptr || size == 0)
         return false;
 
-    const char *start = strstr(line, key);
+    const char* start = strstr(line, key);
     if(start == nullptr)
         return false;
 
     start += strlen(key);
-
     size_t index = 0;
     while(start[index] != '\0' && start[index] != ' ' && index + 1 < size)
         out[index++] = start[index];
 
     out[index] = '\0';
-
     return index > 0;
 }
 
-bool extract_int (const char *line, const char *key, int *value)
-{
-    char buffer[24];
-    if(value == nullptr || !extract_token(line, key, buffer, sizeof(buffer)))
-        return false;
-
-    *value = atoi(buffer);
-    return true;
-}
-
-bool extract_float (const char *line, const char *key, float *value)
+bool extract_float(const char* line, const char* key, float* value)
 {
     char buffer[32];
     if(value == nullptr || !extract_token(line, key, buffer, sizeof(buffer)))
@@ -202,346 +116,256 @@ bool extract_float (const char *line, const char *key, float *value)
     return true;
 }
 
-PicoMachineState current_machine_state ()
+bool extract_int(const char* line, const char* key, int* value)
 {
-    const sys_state_t state = state_get();
+    char buffer[24];
+    if(value == nullptr || !extract_token(line, key, buffer, sizeof(buffer)))
+        return false;
 
-    if(state & STATE_ESTOP)
-        return PicoMachineState::Estop;
-    if(state & STATE_ALARM)
-        return PicoMachineState::Alarm;
-    if(state & (STATE_HOLD | STATE_TOOL_CHANGE))
-        return PicoMachineState::Hold;
-    if(state & (STATE_CYCLE | STATE_JOG | STATE_HOMING | STATE_SLEEP))
-        return PicoMachineState::Running;
-
-    return PicoMachineState::Idle;
+    *value = atoi(buffer);
+    return true;
 }
 
-void report_job_state ()
+const char* grbl_state_name(sys_state_t state)
 {
-    if(pico_ctx.selected_index >= 0)
-        uart_sendf("@EVT JOB STATE=%s INDEX=%d", job_state_name(pico_ctx.job_state), pico_ctx.selected_index);
-    else
-        uart_sendf("@EVT JOB STATE=%s", job_state_name(pico_ctx.job_state));
+    if(state & STATE_ESTOP)       return "ESTOP";
+    if(state & STATE_ALARM)       return "ALARM";
+    if(state & STATE_HOMING)      return "HOMING";
+    if(state & STATE_CYCLE)       return "CYCLE";
+    if(state & STATE_HOLD)        return "HOLD";
+    if(state & STATE_JOG)         return "JOG";
+    if(state & STATE_SAFETY_DOOR) return "DOOR";
+    if(state & STATE_TOOL_CHANGE) return "TOOL_CHANGE";
+    if(state & STATE_SLEEP)       return "SLEEP";
+    return "IDLE";
 }
 
-void set_job_state (PicoJobState state)
+void report_state(sys_state_t state)
 {
-    if(pico_ctx.job_state != state) {
-        pico_ctx.job_state = state;
-        report_job_state();
+    pico_ctx.last_reported_state = state;
+    if(state & STATE_HOLD) {
+        const uint8_t substate = sys.holding_state == Hold_Complete ? 1 : 0;
+        uart_sendf("@GRBL_STATE HOLD SUBSTATE=%u", substate);
+        return;
     }
+
+    uart_sendf("@GRBL_STATE %s", grbl_state_name(state));
 }
 
-void report_machine_state ()
-{
-    pico_ctx.last_machine_state = current_machine_state();
-    uart_sendf("@EVT MACHINE STATE=%s", machine_state_name(pico_ctx.last_machine_state));
-}
-
-void report_position ()
+void report_position()
 {
     float mpos[N_AXIS] = {0.0f};
     system_convert_array_steps_to_mpos(mpos, sys.position);
-    uart_sendf("@EVT POS X=%.3f Y=%.3f Z=%.3f",
+
+    float wpos[N_AXIS] = {0.0f};
+    for(uint_fast8_t idx = 0; idx < N_AXIS; idx++) {
+        float offset = gc_state.modal.g5x_offset.data.coord.values[idx] +
+                       gc_state.g92_offset.coord.values[idx] +
+                       gc_state.modal.tool_length_offset[idx];
+        wpos[idx] = mpos[idx] - offset;
+    }
+
+    uart_sendf("@POS MX=%.3f MY=%.3f MZ=%.3f WX=%.3f WY=%.3f WZ=%.3f",
                (double)mpos[0],
                (double)(N_AXIS > 1 ? mpos[1] : 0.0f),
-               (double)(N_AXIS > 2 ? mpos[2] : 0.0f));
+               (double)(N_AXIS > 2 ? mpos[2] : 0.0f),
+               (double)wpos[0],
+               (double)(N_AXIS > 1 ? wpos[1] : 0.0f),
+               (double)(N_AXIS > 2 ? wpos[2] : 0.0f));
     pico_ctx.last_pos_report_ms = millis();
 }
 
-void close_upload_file ()
+void maybe_report_position()
 {
-    if(pico_ctx.upload_file != nullptr) {
-        vfs_close(pico_ctx.upload_file);
-        pico_ctx.upload_file = nullptr;
-    }
-}
-
-void close_run_file ()
-{
-    if(pico_ctx.run_file != nullptr) {
-        stream_redirect_close(pico_ctx.run_file);
-        pico_ctx.run_file = nullptr;
-    }
-}
-
-void reset_upload_state ()
-{
-    close_upload_file();
-    pico_ctx.upload_active = false;
-    pico_ctx.upload_ready = false;
-    pico_ctx.expected_lines = 0;
-    pico_ctx.received_lines = 0;
-}
-
-void stop_run (bool preserve_uploaded_job)
-{
-    close_run_file();
-    pico_ctx.run_active = false;
-
-    if(!preserve_uploaded_job) {
-        pico_ctx.upload_ready = false;
-        pico_ctx.selected_index = -1;
-        set_job_state(PicoJobState::NoFileSelected);
-    } else if(pico_ctx.selected_index >= 0) {
-        set_job_state(PicoJobState::FileSelected);
-    }
-}
-
-bool queue_jog_command (char axis, float dist_mm, int feed)
-{
-    char command[64];
-    snprintf(command, sizeof(command), "$J=G91 G21 %c%.3f F%d", axis, (double)dist_mm, feed);
-    return protocol_enqueue_gcode(command);
-}
-
-status_code_t on_run_status (status_code_t status)
-{
-    if(status != Status_OK && status != Status_Unhandled)
-        uart_sendf("@ERR CODE=RUN_STATUS_%d", status);
-
-    return status;
-}
-
-status_code_t on_run_end (vfs_file_t *file, status_code_t status)
-{
-    (void)file;
-
-    pico_ctx.run_active = false;
-    pico_ctx.run_file = nullptr;
-    uart_sendf("@EVT JOB_PROGRESS SENT=%lu TOTAL=%lu",
-               (unsigned long)pico_ctx.received_lines,
-               (unsigned long)pico_ctx.received_lines);
-    stop_run(true);
-
-    if(status != Status_OK && status != Status_Unhandled)
-        uart_sendf("@ERR CODE=RUN_END_%d", status);
-
-    return status;
-}
-
-void report_state_changes ()
-{
-    const PicoMachineState state = current_machine_state();
-    if(state != pico_ctx.last_machine_state)
-        report_machine_state();
-
     const uint32_t now = millis();
-    const uint32_t interval = state == PicoMachineState::Idle ? 1000 : 200;
-    if(now - pico_ctx.last_pos_report_ms >= interval)
+    if(now - pico_ctx.last_pos_report_ms >= PICO_POS_REPORT_MS)
         report_position();
 }
 
-void service_job_execution ()
+void send_status(status_code_t status)
 {
-    if(!pico_ctx.run_active)
-        return;
-
-    const PicoMachineState machine_state = current_machine_state();
-    if(machine_state == PicoMachineState::Alarm || machine_state == PicoMachineState::Estop) {
-        stop_run(true);
-        return;
-    }
+    if(status == Status_OK)
+        uart_send_line("ok");
+    else
+        uart_sendf("error:%u", (unsigned int)status);
 }
 
-void handle_upload_line (char *line)
+void send_enqueue_status(bool ok)
 {
-    if(!pico_ctx.upload_active || pico_ctx.upload_file == nullptr) {
-        send_error(-1, "UNEXPECTED_GCODE");
-        return;
-    }
-
-    trim_line(line);
-    if(is_blank_line(line))
-        return;
-
-    vfs_puts(line, pico_ctx.upload_file);
-    vfs_puts("\n", pico_ctx.upload_file);
-    pico_ctx.received_lines++;
+    if(ok)
+        uart_send_line("ok");
+    else
+        uart_send_line("error:1");
 }
 
-void handle_command (char *line)
+void enqueue_realtime(uint8_t command)
 {
-    int seq = -1;
-    char op[32] = {0};
-
-    extract_int(line, "SEQ=", &seq);
-
-    if(strncmp(line, "@HELLO", 6) == 0) {
-        pico_ctx.linked = true;
-        uart_send_line("@HELLO PROTO=1 CAPS=STATUS,JOG,MACHINING");
-        report_machine_state();
-        report_job_state();
-        report_position();
-        return;
-    }
-
-    if(strncmp(line, "@PING", 5) == 0) {
-        send_ack(seq, "PONG=1");
-        return;
-    }
-
-    if(strncmp(line, "@CMD", 4) != 0 || !extract_token(line, "OP=", op, sizeof(op))) {
-        send_error(seq, "UNKNOWN_COMMAND");
-        return;
-    }
-
-    if(strcmp(op, "JOB_SELECT") == 0) {
-        int index = -1;
-        if(!extract_int(line, "INDEX=", &index)) {
-            send_error(seq, "BAD_INDEX");
-            return;
-        }
-
-        pico_ctx.selected_index = index;
-        if(!pico_ctx.run_active)
-            set_job_state(PicoJobState::FileSelected);
-
-        send_ack(seq);
-        return;
-    }
-
-    if(strcmp(op, "JOB_BEGIN") == 0) {
-        int index = -1;
-        int lines_expected = 0;
-        reset_upload_state();
-        close_run_file();
-        vfs_unlink(PICO_JOB_PATH);
-
-        extract_int(line, "INDEX=", &index);
-        extract_int(line, "LINES=", &lines_expected);
-        pico_ctx.selected_index = index;
-        pico_ctx.expected_lines = lines_expected > 0 ? (uint32_t)lines_expected : 0;
-        pico_ctx.upload_file = vfs_open(PICO_JOB_PATH, "w");
-
-        if(pico_ctx.upload_file == nullptr) {
-            send_error(seq, "OPEN_FAILED");
-            return;
-        }
-
-        pico_ctx.upload_active = true;
-        pico_ctx.upload_ready = false;
-        pico_ctx.received_lines = 0;
-        send_ack(seq);
-        return;
-    }
-
-    if(strcmp(op, "JOB_END") == 0) {
-        if(!pico_ctx.upload_active || pico_ctx.upload_file == nullptr) {
-            send_error(seq, "NO_UPLOAD");
-            return;
-        }
-
-        close_upload_file();
-        pico_ctx.upload_active = false;
-        pico_ctx.upload_ready = pico_ctx.received_lines > 0;
-        if(!pico_ctx.upload_ready) {
-            send_error(seq, "EMPTY_JOB");
-            return;
-        }
-
-        set_job_state(PicoJobState::FileSelected);
-        send_ack(seq, "LINES=%lu READY=1", (unsigned long)pico_ctx.received_lines);
-        return;
-    }
-
-    if(strcmp(op, "RUN") == 0) {
-        if(!pico_ctx.upload_ready) {
-            send_error(seq, "NOT_READY");
-            return;
-        }
-
-        close_run_file();
-        char path[] = PICO_JOB_PATH;
-        pico_ctx.run_file = stream_redirect_read(path, on_run_status, on_run_end);
-        if(pico_ctx.run_file == nullptr) {
-            send_error(seq, "OPEN_FAILED");
-            return;
-        }
-
-        pico_ctx.run_active = true;
-        set_job_state(PicoJobState::Running);
-        uart_sendf("@EVT JOB_PROGRESS SENT=0 TOTAL=%lu", (unsigned long)pico_ctx.received_lines);
-        send_ack(seq);
-        return;
-    }
-
-    if(strcmp(op, "HOLD") == 0) {
-        protocol_enqueue_realtime_command(CMD_FEED_HOLD);
-        send_ack(seq);
-        return;
-    }
-
-    if(strcmp(op, "RESUME") == 0) {
-        protocol_enqueue_realtime_command(CMD_CYCLE_START);
-        send_ack(seq);
-        return;
-    }
-
-    if(strcmp(op, "ABORT") == 0) {
-        protocol_enqueue_realtime_command(CMD_RESET);
-        stop_run(true);
-        send_ack(seq);
-        return;
-    }
-
-    if(strcmp(op, "JOG") == 0) {
-        char axis_text[4] = {0};
-        float dist_mm = 0.0f;
-        int feed = 0;
-        if(!extract_token(line, "AXIS=", axis_text, sizeof(axis_text)) ||
-           !extract_float(line, "DIST_MM=", &dist_mm) ||
-           !extract_int(line, "FEED=", &feed) ||
-           !queue_jog_command(axis_text[0], dist_mm, feed)) {
-            send_error(seq, "BAD_JOG");
-            return;
-        }
-
-        send_ack(seq);
-        return;
-    }
-
-    if(strcmp(op, "HOME_ALL") == 0) {
-        char command[] = "$H";
-        if(system_execute_line(command) != Status_OK) {
-            send_error(seq, "HOME_FAILED");
-            return;
-        }
-
-        send_ack(seq);
-        return;
-    }
-
-    if(strcmp(op, "ZERO_ALL") == 0) {
-        char command[] = "G10 L20 P1 X0 Y0 Z0";
-        if(!protocol_enqueue_gcode(command)) {
-            send_error(seq, "ZERO_FAILED");
-            return;
-        }
-
-        send_ack(seq);
-        return;
-    }
-
-    send_error(seq, "UNKNOWN_OP");
+    protocol_enqueue_realtime_command(command);
+    uart_send_line("ok");
 }
 
-void handle_input_line (char *line)
+void execute_system_line(const char* command)
+{
+    char buffer[96];
+    strncpy(buffer, command, sizeof(buffer) - 1);
+    buffer[sizeof(buffer) - 1] = '\0';
+    send_status(system_execute_line(buffer));
+}
+
+void enqueue_gcode_line(const char* command)
+{
+    char buffer[PICO_UART_LINE_LENGTH];
+    strncpy(buffer, command, sizeof(buffer) - 1);
+    buffer[sizeof(buffer) - 1] = '\0';
+    send_enqueue_status(protocol_enqueue_gcode(buffer));
+}
+
+void handle_jog(char* line)
+{
+    char axis_text[4] = {0};
+    float dist_mm = 0.0f;
+    int feed = 0;
+
+    if(!extract_token(line, "AXIS=", axis_text, sizeof(axis_text)) ||
+       !extract_float(line, "DIST=", &dist_mm) ||
+       !extract_int(line, "FEED=", &feed)) {
+        uart_send_line("error:2");
+        return;
+    }
+
+    const char axis = (char)toupper((unsigned char)axis_text[0]);
+    if(axis != 'X' && axis != 'Y' && axis != 'Z') {
+        uart_send_line("error:2");
+        return;
+    }
+
+    char command[80];
+    snprintf(command, sizeof(command), "$J=G91 G21 %c%.3f F%d", axis, (double)dist_mm, feed);
+    enqueue_gcode_line(command);
+}
+
+void handle_zero(char* line)
+{
+    char axis_text[8] = {0};
+    if(!extract_token(line, "AXIS=", axis_text, sizeof(axis_text))) {
+        uart_send_line("error:2");
+        return;
+    }
+
+    for(char* p = axis_text; *p != '\0'; ++p)
+        *p = (char)toupper((unsigned char)*p);
+
+    char command[64] = {0};
+    if(strcmp(axis_text, "ALL") == 0) {
+        strcpy(command, "G10 L20 P1 X0 Y0 Z0");
+    } else if(strcmp(axis_text, "X") == 0 || strcmp(axis_text, "Y") == 0 || strcmp(axis_text, "Z") == 0) {
+        snprintf(command, sizeof(command), "G10 L20 P1 %s0", axis_text);
+    } else {
+        uart_send_line("error:2");
+        return;
+    }
+
+    enqueue_gcode_line(command);
+}
+
+void handle_spindle_on(char* line)
+{
+    int rpm = 0;
+    if(!extract_int(line, "RPM=", &rpm) || rpm <= 0) {
+        uart_send_line("error:2");
+        return;
+    }
+
+    char command[48];
+    snprintf(command, sizeof(command), "M3 S%d", rpm);
+    enqueue_gcode_line(command);
+}
+
+void handle_gcode(char* line)
+{
+    char* gcode = line + 6;
+    while(*gcode == ' ')
+        gcode++;
+
+    if(*gcode == '\0') {
+        uart_send_line("ok");
+        return;
+    }
+
+    enqueue_gcode_line(gcode);
+}
+
+void handle_command(char* line)
+{
+    if(strcmp(line, "@PING") == 0) {
+        uart_send_line("@PONG");
+        return;
+    }
+    if(strcmp(line, "@HOME") == 0) {
+        execute_system_line("$H");
+        return;
+    }
+    if(strncmp(line, "@JOG ", 5) == 0) {
+        handle_jog(line);
+        return;
+    }
+    if(strcmp(line, "@JOG_CANCEL") == 0) {
+        enqueue_realtime(CMD_JOG_CANCEL);
+        return;
+    }
+    if(strncmp(line, "@GCODE", 6) == 0) {
+        handle_gcode(line);
+        return;
+    }
+    if(strcmp(line, "@RT_FEED_HOLD") == 0) {
+        enqueue_realtime(CMD_FEED_HOLD);
+        return;
+    }
+    if(strcmp(line, "@RT_CYCLE_START") == 0) {
+        enqueue_realtime(CMD_CYCLE_START);
+        return;
+    }
+    if(strcmp(line, "@RT_RESET") == 0) {
+        enqueue_realtime(CMD_RESET);
+        return;
+    }
+    if(strcmp(line, "@RT_ESTOP") == 0) {
+        enqueue_realtime(CMD_RESET);
+        return;
+    }
+    if(strcmp(line, "@UNLOCK") == 0) {
+        execute_system_line("$X");
+        return;
+    }
+    if(strncmp(line, "@SPINDLE_ON ", 12) == 0) {
+        handle_spindle_on(line);
+        return;
+    }
+    if(strcmp(line, "@SPINDLE_OFF") == 0) {
+        enqueue_gcode_line("M5");
+        return;
+    }
+    if(strncmp(line, "@ZERO ", 6) == 0) {
+        handle_zero(line);
+        return;
+    }
+
+    uart_send_line("error:2");
+}
+
+void handle_input_line(char* line)
 {
     trim_line(line);
-
     if(is_blank_line(line))
         return;
 
     if(line[0] == '@')
         handle_command(line);
     else
-        handle_upload_line(line);
+        uart_send_line("error:2");
 }
 
-void service_uart_rx ()
+void service_uart_rx()
 {
     while(pico_uart().available() > 0) {
         char c = (char)pico_uart().read();
@@ -560,7 +384,7 @@ void service_uart_rx ()
         if(pico_ctx.rx_length + 1 >= sizeof(pico_ctx.rx_line)) {
             pico_ctx.rx_length = 0;
             pico_ctx.rx_line[0] = '\0';
-            send_error(-1, "RX_LINE_TOO_LONG");
+            uart_send_line("error:3");
             continue;
         }
 
@@ -568,31 +392,50 @@ void service_uart_rx ()
     }
 }
 
-void pico_framework_service_task (void *data)
+void on_state_change(sys_state_t state)
+{
+    if(pico_ctx.previous_on_state_change != nullptr)
+        pico_ctx.previous_on_state_change(state);
+
+    report_state(state);
+}
+
+void on_realtime_report(stream_write_ptr stream_write, report_tracking_flags_t report)
+{
+    if(pico_ctx.previous_on_realtime_report != nullptr)
+        pico_ctx.previous_on_realtime_report(stream_write, report);
+
+    maybe_report_position();
+}
+
+void pico_framework_service_task(void* data)
 {
     (void)data;
-
     service_uart_rx();
-    service_job_execution();
-    report_state_changes();
+    maybe_report_position();
     task_add_delayed(pico_framework_service_task, NULL, PICO_UART_POLL_MS);
 }
 
-void pico_framework_startup_task (void *data)
+void pico_framework_startup_task(void* data)
 {
     (void)data;
 
     pico_uart().begin(PICO_UART_BAUD);
-    uart_send_line("@HELLO PROTO=1 CAPS=STATUS,JOG,MACHINING");
-    report_machine_state();
-    report_job_state();
+    uart_send_line("@BOOT TEENSY_READY");
+    report_state(state_get());
     report_position();
     task_add_delayed(pico_framework_service_task, NULL, PICO_UART_POLL_MS);
 }
 
 } // namespace
 
-extern "C" void my_plugin_init (void)
+extern "C" void my_plugin_init(void)
 {
+    pico_ctx.previous_on_state_change = grbl.on_state_change;
+    grbl.on_state_change = on_state_change;
+
+    pico_ctx.previous_on_realtime_report = grbl.on_realtime_report;
+    grbl.on_realtime_report = on_realtime_report;
+
     task_run_on_startup(pico_framework_startup_task, NULL);
 }

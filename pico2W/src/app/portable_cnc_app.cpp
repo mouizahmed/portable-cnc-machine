@@ -1,5 +1,7 @@
 #include "app/portable_cnc_app.h"
 
+#include <cstdio>
+
 #include "config.h"
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
@@ -102,6 +104,9 @@ void PortableCncApp::run() {
         }
 
         desktop_protocol_.poll();
+        if (poll_estop()) {
+            render_current_screen(false);
+        }
 
         const bool usb_connected_now = usb_transport_.connected();
         if (usb_connected_now != usb_was_connected_) {
@@ -153,8 +158,28 @@ void PortableCncApp::run() {
         if (uart_result.position_changed) {
             desktop_protocol_.emit_position();
         }
+        if (uart_result.job_progress) {
+            char kv[64];
+            std::snprintf(kv,
+                          sizeof(kv),
+                          "LINE=%lu TOTAL=%lu",
+                          static_cast<unsigned long>(uart_result.progress_line),
+                          static_cast<unsigned long>(uart_result.progress_total));
+            desktop_protocol_.emit_event_kv("JOB_PROGRESS", kv);
+        }
+        if (uart_result.job_complete) {
+            desktop_protocol_.emit_event("JOB_COMPLETE");
+            desktop_protocol_.emit_state_update();
+        }
+        if (uart_result.job_error) {
+            char kv[64];
+            std::snprintf(kv, sizeof(kv), "REASON=%s", uart_result.error_reason);
+            desktop_protocol_.emit_event_kv("JOB_ERROR", kv);
+            desktop_protocol_.emit_state_update();
+        }
 
-        if (uart_result.machine_changed || uart_result.job_changed || uart_result.position_changed) {
+        if (uart_result.machine_changed || uart_result.job_changed || uart_result.position_changed ||
+            uart_result.job_complete || uart_result.job_error) {
             frame_.render_status_bar(status_provider_.current());
             if (!desktop_protocol_.upload_active() &&
                 current_screen_content_changed()) {
@@ -208,6 +233,16 @@ void PortableCncApp::run_startup_sequence() {
 
     release_shared_spi_devices();
     core1_worker_.start();
+    gpio_init(PIN_ESTOP);
+    gpio_set_dir(PIN_ESTOP, GPIO_IN);
+    gpio_pull_up(PIN_ESTOP);
+    estop_initialized_ = true;
+    estop_last_raw_active_ = !gpio_get(PIN_ESTOP);
+    estop_active_ = estop_last_raw_active_;
+    estop_stable_count_ = 0;
+    if (estop_active_) {
+        machine_fsm_.handle_event(MachineEvent::HwEstopAsserted);
+    }
     storage_service_.initialize(job_state_machine_);
 
     while (storage_service_.state() == StorageState::Mounting) {
@@ -222,6 +257,40 @@ void PortableCncApp::run_startup_sequence() {
     } else {
         desktop_protocol_.emit_state_update();
     }
+}
+
+bool PortableCncApp::poll_estop() {
+    if (!estop_initialized_) {
+        return false;
+    }
+
+    const bool raw_active = !gpio_get(PIN_ESTOP);
+    if (raw_active == estop_last_raw_active_) {
+        if (estop_stable_count_ < 3) {
+            ++estop_stable_count_;
+        }
+    } else {
+        estop_last_raw_active_ = raw_active;
+        estop_stable_count_ = 0;
+    }
+
+    if (estop_stable_count_ < 2 || raw_active == estop_active_) {
+        return false;
+    }
+
+    estop_active_ = raw_active;
+    if (estop_active_) {
+        machine_fsm_.handle_event(MachineEvent::HwEstopAsserted);
+        uart_client_.estop();
+        desktop_protocol_.emit_state_update();
+        desktop_protocol_.emit_event("ESTOP_ACTIVE");
+    } else {
+        machine_fsm_.handle_event(MachineEvent::HwEstopCleared);
+        desktop_protocol_.emit_state_update();
+        desktop_protocol_.emit_event("ESTOP_CLEARED");
+    }
+    frame_.render_status_bar(status_provider_.current());
+    return true;
 }
 
 void PortableCncApp::show_boot_logo() {

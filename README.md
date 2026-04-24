@@ -40,7 +40,6 @@ portable-cnc-machine/
 │       ├── driver.c/h       # Teensy 4.1 HAL driver
 │       ├── tmc_spi.c        # TMC2209 stepper driver SPI interface
 │       ├── uart.c/h         # UART communication
-│       ├── my_stream.cpp/h  # Custom stream handler (Pico serial passthrough)
 │       └── my_machine.h     # Machine configuration
 ├── desktop/                 # Desktop GUI (C#, .NET/Avalonia)
 │   ├── Controls/            # Reusable UI controls
@@ -55,7 +54,25 @@ portable-cnc-machine/
 
 ## Software Architecture
 
-<!-- TODO -->
+The system is split across three cooperating runtimes:
+
+- **Desktop app** — Avalonia/.NET operator interface. It talks to the Pico over USB CDC
+  using binary COBS/CRC-framed CMD/RESP/EVENT packets and renders G-code locally with the
+  native OpenGL previewer.
+- **Pico 2W firmware** — Owns the touchscreen UI, SD card storage, job selection,
+  binary desktop protocol, file transfers, safety/capability state, and Pico-to-Teensy
+  motion-link supervision.
+- **Teensy 4.1 firmware** — Runs grblHAL and owns real motion execution. The Pico sends
+  newline-terminated ASCII motion commands over UART; the Teensy reports boot, GRBL state,
+  position, and per-line G-code acceptance.
+
+Current wire protocols:
+
+- Desktop <-> Pico: binary frame types 1-7 as defined in `pico2W/src/protocol/protocol_defs.h`
+  and `desktop/Protocol/ProtocolDefs.cs`.
+- Pico <-> Teensy: ASCII UART lines such as `@BOOT TEENSY_READY`,
+  `@GRBL_STATE IDLE`, `@POS MX=...`, `@HOME`, `@JOG ...`, `@GCODE ...`,
+  `@RT_FEED_HOLD`, and bare `ok` / `error:<code>` responses.
 
 ## Hardware Architecture
 
@@ -63,7 +80,22 @@ portable-cnc-machine/
 
 ## Getting Started
 
-<!-- TODO -->
+Build checks:
+
+```sh
+dotnet build desktop/desktop.csproj
+cmake -S pico2W -B pico2W/build -DPICO_BOARD=pico2_w
+cmake --build pico2W/build
+pio run -d teensy4.1/src
+```
+
+Bring-up checklist:
+
+1. Flash the Pico 2W UF2 from `pico2W/build`.
+2. Flash the Teensy 4.1 firmware with PlatformIO.
+3. Wire Pico `GP20` TX to Teensy RX1, Pico `GP21` RX to Teensy TX1, common GND, and active-low E-stop on Pico `GP15`.
+4. Connect the desktop app to the Pico USB CDC port and verify Teensy connected state.
+5. Upload/load a G-code file, run a dry job, test pause/resume/abort, and test E-stop/reset recovery.
 
 
 ## License

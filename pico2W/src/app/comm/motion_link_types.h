@@ -8,9 +8,14 @@ enum class MotionCommandType : uint8_t {
     Hold,
     Resume,
     Abort,
+    Estop,
+    Reset,
     Jog,
+    JogCancel,
     HomeAll,
     ZeroAll,
+    SpindleOn,
+    SpindleOff,
     TelemetryProbe,
 };
 

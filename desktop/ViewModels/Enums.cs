@@ -69,17 +69,3 @@ public enum DesktopStorageState
     Aborting,
     Failed
 }
-
-// ── Temporary compatibility stubs — remove when MainWindowViewModel is reworked ──
-
-[Obsolete("Replace with MachineOperationState. Remove after Phase 2 MainWindowViewModel rework.")]
-public enum MotionState
-{
-    PowerUp, Idle, Homing, Jog, RunProgram, FeedHold, Fault, EStopLatched
-}
-
-[Obsolete("Replace with SafetyLevel. Remove after Phase 2 MainWindowViewModel rework.")]
-public enum SafetyState
-{
-    SafeIdle, Monitoring, Warning, EStopActive, ShutdownSequence
-}
