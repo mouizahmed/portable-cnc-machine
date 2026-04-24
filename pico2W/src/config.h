@@ -16,8 +16,8 @@ constexpr unsigned int PIN_SD_CS = 13;
 constexpr unsigned int PIN_SD_SPI_SCK = 14;
 constexpr unsigned int PIN_SD_SPI_MOSI = 27;
 constexpr unsigned int PIN_ESTOP = 15;
-constexpr unsigned int PIN_MOTION_UART_TX = 20;
-constexpr unsigned int PIN_MOTION_UART_RX = 21;
+constexpr unsigned int PIN_MOTION_UART_TX = 0;
+constexpr unsigned int PIN_MOTION_UART_RX = 1;
 
 constexpr unsigned int LCD_WIDTH = 480;
 constexpr unsigned int LCD_HEIGHT = 320;

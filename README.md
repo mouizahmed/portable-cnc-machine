@@ -93,7 +93,7 @@ Bring-up checklist:
 
 1. Flash the Pico 2W UF2 from `pico2W/build`.
 2. Flash the Teensy 4.1 firmware with PlatformIO.
-3. Wire Pico `GP20` TX to Teensy RX1, Pico `GP21` RX to Teensy TX1, common GND, and active-low E-stop on Pico `GP15`.
+3. Wire Pico `GP0` TX to Teensy RX1, Pico `GP1` RX to Teensy TX1, common GND, and active-low E-stop on Pico `GP15`.
 4. Connect the desktop app to the Pico USB CDC port and verify Teensy connected state.
 5. Upload/load a G-code file, run a dry job, test pause/resume/abort, and test E-stop/reset recovery.
 

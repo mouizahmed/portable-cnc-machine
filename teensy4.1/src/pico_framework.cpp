@@ -32,7 +32,7 @@ extern "C" {
 #endif
 
 #ifndef PICO_UART_DEBUG_USB
-#define PICO_UART_DEBUG_USB 1
+#define PICO_UART_DEBUG_USB 0
 #endif
 
 namespace {
@@ -307,6 +307,8 @@ void handle_command(char* line)
 {
     if(strcmp(line, "@PING") == 0) {
         uart_send_line("@PONG");
+        report_state(state_get());
+        report_position();
         return;
     }
     if(strcmp(line, "@HOME") == 0) {

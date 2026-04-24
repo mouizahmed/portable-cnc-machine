@@ -10,7 +10,7 @@
 namespace {
 // Dev shortcut: skip the blocking touch calibration workflow during firmware iteration.
 // Keep false for normal persisted calibration / calibration UI behavior.
-constexpr bool kSkipTouchCalibrationForDev = false;
+constexpr bool kSkipTouchCalibrationForDev = true;
 constexpr uint32_t kBootLogoHoldMs = 1200;
 
 void release_shared_spi_devices() {

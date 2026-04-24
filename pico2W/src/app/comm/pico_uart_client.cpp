@@ -368,12 +368,12 @@ void PicoUartClient::init_transport() {
         return;
     }
 
-    uart_init(uart1, MOTION_UART_BAUD);
+    uart_init(uart0, MOTION_UART_BAUD);
     gpio_set_function(PIN_MOTION_UART_TX, GPIO_FUNC_UART);
     gpio_set_function(PIN_MOTION_UART_RX, GPIO_FUNC_UART);
-    uart_set_hw_flow(uart1, false, false);
-    uart_set_format(uart1, 8, 1, UART_PARITY_NONE);
-    uart_set_fifo_enabled(uart1, true);
+    uart_set_hw_flow(uart0, false, false);
+    uart_set_format(uart0, 8, 1, UART_PARITY_NONE);
+    uart_set_fifo_enabled(uart0, true);
     transport_initialized_ = true;
 }
 
@@ -400,8 +400,8 @@ bool PicoUartClient::send_raw_line(const char* line) {
     }
 
     const size_t line_len = std::strlen(line);
-    uart_write_blocking(uart1, reinterpret_cast<const uint8_t*>(line), line_len);
-    uart_write_blocking(uart1, reinterpret_cast<const uint8_t*>("\n"), 1);
+    uart_write_blocking(uart0, reinterpret_cast<const uint8_t*>(line), line_len);
+    uart_write_blocking(uart0, reinterpret_cast<const uint8_t*>("\n"), 1);
     return true;
 }
 
@@ -412,8 +412,8 @@ uint32_t PicoUartClient::next_seq() {
 PicoUartPollResult PicoUartClient::process_input(uint32_t now) {
     PicoUartPollResult result{};
 
-    while (uart_is_readable(uart1)) {
-        const int c = uart_getc(uart1);
+    while (uart_is_readable(uart0)) {
+        const int c = uart_getc(uart0);
         if (c == '\r') {
             continue;
         }
