@@ -1,9 +1,12 @@
-<div align="center">
-    <img alt="Logo" src="assets/logo.png" width="100" />
-    <h1>Portable CNC Machine</h1>
-    <h3>Capstone Team 40 | Team XYZ</h3>
-    <p>York University | Lassonde School of Engineering</p>
-    <p>2025–2026</p>
+<div>
+    <p>
+        <img alt="Logo" src="assets/logo.png" width="60" style="vertical-align: middle;" />
+        <strong style="font-size: 28px; vertical-align: middle;">Portable CNC Machine</strong>
+    </p>
+    <p>
+        <strong>Capstone Team 40 &mdash; Team XYZ (2025-2026)</strong><br>
+        York University | Lassonde School of Engineering
+    </p>
 </div>
 
 A modular, portable 3-axis CNC vertical milling machine prototype designed for remote First Nations communities in Canada. Built to fit on a pickup truck bed, operate fully offline, and be maintained with basic hand tools, reducing dependence on distant suppliers for critical replacement parts.
@@ -23,35 +26,41 @@ A modular, portable 3-axis CNC vertical milling machine prototype designed for r
 
 ```
 portable-cnc-machine/
+├── assets/                  # Project assets, including the README logo
 ├── controller/              # Active Teensy 4.1 controller firmware
-├── reference/               # Old controller firmware kept for reference
-│   ├── pico2W/              # Former Pico 2W firmware
-│   └── teensy4.1/           # Former Teensy 4.1 firmware
-│   └── src/
-│       ├── app/             # Application logic (job, jog, machine, navigation, status, storage)
-│       ├── calibration/     # Touchscreen calibration app and storage
-│       ├── core/            # Shared state types
-│       ├── drivers/         # ILI9488 display, XPT2046 touch, SD card SPI drivers
-│       ├── protocol/        # USB CDC transport and desktop protocol implementation
-│       ├── services/        # CNC controller service (state machine)
-│       └── ui/              # Screens, components, layout, helpers
-│   └── src/
-│       ├── grbl/            # grblHAL core — G-code parser, motion planner, stepper, spindle, state machine
-│       ├── boards/          # Pin mapping headers for supported board configurations
-│       ├── littlefs/        # LittleFS embedded filesystem
-│       ├── driver.c/h       # Teensy 4.1 HAL driver
-│       ├── tmc_spi.c        # TMC2209 stepper driver SPI interface
-│       ├── uart.c/h         # UART communication
-│       └── my_machine.h     # Machine configuration
+│   ├── include/             # Shared firmware headers
+│   ├── lib/                 # PlatformIO libraries
+│   ├── src/                 # Firmware source
+│   │   ├── app/             # Application-level controller logic
+│   │   ├── app_config/      # Runtime/configuration definitions
+│   │   ├── board/           # Board-specific setup
+│   │   ├── grblhal/         # grblHAL integration
+│   │   ├── machine/         # Machine control and state
+│   │   ├── protocol/        # Host/controller protocol
+│   │   ├── storage/         # Local storage support
+│   │   ├── ui/              # Controller UI code
+│   │   └── main.cpp         # Firmware entry point
+│   ├── test/                # PlatformIO tests
+│   └── platformio.ini       # Controller build configuration
 ├── desktop/                 # Desktop GUI (C#, .NET/Avalonia)
+│   ├── Assets/              # Desktop application assets
 │   ├── Controls/            # Reusable UI controls
 │   ├── Models/              # Data models
-│   ├── Rendering/           # OpenGL toolpath visualizer (shaders, camera, renderers)
-│   ├── Services/            # Serial, USB device, G-code, Pico protocol, settings services
-│   ├── ViewModels/          # MVVM view models (connect, dashboard, files, manual control, diagnostics)
+│   ├── Protocol/            # Binary protocol definitions and helpers
+│   ├── Rendering/           # OpenGL toolpath visualizer
+│   ├── Services/            # Serial, G-code, settings, and app services
+│   ├── ViewModels/          # MVVM view models
 │   ├── Views/               # Pages and dialogs
-│   └── samples/             # Sample G-code files for testing
-└── assets/                  # Project assets (logo, etc.)
+│   ├── samples/             # Sample G-code files
+│   └── desktop.csproj       # Desktop app project file
+├── docs/                    # Project documentation assets
+│   └── uart/                # UART protocol documentation/support files
+├── reference/               # Older firmware implementations kept for reference
+│   ├── pico2W/              # Former Pico 2W firmware
+│   └── teensy4.1/           # Former Teensy 4.1 firmware
+├── LICENSE
+├── PICO_WINDOWS_BUILD.txt
+└── README.md
 ```
 
 ## Software Architecture
