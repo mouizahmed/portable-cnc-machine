@@ -1,5 +1,5 @@
 <h1>
-  <img src="assets/logo.png" alt="Portable CNC Machine logo" width="80">
+  <img src="assets/logo.png" alt="Portable CNC Machine logo" width="80" align="center">
   Portable CNC Machine
 </h1>
 
