@@ -1,12 +1,16 @@
 <h1>
-  <img src="assets/logo.png" alt="Portable CNC Machine logo" width="80" align="center">
+  <img src="assets/logo.png" alt="Portable CNC Machine logo" width="80">
   Portable CNC Machine
 </h1>
 
 **Capstone Team 40 &mdash; Team XYZ (2025-2026)**  
 York University | Lassonde School of Engineering
 
-A modular, portable 3-axis CNC vertical milling machine prototype designed for remote First Nations communities in Canada. Built to fit on a pickup truck bed, operate fully offline, and be maintained with basic hand tools, reducing dependence on distant suppliers for critical replacement parts.
+---
+
+A modular, portable 3-axis CNC vertical milling machine designed for remote First Nations communities in Canada. The system is built to fit in a pickup truck bed, operate fully offline, and support field maintenance with basic hand tools, helping communities produce critical replacement parts without relying on distant suppliers.
+
+The machine combines a rigid mechanical frame that can fully disassemble into parts <= 25 kg, 3-axis stepper-driven motion hardware with encoder-based position verification, a Teensy 4.1 grblHAL motion controller, an onboard touchscreen interface, SD-card job storage, and an Avalonia/.NET desktop application for G-code preview, file transfer, machine control, and diagnostics.
 
 ## Team
 
@@ -62,25 +66,30 @@ portable-cnc-machine/
 
 ## Software Architecture
 
-The system is split across three cooperating runtimes:
+The system is split across two active software targets:
 
-- **Desktop app** — Avalonia/.NET operator interface. It talks to the Pico over USB CDC
-  using binary COBS/CRC-framed CMD/RESP/EVENT packets and renders G-code locally with the
+- **Desktop app** — Avalonia/.NET operator interface. It discovers the Teensy USB
+  serial ports, sends machine/file/job commands through `ControllerProtocolService`,
+  stores operator settings locally, parses G-code, and renders the toolpath with the
   native OpenGL previewer.
-- **Pico 2W firmware** — Owns the touchscreen UI, SD card storage, job selection,
-  binary desktop protocol, file transfers, safety/capability state, and Pico-to-Teensy
-  motion-link supervision.
-- **Teensy 4.1 firmware** — Runs grblHAL and owns real motion execution. The Pico sends
-  newline-terminated ASCII motion commands over UART; the Teensy reports boot, GRBL state,
-  position, and per-line G-code acceptance.
+- **Teensy 4.1 controller firmware** — PlatformIO/Arduino firmware built around
+  grblHAL. grblHAL owns real-time motion planning, G-code execution, limits, probing,
+  spindle control, and machine settings. The project app layer plugs into grblHAL at
+  startup and adds touchscreen UI, SD-card file handling, job streaming, machine-state
+  snapshots, and the desktop control protocol.
 
-Current wire protocols:
+Current communication paths:
 
-- Desktop <-> Pico: binary frame types 1-7 as defined in `pico2W/src/protocol/protocol_defs.h`
-  and `desktop/Protocol/ProtocolDefs.cs`.
-- Pico <-> Teensy: ASCII UART lines such as `@BOOT TEENSY_READY`,
-  `@GRBL_STATE IDLE`, `@POS MX=...`, `@HOME`, `@JOG ...`, `@GCODE ...`,
-  `@RT_FEED_HOLD`, and bare `ok` / `error:<code>` responses.
+- **grblHAL stream** — The first Teensy USB CDC serial interface remains available for
+  normal grblHAL text traffic and direct controller diagnostics.
+- **Desktop control protocol** — The second Teensy USB CDC serial interface
+  (`SerialUSB1`) carries binary frames with COBS encoding, CRC32 validation, sequence
+  numbers, and up to 4096-byte payloads. Frame types 1-7 cover upload data/ack,
+  download data/ack, commands, responses, and events as defined in
+  `controller/src/protocol/protocol_defs.h` and `desktop/Protocol/ProtocolDefs.cs`.
+- **Storage and jobs** — Desktop file uploads/downloads, SD-card file operations, job
+  load/start/pause/resume/abort, position updates, safety state, and settings exchange
+  all flow through the framed desktop protocol.
 
 ## Hardware Architecture
 
