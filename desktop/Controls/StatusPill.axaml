@@ -1,0 +1,17 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="PortableCncApp.Controls.StatusPill">
+  <Border x:Name="PillBorder" Classes="StatusPill">
+    <StackPanel x:Name="ContentStack"
+                Orientation="Horizontal"
+                Spacing="6"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+      <TextBlock x:Name="PrefixText"
+                 Classes="FieldLabel"
+                 VerticalAlignment="Center"/>
+      <TextBlock x:Name="ValueText"
+                 Classes="PillText"/>
+    </StackPanel>
+  </Border>
+</UserControl>

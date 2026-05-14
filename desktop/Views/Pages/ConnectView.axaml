@@ -1,0 +1,70 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
+             x:Class="PortableCncApp.Views.Pages.ConnectView"
+             x:DataType="vm:ConnectViewModel"
+             mc:Ignorable="d">
+
+  <Grid RowDefinitions="Auto" RowSpacing="8">
+    <controls:SectionCard Title="USB SERIAL CONNECTION">
+      <controls:SectionCard.Actions>
+        <Button Content="Refresh"
+                Command="{Binding RefreshPortsCommand}"
+                Classes="AppButton"/>
+      </controls:SectionCard.Actions>
+
+      <controls:SectionCard.Body>
+        <StackPanel Spacing="12">
+          <Border Background="{DynamicResource ConnectInfoSurfaceBrush}"
+                  BorderBrush="{DynamicResource ConnectInfoBorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="6"
+                  Padding="10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <StackPanel Spacing="6">
+                <TextBlock Text="{Binding ConnectionHeadline}"
+                           Classes="FieldValue"
+                           FontSize="16"/>
+                <TextBlock Text="{Binding MainVm.StatusMessage, TargetNullValue='Select the controller USB serial device to begin.'}"
+                           Classes="FieldLabel"
+                           TextWrapping="Wrap"/>
+              </StackPanel>
+
+              <controls:StatusPill Grid.Column="1"
+                                   VerticalAlignment="Center"
+                                   Text="{Binding MainVm.ConnectionStatusText}"
+                                   PillBackground="{Binding MainVm.ConnectionStatusBrush}"/>
+            </Grid>
+          </Border>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="Serial Port" Classes="SectionHeading"/>
+            <ComboBox ItemsSource="{Binding AvailablePorts}"
+                      SelectedItem="{Binding SelectedPort}"
+                      HorizontalAlignment="Stretch"
+                      PlaceholderText="Select COM port..."/>
+            <TextBlock Text="{Binding PortInventorySummary}" Classes="Caption"/>
+          </StackPanel>
+
+          <WrapPanel Orientation="Horizontal"
+                     Margin="0,0,0,-8">
+            <Button Content="Connect"
+                    Command="{Binding ConnectCommand}"
+                    Classes="AppButton Primary"
+                    IsEnabled="{Binding !IsConnecting}"
+                    Margin="0,0,8,8"/>
+            <Button Content="Disconnect"
+                    Command="{Binding DisconnectCommand}"
+                    Classes="AppButton"
+                    Margin="0,0,8,8"/>
+          </WrapPanel>
+
+        </StackPanel>
+      </controls:SectionCard.Body>
+    </controls:SectionCard>
+
+  </Grid>
+</UserControl>

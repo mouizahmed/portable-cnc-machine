@@ -1,0 +1,41 @@
+/*
+  fs_stream.h - file streaming plugin
+
+  Part of grblHAL
+
+  Copyright (c) 2018-2026 Terje Io
+
+  grblHAL is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  grblHAL is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with grblHAL. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+
+#pragma once
+
+#include "driver.h"
+#include "grbl/hal.h"
+
+#if FS_ENABLE
+
+typedef struct
+{
+    char name[50];
+    size_t size;
+    size_t pos;
+    line_number_t line_number;
+} stream_job_t;
+
+stream_job_t *stream_get_job_info (void);
+status_code_t stream_file (sys_state_t state, char *fname);
+
+#endif // FS_STREAM_ENABLE

@@ -1,0 +1,317 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
+             xmlns:webControls="clr-namespace:PortableCncApp.Controls"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             xmlns:rendering="clr-namespace:PortableCncApp.Rendering"
+             x:Class="PortableCncApp.Views.Pages.DashboardView"
+             x:DataType="vm:DashboardViewModel"
+             mc:Ignorable="d">
+
+  <UserControl.Styles>
+    <Style Selector="Button.TransportButton">
+      <Setter Property="Width" Value="34"/>
+      <Setter Property="MinWidth" Value="34"/>
+      <Setter Property="Height" Value="30"/>
+      <Setter Property="MinHeight" Value="30"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Background" Value="{DynamicResource StepButtonBrush}"/>
+    </Style>
+    <Style Selector="Button.TransportButton:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource StepButtonHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.OptionsButton:enabled">
+      <Setter Property="Foreground" Value="White"/>
+    </Style>
+    <Style Selector="Button.OptionsButton:disabled">
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid>
+    <controls:SectionCard Title="{Binding ViewerTitle}"
+                          Subtitle="{Binding ViewerHint}">
+      <controls:SectionCard.Actions>
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button IsEnabled="{Binding HasLoadedToolpath}"
+                  VerticalAlignment="Center"
+                  Classes="AppButton OptionsButton">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight"
+                      FlyoutPresenterClasses="CompactFlyout">
+                <controls:FlyoutPanel Title="Viewer Options"
+                                      MinWidth="148">
+                  <controls:FlyoutPanel.Body>
+                    <StackPanel Spacing="2">
+                      <CheckBox Content="Grid"
+                                IsChecked="{Binding ShowGrid}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Rapids"
+                                IsChecked="{Binding ShowRapids}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Cuts"
+                                IsChecked="{Binding ShowCuts}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Arcs"
+                                IsChecked="{Binding ShowArcs}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Plunges"
+                                IsChecked="{Binding ShowPlunges}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Stock Box"
+                                IsChecked="{Binding ShowStockBox}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Toolpath Points"
+                                IsChecked="{Binding ShowToolpathPoints}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
+                  </controls:FlyoutPanel.Body>
+                </controls:FlyoutPanel>
+              </Flyout>
+            </Button.Flyout>
+            <materialIcons:MaterialIcon Kind="TuneVariant"
+                                        Width="16"
+                                        Height="16"/>
+          </Button>
+          <ToggleButton x:Name="ViewerPanelToggle"
+                        Content="Viewer"
+                        IsChecked="{Binding IsViewerPanelOpen, Mode=TwoWay}"
+                        IsEnabled="{Binding HasLoadedToolpath}"
+                        VerticalAlignment="Center"
+                        Classes="AppButton"/>
+        </StackPanel>
+      </controls:SectionCard.Actions>
+
+      <controls:SectionCard.Body>
+        <Grid RowDefinitions="Auto,*"
+              RowSpacing="0">
+          <Border Grid.Row="0"
+                  IsVisible="{Binding IsViewerPanelOpen}"
+                  Padding="8"
+                  Margin="0,0,0,8"
+                  Background="{DynamicResource PanelBackgroundBrush}"
+                  BorderBrush="{DynamicResource BorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="4">
+            <StackPanel Spacing="6">
+              <Grid ColumnDefinitions="Auto,*,Auto"
+                    ColumnSpacing="8">
+                <Border Classes="InsetSurface Subtle"
+                        Padding="8"
+                        MinWidth="200"
+                        Height="NaN"
+                        MinHeight="0">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Path Display"
+                               Classes="Caption"
+                               FontWeight="SemiBold"/>
+                    <WrapPanel Orientation="Horizontal"
+                               ItemSpacing="12"
+                               LineSpacing="6">
+                      <CheckBox Content="Completed"
+                                IsChecked="{Binding ShowCompletedPath}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                      <CheckBox Content="Remaining"
+                                IsChecked="{Binding ShowRemainingPath}"
+                                Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </WrapPanel>
+                  </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1"
+                        Classes="InsetSurface Subtle"
+                        Padding="8"
+                        HorizontalAlignment="Stretch"
+                        Height="NaN"
+                        MinHeight="0">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Playback"
+                               Classes="Caption"
+                               FontWeight="SemiBold"/>
+                    <Grid ColumnDefinitions="Auto,*"
+                          ColumnSpacing="12">
+                      <StackPanel Orientation="Horizontal"
+                                  Spacing="6">
+                        <Button Classes="TransportButton"
+                                Command="{Binding StepBackwardCommand}"
+                                ToolTip.Tip="Step back one keyframe">
+                          <materialIcons:MaterialIcon Kind="SkipPrevious"
+                                                      Width="16"
+                                                      Height="16"
+                                                      Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        </Button>
+                        <Button Classes="TransportButton"
+                                Command="{Binding PlayReverseCommand}"
+                                ToolTip.Tip="Play reverse">
+                          <materialIcons:MaterialIcon Kind="Rewind"
+                                                      Width="16"
+                                                      Height="16"
+                                                      Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        </Button>
+                        <Button Classes="TransportButton"
+                                Command="{Binding StopPlaybackCommand}"
+                                ToolTip.Tip="Stop playback">
+                          <materialIcons:MaterialIcon Kind="Stop"
+                                                      Width="16"
+                                                      Height="16"
+                                                      Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        </Button>
+                        <Button Classes="TransportButton"
+                                Command="{Binding PlayForwardCommand}"
+                                ToolTip.Tip="Play forward">
+                          <materialIcons:MaterialIcon Kind="Play"
+                                                      Width="16"
+                                                      Height="16"
+                                                      Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        </Button>
+                        <Button Classes="TransportButton"
+                                Command="{Binding StepForwardCommand}"
+                                ToolTip.Tip="Step forward one keyframe">
+                          <materialIcons:MaterialIcon Kind="SkipNext"
+                                                      Width="16"
+                                                      Height="16"
+                                                      Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        </Button>
+                      </StackPanel>
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding PlaybackStatusLabel}"
+                                 Classes="FieldLabel"
+                                 VerticalAlignment="Center"/>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2"
+                        Classes="InsetSurface Subtle"
+                        Padding="8"
+                        MinWidth="120"
+                        Height="NaN"
+                        MinHeight="0">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Speed"
+                               Classes="Caption"
+                               FontWeight="SemiBold"/>
+                    <NumericUpDown Value="{Binding PlaybackSpeed, Mode=TwoWay}"
+                                   Minimum="0.1"
+                                   Maximum="10"
+                                   Increment="0.25"
+                                   FormatString="0.##"
+                                   Width="120"/>
+                  </StackPanel>
+                </Border>
+              </Grid>
+
+              <Border Classes="InsetSurface Subtle"
+                      Padding="8"
+                      Height="NaN"
+                      MinHeight="0">
+                <Grid ColumnDefinitions="Auto,*"
+                      ColumnSpacing="12">
+                  <TextBlock Text="Camera"
+                             Classes="Caption"
+                             FontWeight="SemiBold"
+                             VerticalAlignment="Center"/>
+                  <WrapPanel Grid.Column="1"
+                             Orientation="Horizontal"
+                             ItemSpacing="8"
+                             LineSpacing="6">
+                    <Button Content="Iso"
+                            Classes="AppButton"
+                            Command="{Binding SetCameraPresetCommand}"
+                            CommandParameter="Iso"/>
+                    <Button Content="Top"
+                            Classes="AppButton"
+                            Command="{Binding SetCameraPresetCommand}"
+                            CommandParameter="Top"/>
+                    <Button Content="Front"
+                            Classes="AppButton"
+                            Command="{Binding SetCameraPresetCommand}"
+                            CommandParameter="Front"/>
+                    <Button Content="Side"
+                            Classes="AppButton"
+                            Command="{Binding SetCameraPresetCommand}"
+                            CommandParameter="Side"/>
+                    <Button Content="Reset"
+                            Classes="AppButton"
+                            Command="{Binding ResetViewCommand}"/>
+                  </WrapPanel>
+                </Grid>
+              </Border>
+
+              <Border Classes="InsetSurface Subtle"
+                      Padding="8"
+                      Height="NaN"
+                      MinHeight="0">
+                <StackPanel Spacing="8">
+                  <Grid ColumnDefinitions="Auto,*"
+                        ColumnSpacing="12">
+                    <TextBlock Text="Scrubber"
+                               Classes="Caption"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding ScrubberLabel}"
+                               Classes="FieldValue"
+                               HorizontalAlignment="Right"/>
+                  </Grid>
+                  <Slider Minimum="0"
+                          Maximum="{Binding MainVm.ActiveGCodeDocument.TotalLines, TargetNullValue=1}"
+                          Value="{Binding ScrubberValue, Mode=TwoWay}"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <Border x:Name="ViewerHost"
+                  Grid.Row="1"
+                  Background="{DynamicResource ViewerBackgroundBrush}"
+                  CornerRadius="4"
+                  BorderBrush="{DynamicResource BorderBrush}"
+                  BorderThickness="1"
+                  PointerPressed="OnViewerHostPointerPressed"
+                  PointerMoved="OnViewerHostPointerMoved"
+                  PointerReleased="OnViewerHostPointerReleased"
+                  PointerWheelChanged="OnViewerHostPointerWheelChanged"
+                  PointerCaptureLost="OnViewerHostPointerCaptureLost">
+            <Grid>
+              <rendering:NativeGlToolpathView x:Name="Viewer"
+                                              IsVisible="{Binding HasLoadedToolpath}"
+                                              Document="{Binding MainVm.ActiveGCodeDocument}"
+                                              CurrentLine="{Binding PreviewLine}"
+                                              PositionX="{Binding MainVm.WorkX}"
+                                              PositionY="{Binding MainVm.WorkY}"
+                                              PositionZ="{Binding MainVm.WorkZ}"
+                                              CameraPreset="{Binding CameraPreset}"
+                                              ResetViewToken="{Binding ResetViewToken}"
+                                              ShowRapids="{Binding ShowRapids}"
+                                              ShowCuts="{Binding ShowCuts}"
+                                              ShowArcs="{Binding ShowArcs}"
+                                              ShowPlunges="{Binding ShowPlunges}"
+                                              ShowCompletedPath="{Binding ShowCompletedPath}"
+                                              ShowRemainingPath="{Binding ShowRemainingPath}"
+                                              ShowStockBox="{Binding ShowStockBox}"
+                                              ShowGrid="{Binding ShowGrid}"
+                                              ShowToolpathPoints="{Binding ShowToolpathPoints}"
+                                              PreviewPlaybackMode="{Binding PreviewPlaybackMode}"
+                                              PreviewPlaybackStepDurationMs="{Binding PreviewPlaybackStepDurationMs}"/>
+
+              <Border IsVisible="{Binding HasNoLoadedToolpath}"
+                      Background="#14000000">
+                <TextBlock Text="Select a G-code file to build the 3D preview."
+                           Classes="FieldLabel"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"/>
+              </Border>
+            </Grid>
+          </Border>
+        </Grid>
+      </controls:SectionCard.Body>
+    </controls:SectionCard>
+  </Grid>
+</UserControl>

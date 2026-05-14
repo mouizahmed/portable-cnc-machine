@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="PortableCncApp.Controls.FlyoutPanel">
+  <UserControl.Styles>
+    <Style Selector="CheckBox">
+      <Setter Property="MinHeight" Value="24"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Margin" Value="0"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Border x:Name="PanelBorder"
+          Background="{DynamicResource FlyoutSurfaceBrush}"
+          BorderBrush="{DynamicResource BorderBrush}"
+          BorderThickness="1"
+          CornerRadius="4"
+          Padding="4">
+    <StackPanel Spacing="3">
+      <TextBlock x:Name="TitleText"
+                 Classes="FieldLabel"
+                 FontWeight="SemiBold"
+                 Margin="0,0,0,1"
+                 IsVisible="False"/>
+      <ContentControl x:Name="BodyHost"
+                      HorizontalContentAlignment="Stretch"
+                      VerticalContentAlignment="Top"/>
+    </StackPanel>
+  </Border>
+</UserControl>

@@ -1,0 +1,114 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
+             x:Class="PortableCncApp.Views.Pages.DiagnosticsView"
+             x:DataType="vm:DiagnosticsViewModel"
+             mc:Ignorable="d">
+
+  <Grid RowDefinitions="Auto,*">
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,320">
+
+      <controls:SectionCard Title="COMMAND CONSOLE" Margin="0,0,16,0">
+        <controls:SectionCard.Actions>
+          <Button Content="Clear"
+                  Command="{Binding ClearLogCommand}"
+                  Classes="AppButton"/>
+        </controls:SectionCard.Actions>
+
+        <controls:SectionCard.Body>
+          <DockPanel>
+            <Border DockPanel.Dock="Top"
+                    Background="{DynamicResource ConsoleSurfaceBrush}"
+                    CornerRadius="4"
+                    Padding="8"
+                    Height="300"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1">
+              <TextBox Text="{Binding FullLogText}"
+                       IsReadOnly="True"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       FontFamily="Consolas"
+                       BorderThickness="0"
+                       Background="Transparent"
+                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+            </Border>
+
+            <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+              <TextBox Text="{Binding CommandInput}"
+                       Watermark="Enter GRBL command (e.g., $$ for settings, ? for status)..."
+                       FontFamily="Consolas"/>
+              <Button Grid.Column="1"
+                      Content="Send"
+                      Command="{Binding SendCommandCommand}"
+                      Margin="8,0,0,0"
+                      Classes="AppButton Primary"/>
+            </Grid>
+
+            <controls:SectionCard DockPanel.Dock="Bottom" Title="QUICK COMMANDS" Margin="0,12,0,0">
+              <controls:SectionCard.Body>
+                <WrapPanel>
+                  <Button Content="? Status" Margin="0,0,4,4" Classes="AppButton"/>
+                  <Button Content="$$ Settings" Margin="0,0,4,4" Classes="AppButton"/>
+                  <Button Content="$# Parameters" Margin="0,0,4,4" Classes="AppButton"/>
+                  <Button Content="$G Parser State" Margin="0,0,4,4" Classes="AppButton"/>
+                  <Button Content="$I Build Info" Margin="0,0,4,4" Classes="AppButton"/>
+                  <Button Content="$N Startup Blocks" Margin="0,0,4,4" Classes="AppButton"/>
+                </WrapPanel>
+              </controls:SectionCard.Body>
+            </controls:SectionCard>
+          </DockPanel>
+        </controls:SectionCard.Body>
+      </controls:SectionCard>
+
+      <StackPanel Grid.Column="1" Spacing="8">
+        <controls:SectionCard Title="RECOVERY ACTIONS">
+          <controls:SectionCard.Body>
+            <StackPanel Spacing="8">
+              <Button Content="Reset Fault" Command="{Binding ResetFaultCommand}" HorizontalAlignment="Stretch" Classes="AppButton"/>
+              <Button Content="Unlock (Clear E-Stop)" Command="{Binding UnlockCommand}" HorizontalAlignment="Stretch" Classes="AppButton Danger"/>
+              <Button Content="Refresh Thermal Readings" Command="{Binding RefreshSensorsCommand}" HorizontalAlignment="Stretch" Classes="AppButton"/>
+            </StackPanel>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+
+        <controls:SectionCard Title="THERMAL READINGS">
+          <controls:SectionCard.Body>
+            <controls:TwoColumnInfoGrid>
+              <TextBlock Text="Controller Temp" Classes="FieldLabel"/>
+              <TextBlock Grid.Column="1" Text="{Binding ControllerTemperatureText}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+              <TextBlock Grid.Row="1" Text="Electronics Temp" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ElectronicsTemperatureText}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+              <TextBlock Grid.Row="2" Text="Spindle Temp" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SpindleTemperatureText}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
+            </controls:TwoColumnInfoGrid>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+
+        <controls:SectionCard Title="LIMIT SWITCHES">
+          <controls:SectionCard.Body>
+            <controls:TwoColumnInfoGrid>
+              <TextBlock Text="X Axis" Classes="FieldLabel"/>
+              <TextBlock Grid.Column="1" Text="{Binding XLimitText}" Classes="FieldValue"/>
+
+              <TextBlock Grid.Row="1" Text="Y Axis" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding YLimitText}" Classes="FieldValue"/>
+
+              <TextBlock Grid.Row="2" Text="Z Axis" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ZLimitText}" Classes="FieldValue"/>
+
+              <TextBlock Grid.Row="3" Text="Summary" Classes="FieldLabel"/>
+              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LimitSummaryText}" Classes="FieldValue"/>
+            </controls:TwoColumnInfoGrid>
+          </controls:SectionCard.Body>
+        </controls:SectionCard>
+      </StackPanel>
+    </Grid>
+  </Grid>
+</UserControl>

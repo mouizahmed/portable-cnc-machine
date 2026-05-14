@@ -1,0 +1,332 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:vm="clr-namespace:PortableCncApp.ViewModels"
+             xmlns:controls="clr-namespace:PortableCncApp.Controls"
+             x:Class="PortableCncApp.Views.Pages.ManualControlView"
+             x:DataType="vm:ManualControlViewModel"
+             mc:Ignorable="d">
+
+  <UserControl.Styles>
+    <Style Selector="Button.JogPadButton">
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Background" Value="{DynamicResource InsetSurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Button.JogPadButton:pointerover">
+      <Setter Property="Background" Value="{DynamicResource StepButtonHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+    </Style>
+    <Style Selector="Button.JogPadButton:pressed">
+      <Setter Property="Background" Value="{DynamicResource NavButtonPressedBrush}"/>
+    </Style>
+    <Style Selector="Border.JogPadGap">
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Border.AxisBadge">
+      <Setter Property="CornerRadius" Value="999"/>
+      <Setter Property="MinWidth" Value="32"/>
+      <Setter Property="Padding" Value="6,2"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8" RowDefinitions="*,*" RowSpacing="8">
+
+    <controls:SectionCard Grid.Row="0" Grid.Column="0" Title="MOTION PAD" IsLoose="True">
+      <controls:SectionCard.Body>
+        <Grid RowDefinitions="*,Auto" RowSpacing="10">
+          <Grid RowDefinitions="Auto,*,*,*"
+                ColumnDefinitions="*,*,*,*"
+                RowSpacing="6"
+                ColumnSpacing="6"
+                IsEnabled="{Binding CanJogControls}">
+            <TextBlock Text="XY"
+                       Grid.ColumnSpan="3"
+                       Classes="Caption"
+                       FontWeight="SemiBold"
+                       HorizontalAlignment="Center"/>
+            <TextBlock Text="Z"
+                       Grid.Column="3"
+                       Classes="Caption"
+                       FontWeight="SemiBold"
+                       HorizontalAlignment="Center"/>
+
+            <Button Grid.Row="1" Grid.Column="0" Classes="JogPadButton" Tag="X- Y+" Command="{Binding JogPadCommand}" CommandParameter="X- Y+">
+              <materialIcons:MaterialIcon Kind="ArrowTopLeftBold" Width="20" Height="20" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Button>
+            <Button Grid.Row="1" Grid.Column="1" Classes="JogPadButton" Tag="Y+" Command="{Binding JogPadCommand}" CommandParameter="Y+">
+              <materialIcons:MaterialIcon Kind="ArrowTopBold" Width="20" Height="20" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Button>
+            <Button Grid.Row="1" Grid.Column="2" Classes="JogPadButton" Tag="X+ Y+" Command="{Binding JogPadCommand}" CommandParameter="X+ Y+">
+              <materialIcons:MaterialIcon Kind="ArrowTopRightBold" Width="20" Height="20" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Button>
+            <Button Grid.Row="1" Grid.Column="3" Classes="JogPadButton" Tag="Z+" Command="{Binding JogPadCommand}" CommandParameter="Z+">
+              <materialIcons:MaterialIcon Kind="ArrowTopBold" Width="18" Height="18" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Button>
+
+            <Button Grid.Row="2" Grid.Column="0" Classes="JogPadButton" Tag="X-" Command="{Binding JogPadCommand}" CommandParameter="X-">
+              <materialIcons:MaterialIcon Kind="ArrowLeftBold" Width="20" Height="20" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Button>
+            <Border Grid.Row="2" Grid.Column="1" Classes="JogPadGap"/>
+            <Button Grid.Row="2" Grid.Column="2" Classes="JogPadButton" Tag="X+" Command="{Binding JogPadCommand}" CommandParameter="X+">
+              <materialIcons:MaterialIcon Kind="ArrowRightBold" Width="20" Height="20" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Button>
+            <Border Grid.Row="2" Grid.Column="3" Classes="JogPadGap"/>
+
+            <Button Grid.Row="3" Grid.Column="0" Classes="JogPadButton" Tag="X- Y-" Command="{Binding JogPadCommand}" CommandParameter="X- Y-">
+              <materialIcons:MaterialIcon Kind="ArrowBottomLeftBold" Width="20" Height="20" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Button>
+            <Button Grid.Row="3" Grid.Column="1" Classes="JogPadButton" Tag="Y-" Command="{Binding JogPadCommand}" CommandParameter="Y-">
+              <materialIcons:MaterialIcon Kind="ArrowBottomBold" Width="20" Height="20" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Button>
+            <Button Grid.Row="3" Grid.Column="2" Classes="JogPadButton" Tag="X+ Y-" Command="{Binding JogPadCommand}" CommandParameter="X+ Y-">
+              <materialIcons:MaterialIcon Kind="ArrowBottomRightBold" Width="20" Height="20" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Button>
+            <Button Grid.Row="3" Grid.Column="3" Classes="JogPadButton" Tag="Z-" Command="{Binding JogPadCommand}" CommandParameter="Z-">
+              <materialIcons:MaterialIcon Kind="ArrowBottomBold" Width="18" Height="18" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </Button>
+          </Grid>
+
+          <Button Grid.Row="1"
+                  Content="Cancel Jog"
+                  Command="{Binding JogCancelCommand}"
+                  IsEnabled="{Binding CanCancelJog}"
+                  Classes="AppButton"
+                  HorizontalAlignment="Stretch"/>
+        </Grid>
+      </controls:SectionCard.Body>
+    </controls:SectionCard>
+
+    <controls:SectionCard Grid.Row="0" Grid.Column="1" Title="JOG SETTINGS">
+      <controls:SectionCard.Body>
+        <StackPanel Spacing="8">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Step Size" Classes="FieldLabel"/>
+            <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="4"
+                  IsEnabled="{Binding CanJogControls}">
+              <Button Content="0.01"
+                      Command="{Binding SetStepCommand}"
+                      CommandParameter="0.01"
+                      Classes="StepButton"
+                      HorizontalAlignment="Stretch"/>
+              <Button Grid.Column="1"
+                      Content="0.1"
+                      Command="{Binding SetStepCommand}"
+                      CommandParameter="0.1"
+                      Classes="StepButton"
+                      HorizontalAlignment="Stretch"/>
+              <Button Grid.Column="2"
+                      Content="1"
+                      Command="{Binding SetStepCommand}"
+                      CommandParameter="1"
+                      Classes="StepButton"
+                      HorizontalAlignment="Stretch"/>
+              <Button Grid.Column="3"
+                      Content="10"
+                      Command="{Binding SetStepCommand}"
+                      CommandParameter="10"
+                      Classes="StepButton"
+                      HorizontalAlignment="Stretch"/>
+              <Button Grid.Column="4"
+                      Content="50"
+                      Command="{Binding SetStepCommand}"
+                      CommandParameter="50"
+                      Classes="StepButton"
+                      HorizontalAlignment="Stretch"/>
+            </Grid>
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="Jog Feed" Classes="FieldLabel"/>
+            <NumericUpDown Value="{Binding JogFeedRate}"
+                           Minimum="1"
+                           Maximum="5000"
+                           Increment="100"
+                           FormatString="F0"
+                           IsEnabled="{Binding CanJogControls}"/>
+          </StackPanel>
+
+          <CheckBox Content="Continuous Jog"
+                    IsChecked="{Binding ContinuousJog}"
+                    IsEnabled="{Binding CanJogControls}"
+                    Foreground="{DynamicResource TextSecondaryBrush}"/>
+
+        </StackPanel>
+      </controls:SectionCard.Body>
+    </controls:SectionCard>
+
+    <controls:SectionCard Grid.Row="0" Grid.Column="2" Title="SPINDLE">
+      <controls:SectionCard.Body>
+        <StackPanel Spacing="8">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Spindle Target" Classes="FieldLabel"/>
+            <NumericUpDown Value="{Binding SpindleTargetRpm}"
+                           Minimum="{Binding SpindleMinRpm}"
+                           Maximum="{Binding SpindleMaxRpm}"
+                           Increment="500"
+                           FormatString="F0"
+                           IsEnabled="{Binding CanUseAuxControls}"/>
+          </StackPanel>
+
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+            <Button Content="Spindle Start"
+                    Command="{Binding StartSpindleCommand}"
+                    Classes="AppButton Primary"
+                    IsEnabled="{Binding CanUseAuxControls}"
+                    HorizontalAlignment="Stretch"/>
+            <Button Grid.Column="1"
+                    Content="Spindle Stop"
+                    Command="{Binding StopSpindleCommand}"
+                    Classes="AppButton"
+                    IsEnabled="{Binding CanUseAuxControls}"
+                    HorizontalAlignment="Stretch"/>
+          </Grid>
+        </StackPanel>
+      </controls:SectionCard.Body>
+    </controls:SectionCard>
+
+    <controls:SectionCard Grid.Row="1" Grid.Column="0" Title="OVERRIDES">
+      <controls:SectionCard.Body>
+        <StackPanel Spacing="8">
+          <StackPanel Spacing="4">
+            <controls:TwoColumnInfoGrid>
+              <TextBlock Text="Feed" Classes="FieldLabel" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" Text="{Binding FeedOverride, StringFormat={}{0}%}" Classes="FieldValue"/>
+            </controls:TwoColumnInfoGrid>
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4">
+              <Button Content="-10" Command="{Binding FeedOverrideMinusCommand}" Classes="AppButton" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUseOverrides}"/>
+              <Button Grid.Column="1" Content="100%" Command="{Binding FeedOverrideResetCommand}" Classes="AppButton" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUseOverrides}"/>
+              <Button Grid.Column="2" Content="+10" Command="{Binding FeedOverridePlusCommand}" Classes="AppButton" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUseOverrides}"/>
+            </Grid>
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <controls:TwoColumnInfoGrid>
+              <TextBlock Text="Spindle" Classes="FieldLabel" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" Text="{Binding SpindleOverride, StringFormat={}{0}%}" Classes="FieldValue"/>
+            </controls:TwoColumnInfoGrid>
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4">
+              <Button Content="-10" Command="{Binding SpindleOverrideMinusCommand}" Classes="AppButton" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUseOverrides}"/>
+              <Button Grid.Column="1" Content="100%" Command="{Binding SpindleOverrideResetCommand}" Classes="AppButton" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUseOverrides}"/>
+              <Button Grid.Column="2" Content="+10" Command="{Binding SpindleOverridePlusCommand}" Classes="AppButton" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUseOverrides}"/>
+            </Grid>
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="Rapid" Classes="FieldLabel"/>
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4">
+              <Button Content="25%" Command="{Binding RapidOverride25Command}" Classes="AppButton" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUseOverrides}"/>
+              <Button Grid.Column="1" Content="50%" Command="{Binding RapidOverride50Command}" Classes="AppButton" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUseOverrides}"/>
+              <Button Grid.Column="2" Content="100%" Command="{Binding RapidOverride100Command}" Classes="AppButton" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUseOverrides}"/>
+            </Grid>
+          </StackPanel>
+        </StackPanel>
+      </controls:SectionCard.Body>
+    </controls:SectionCard>
+
+    <controls:SectionCard Grid.Row="1" Grid.Column="1" Title="HOMING AND ZERO">
+      <controls:SectionCard.Body>
+        <StackPanel Spacing="8">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Homed" Classes="FieldLabel"/>
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+              <Border Classes="AxisBadge"
+                      Background="{Binding XHomed, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"
+                      HorizontalAlignment="Stretch">
+                <TextBlock Text="X" Classes="Caption" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center"/>
+              </Border>
+              <Border Grid.Column="1"
+                      Classes="AxisBadge"
+                      Background="{Binding YHomed, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"
+                      HorizontalAlignment="Stretch">
+                <TextBlock Text="Y" Classes="Caption" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center"/>
+              </Border>
+              <Border Grid.Column="2"
+                      Classes="AxisBadge"
+                      Background="{Binding ZHomed, Converter={x:Static vm:BoolToStatusBrushConverter.Instance}}"
+                      HorizontalAlignment="Stretch">
+                <TextBlock Text="Z" Classes="Caption" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center"/>
+              </Border>
+            </Grid>
+          </StackPanel>
+
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+            <StackPanel Spacing="4">
+              <TextBlock Text="HOME" Classes="FieldLabel" FontWeight="SemiBold"/>
+              <WrapPanel ItemSpacing="4" LineSpacing="4" IsEnabled="{Binding CanHomeControls}">
+                <Button Content="All" Command="{Binding HomeAllCommand}" Classes="AppButton Primary"/>
+                <Button Content="X" Command="{Binding HomeXCommand}" Classes="AppButton"/>
+                <Button Content="Y" Command="{Binding HomeYCommand}" Classes="AppButton"/>
+                <Button Content="Z" Command="{Binding HomeZCommand}" Classes="AppButton"/>
+              </WrapPanel>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="4">
+              <TextBlock Text="WORK ZERO" Classes="FieldLabel" FontWeight="SemiBold"/>
+              <WrapPanel ItemSpacing="4" LineSpacing="4" IsEnabled="{Binding IsMachineConnected}">
+                <Button Content="All" Command="{Binding ZeroAllCommand}" Classes="AppButton Primary"/>
+                <Button Content="X=0" Command="{Binding ZeroXCommand}" Classes="AppButton"/>
+                <Button Content="Y=0" Command="{Binding ZeroYCommand}" Classes="AppButton"/>
+                <Button Content="Z=0" Command="{Binding ZeroZCommand}" Classes="AppButton"/>
+              </WrapPanel>
+            </StackPanel>
+          </Grid>
+
+          <Border Height="1" Background="{DynamicResource BorderBrush}"/>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="RECOVERY" Classes="FieldLabel" FontWeight="SemiBold"/>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+              <Button Content="Unlock Alarm"
+                      Command="{Binding AlarmUnlockCommand}"
+                      IsEnabled="{Binding CanAlarmUnlock}"
+                      Classes="AppButton Danger"
+                      HorizontalAlignment="Stretch"/>
+              <Button Grid.Column="1"
+                      Content="Soft Reset"
+                      Command="{Binding SoftResetCommand}"
+                      IsEnabled="{Binding CanSoftReset}"
+                      Classes="AppButton"
+                      HorizontalAlignment="Stretch"/>
+            </Grid>
+          </StackPanel>
+        </StackPanel>
+      </controls:SectionCard.Body>
+    </controls:SectionCard>
+
+    <controls:SectionCard Grid.Row="1" Grid.Column="2" Title="PROBE">
+      <controls:SectionCard.Body>
+        <StackPanel Spacing="8">
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Depth (mm)" Classes="FieldLabel"/>
+              <NumericUpDown Value="{Binding ProbeDepth}" Minimum="0.1" Maximum="100" Increment="1" FormatString="F1" IsEnabled="{Binding CanProbe}"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="4">
+              <TextBlock Text="Feed (mm/min)" Classes="FieldLabel"/>
+              <NumericUpDown Value="{Binding ProbeFeed}" Minimum="1" Maximum="500" Increment="10" FormatString="F0" IsEnabled="{Binding CanProbe}"/>
+            </StackPanel>
+          </Grid>
+
+          <Button Content="Probe Z"
+                  Command="{Binding ProbeZCommand}"
+                  IsEnabled="{Binding CanProbe}"
+                  Classes="AppButton Primary"
+                  HorizontalAlignment="Stretch"/>
+
+          <TextBlock Text="Jog Z near stock, probe down, then set Z=0." Classes="FieldLabel" TextWrapping="Wrap"/>
+        </StackPanel>
+      </controls:SectionCard.Body>
+    </controls:SectionCard>
+
+  </Grid>
+</UserControl>
