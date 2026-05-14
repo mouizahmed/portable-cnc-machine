@@ -1238,14 +1238,6 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // BACKWARD-COMPAT STUBS  (remove after the indicated phase)
     // ════════════════════════════════════════════════════════════════
 
-    /// <summary>No-op. Remove after Phase 3 (ConnectViewModel rework).</summary>
-    [Obsolete("Phase 3: ConnectViewModel will use Protocol.SendPing/SendInfo directly.")]
-    public void StartPolling() { }
-
-    /// <summary>No-op. Remove after Phase 3.</summary>
-    [Obsolete("Phase 3: Remove after ConnectViewModel rework.")]
-    public void StopPolling() { }
-
     /// <summary>No-op. Remove after Phase 4 (ManualControlViewModel rework).</summary>
     [Obsolete("Phase 4: ManualControlViewModel will call Protocol.SendHome() directly.")]
     public void SetAllAxesHomed(bool homed) { }

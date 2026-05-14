@@ -10,18 +10,11 @@ York University | Lassonde School of Engineering
 
 A modular, portable 3-axis CNC vertical milling machine designed for remote First Nations communities in Canada. The system is built to fit in a pickup truck bed, operate fully offline, and support field maintenance with basic hand tools, helping communities produce critical replacement parts without relying on distant suppliers.
 
-The machine combines a rigid mechanical frame that can fully disassemble into parts <= 25 kg, 3-axis stepper-driven motion hardware with encoder-based position verification, a Teensy 4.1 grblHAL motion controller, an onboard touchscreen interface, SD-card job storage, and an Avalonia/.NET desktop application for G-code preview, file transfer, machine control, and diagnostics.
+The machine uses a fixed-column, moving-table 3-axis mill architecture with a rigid mechanical frame that can fully disassemble into parts <= 25 kg. It combines stepper-driven motion hardware with encoder-based position verification, an embedded Teensy 4.1 grblHAL motion-control system, an onboard touchscreen interface, SD-card job storage, and an Avalonia/.NET desktop application for G-code preview, file transfer, machine control, and diagnostics.
 
-## Team
+## Video
 
-| Name | Role | Student ID |
-|------|------|------------|
-| Mouiz Ahmed | Software Engineer | 218105536 |
-| Farzin Aliverdi Mamaghani | Software Engineer | 217849068 |
-| Vladislav Fedotov | Mechanical Engineer | 218130435 |
-| Quoc Tri (Lloyd) Lam | Mechanical Engineer | 219012434 |
-| Anastasia Vitkovskiy | Mechanical Engineer | 218644609 |
-| Cameron Waters | Mechanical Engineer | 218127605 |
+<!-- TODO: Add demonstration video. -->
 
 ## Repository Structure
 
@@ -114,6 +107,17 @@ Bring-up checklist:
 4. Connect the desktop app to the Pico USB CDC port and verify Teensy connected state.
 5. Upload/load a G-code file, run a dry job, test pause/resume/abort, and test E-stop/reset recovery.
 
+
+## Team
+
+| Name | Role | Student ID |
+|------|------|------------|
+| Mouiz Ahmed | Software Engineer | 218105536 |
+| Farzin Aliverdi Mamaghani | Software Engineer | 217849068 |
+| Vladislav Fedotov | Mechanical Engineer | 218130435 |
+| Quoc Tri (Lloyd) Lam | Mechanical Engineer | 219012434 |
+| Anastasia Vitkovskiy | Mechanical Engineer | 218644609 |
+| Cameron Waters | Mechanical Engineer | 218127605 |
 
 ## License
 
