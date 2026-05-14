@@ -1,4 +1,7 @@
-# ![Portable CNC Machine logo](assets/logo.png "Portable CNC Machine logo") Portable CNC Machine
+<h1>
+  <img src="assets/logo.png" alt="Portable CNC Machine logo" width="80" align="center">
+  Portable CNC Machine
+</h1>
 
 **Capstone Team 40 &mdash; Team XYZ (2025-2026)**  
 York University | Lassonde School of Engineering
