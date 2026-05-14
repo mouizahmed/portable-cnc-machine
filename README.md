@@ -1,13 +1,7 @@
-<div>
-    <p>
-        <img alt="Logo" src="assets/logo.png" width="60" style="vertical-align: middle;" />
-        <strong style="font-size: 28px; vertical-align: middle;">Portable CNC Machine</strong>
-    </p>
-    <p>
-        <strong>Capstone Team 40 &mdash; Team XYZ (2025-2026)</strong><br>
-        York University | Lassonde School of Engineering
-    </p>
-</div>
+# ![Portable CNC Machine logo](assets/logo.png "Portable CNC Machine logo") Portable CNC Machine
+
+**Capstone Team 40 &mdash; Team XYZ (2025-2026)**  
+York University | Lassonde School of Engineering
 
 A modular, portable 3-axis CNC vertical milling machine prototype designed for remote First Nations communities in Canada. Built to fit on a pickup truck bed, operate fully offline, and be maintained with basic hand tools, reducing dependence on distant suppliers for critical replacement parts.
 
