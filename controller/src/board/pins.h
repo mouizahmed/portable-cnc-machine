@@ -19,6 +19,10 @@
 #define CNC_PIN_Z_STEP              28
 #define CNC_PIN_Z_DIRECTION         29
 #define CNC_PIN_Z_ENABLE            30
+#define CNC_PIN_Z_BRAKE_RELAY       35
+
+// Common 5V relay modules are often active-low: IN low energizes the relay.
+#define CNC_PIN_Z_BRAKE_RELAY_ON    0
 
 #define CNC_PIN_X_LIMIT             31
 #define CNC_PIN_Y_LIMIT             32

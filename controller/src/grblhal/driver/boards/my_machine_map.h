@@ -31,6 +31,8 @@
 #define X_ENABLE_PIN        (CNC_PIN_X_ENABLE)
 #define Y_ENABLE_PIN        (CNC_PIN_Y_ENABLE)
 #define Z_ENABLE_PIN        (CNC_PIN_Z_ENABLE)
+#define Z_BRAKE_RELAY_PIN   (CNC_PIN_Z_BRAKE_RELAY)
+#define Z_BRAKE_RELAY_ON    (CNC_PIN_Z_BRAKE_RELAY_ON)
 
 #define X_LIMIT_PIN         (CNC_PIN_X_LIMIT)
 #define Y_LIMIT_PIN         (CNC_PIN_Y_LIMIT)

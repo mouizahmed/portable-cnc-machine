@@ -206,6 +206,13 @@ static gpio_t enableY;
 #ifdef Z_ENABLE_PIN
 static gpio_t enableZ;
 #endif
+#ifdef Z_BRAKE_RELAY_PIN
+static gpio_t zBrakeRelay;
+#ifndef Z_BRAKE_RELAY_ON
+#define Z_BRAKE_RELAY_ON 1
+#endif
+#define Z_BRAKE_RELAY_OFF (!Z_BRAKE_RELAY_ON)
+#endif
 
 #ifdef X2_STEP_PIN
   static gpio_t stepX2;
@@ -1124,6 +1131,9 @@ static void stepperEnable (axes_signals_t enable, bool hold)
 
 #ifdef Z_ENABLE_PIN
     DIGITAL_OUT(enableZ, enable.z)
+#endif
+#ifdef Z_BRAKE_RELAY_PIN
+    DIGITAL_OUT(zBrakeRelay, enable.z ? Z_BRAKE_RELAY_ON : Z_BRAKE_RELAY_OFF)
 #endif
 #ifdef Z2_ENABLE_PIN
     DIGITAL_OUT(enableZ2, enable.z)
@@ -2784,6 +2794,11 @@ FLASHMEM static bool driver_setup (settings_t *settings)
             }
         }
     }
+
+#ifdef Z_BRAKE_RELAY_PIN
+    pinModeOutput(&zBrakeRelay, Z_BRAKE_RELAY_PIN);
+    DIGITAL_OUT(zBrakeRelay, Z_BRAKE_RELAY_OFF);
+#endif
 
     /******************
      *  Stepper init  *
