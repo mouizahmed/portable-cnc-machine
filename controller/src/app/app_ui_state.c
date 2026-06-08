@@ -1,6 +1,7 @@
 #include "app/app_ui_state.h"
 
 #include "app/app_machine_state.h"
+#include "app/app_bmp280_sensor.h"
 #include "machine/machine_status.h"
 
 #include <stdio.h>
@@ -41,6 +42,7 @@ void app_ui_state_init(void)
     snprintf(current_state.sd_status, sizeof(current_state.sd_status), "ENABLED");
     snprintf(current_state.littlefs_status, sizeof(current_state.littlefs_status), "ENABLED");
     snprintf(current_state.touch_status, sizeof(current_state.touch_status), "CALIBRATED");
+    snprintf(current_state.temperature, sizeof(current_state.temperature), "--");
 }
 
 const ui_runtime_state_t *app_ui_state_snapshot(void)
@@ -77,6 +79,15 @@ uint8_t app_ui_state_refresh(void)
         dirty |= copy_field(current_state.elapsed_time, sizeof(current_state.elapsed_time),
                             buffer, UiRuntimeField_Time);
     }
+
+    float temperature_c = 0.0f;
+    if(app_bmp280_sensor_temperature_c(&temperature_c))
+        snprintf(buffer, sizeof(buffer), "%.1f C", temperature_c);
+    else
+        snprintf(buffer, sizeof(buffer), "--");
+
+    dirty |= copy_field(current_state.temperature, sizeof(current_state.temperature),
+                        buffer, UiRuntimeField_Storage);
 
     return dirty;
 }

@@ -404,8 +404,17 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     // ENVIRONMENTAL
     // ════════════════════════════════════════════════════════════════
 
-    private double _temperature;
-    public double Temperature { get => _temperature; set => SetProperty(ref _temperature, value); }
+    private double _temperature = double.NaN;
+    public double Temperature
+    {
+        get => _temperature;
+        set
+        {
+            if (SetProperty(ref _temperature, value))
+                RaisePropertyChanged(nameof(TemperatureText));
+        }
+    }
+    public string TemperatureText => double.IsNaN(Temperature) ? "--" : $"{Temperature:F1} C";
 
     // Homed / limit state — updated by @EVENT LIMIT.
     // Individual homed axes are not yet in the protocol; kept for Phase 4 compat.
@@ -481,6 +490,36 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private bool _xMinLimitTriggered;
+    public bool XMinLimitTriggered
+    {
+        get => _xMinLimitTriggered;
+        private set
+        {
+            if (SetProperty(ref _xMinLimitTriggered, value))
+            {
+                RaisePropertyChanged(nameof(LimitsTriggered));
+                RaisePropertyChanged(nameof(LimitsStatusText));
+                RaisePropertyChanged(nameof(LimitSummaryText));
+            }
+        }
+    }
+
+    private bool _xMaxLimitTriggered;
+    public bool XMaxLimitTriggered
+    {
+        get => _xMaxLimitTriggered;
+        private set
+        {
+            if (SetProperty(ref _xMaxLimitTriggered, value))
+            {
+                RaisePropertyChanged(nameof(LimitsTriggered));
+                RaisePropertyChanged(nameof(LimitsStatusText));
+                RaisePropertyChanged(nameof(LimitSummaryText));
+            }
+        }
+    }
+
     private bool _yLimitTriggered;
     public bool YLimitTriggered
     {
@@ -488,6 +527,36 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         private set
         {
             if (SetProperty(ref _yLimitTriggered, value))
+            {
+                RaisePropertyChanged(nameof(LimitsTriggered));
+                RaisePropertyChanged(nameof(LimitsStatusText));
+                RaisePropertyChanged(nameof(LimitSummaryText));
+            }
+        }
+    }
+
+    private bool _yMinLimitTriggered;
+    public bool YMinLimitTriggered
+    {
+        get => _yMinLimitTriggered;
+        private set
+        {
+            if (SetProperty(ref _yMinLimitTriggered, value))
+            {
+                RaisePropertyChanged(nameof(LimitsTriggered));
+                RaisePropertyChanged(nameof(LimitsStatusText));
+                RaisePropertyChanged(nameof(LimitSummaryText));
+            }
+        }
+    }
+
+    private bool _yMaxLimitTriggered;
+    public bool YMaxLimitTriggered
+    {
+        get => _yMaxLimitTriggered;
+        private set
+        {
+            if (SetProperty(ref _yMaxLimitTriggered, value))
             {
                 RaisePropertyChanged(nameof(LimitsTriggered));
                 RaisePropertyChanged(nameof(LimitsStatusText));
@@ -511,6 +580,36 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private bool _zMinLimitTriggered;
+    public bool ZMinLimitTriggered
+    {
+        get => _zMinLimitTriggered;
+        private set
+        {
+            if (SetProperty(ref _zMinLimitTriggered, value))
+            {
+                RaisePropertyChanged(nameof(LimitsTriggered));
+                RaisePropertyChanged(nameof(LimitsStatusText));
+                RaisePropertyChanged(nameof(LimitSummaryText));
+            }
+        }
+    }
+
+    private bool _zMaxLimitTriggered;
+    public bool ZMaxLimitTriggered
+    {
+        get => _zMaxLimitTriggered;
+        private set
+        {
+            if (SetProperty(ref _zMaxLimitTriggered, value))
+            {
+                RaisePropertyChanged(nameof(LimitsTriggered));
+                RaisePropertyChanged(nameof(LimitsStatusText));
+                RaisePropertyChanged(nameof(LimitSummaryText));
+            }
+        }
+    }
+
     public bool LimitsTriggered => XLimitTriggered || YLimitTriggered || ZLimitTriggered;
     public string LimitsStatusText => LimitsTriggered ? "TRIGGERED" : "OK";
 
@@ -519,10 +618,18 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         get
         {
             if (!LimitsTriggered) return "XYZ CLEAR";
-            var active = new List<string>(3);
-            if (XLimitTriggered) active.Add("X");
-            if (YLimitTriggered) active.Add("Y");
-            if (ZLimitTriggered) active.Add("Z");
+            var active = new List<string>(6);
+            if (XMinLimitTriggered) active.Add("X MIN");
+            if (XMaxLimitTriggered) active.Add("X MAX");
+            if (YMinLimitTriggered) active.Add("Y MIN");
+            if (YMaxLimitTriggered) active.Add("Y MAX");
+            if (ZMinLimitTriggered) active.Add("Z MIN");
+            if (ZMaxLimitTriggered) active.Add("Z MAX");
+            if (active.Count == 0) {
+                if (XLimitTriggered) active.Add("X");
+                if (YLimitTriggered) active.Add("Y");
+                if (ZLimitTriggered) active.Add("Z");
+            }
             return $"{string.Join("/", active)} LIMIT";
         }
     }
@@ -755,6 +862,7 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         Protocol.CapsChanged     += c => Caps = c;
         Protocol.SafetyChanged   += l => SafetyLevel = l;
         Protocol.PositionChanged += OnPositionChanged;
+        Protocol.TemperatureChanged += OnTemperatureChanged;
         Protocol.JobChanged      += HandleJobChanged;
         Protocol.MachineSettingsReceived += HandleMachineSettingsReceived;
         Protocol.EventReceived   += HandleProtocolEvent;
@@ -899,6 +1007,12 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         WorkX    = pos.WX;
         WorkY    = pos.WY;
         WorkZ    = pos.WZ;
+    }
+
+    private void OnTemperatureChanged(double? temperatureC)
+    {
+        Temperature = temperatureC ?? double.NaN;
+        DiagnosticsVm.ControllerTemperature = Temperature;
     }
 
     private void HandleJobChanged(string? name)
@@ -1062,9 +1176,19 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
                 break;
 
             case "LIMIT":
-                if (kv.TryGetValue("AXIS", out var axis))
-                    UpdateLimitAxes(axis);
+                kv.TryGetValue("AXIS", out var axis);
+                kv.TryGetValue("MIN", out var min);
+                kv.TryGetValue("MAX", out var max);
+                UpdateLimitAxes(axis ?? string.Empty, min ?? string.Empty, max ?? string.Empty);
                 break;
+
+            case "MSG":
+                kv.TryGetValue("LEVEL", out var level);
+                kv.TryGetValue("TEXT", out var text);
+                DiagnosticsVm?.AddLog(string.IsNullOrWhiteSpace(level) ? "MSG" : level,
+                                      string.IsNullOrWhiteSpace(text) ? "Controller message" : text);
+                break;
+
         }
     }
 
@@ -1079,12 +1203,20 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         return string.Join(' ', parts);
     }
 
-    private void UpdateLimitAxes(string axes)
+    private void UpdateLimitAxes(string axes, string minAxes, string maxAxes)
     {
         var upper = axes.ToUpperInvariant();
+        var minUpper = minAxes.ToUpperInvariant();
+        var maxUpper = maxAxes.ToUpperInvariant();
         XLimitTriggered = upper.Contains('X');
         YLimitTriggered = upper.Contains('Y');
         ZLimitTriggered = upper.Contains('Z');
+        XMinLimitTriggered = minUpper.Contains('X');
+        XMaxLimitTriggered = maxUpper.Contains('X');
+        YMinLimitTriggered = minUpper.Contains('Y');
+        YMaxLimitTriggered = maxUpper.Contains('Y');
+        ZMinLimitTriggered = minUpper.Contains('Z');
+        ZMaxLimitTriggered = maxUpper.Contains('Z');
     }
 
     private async Task LoadMachineSettingsOnConnectAsync(int version)
@@ -1138,6 +1270,8 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         SafetyLevel            = SafetyLevel.Safe;
         SpindleOn              = false;
         SpindleSpeed           = 0;
+        Temperature            = double.NaN;
+        DiagnosticsVm.ControllerTemperature = double.NaN;
         CurrentFileName        = null;
         JobState               = JobRunState.NoJob;
         CurrentLine            = 0;
@@ -1149,7 +1283,9 @@ public sealed class MainWindowViewModel : ViewModelBase, IDisposable
         IsStatusError          = true;
         XHomed = YHomed = ZHomed = false;
         XLimitTriggered = YLimitTriggered = ZLimitTriggered = false;
-
+        XMinLimitTriggered = XMaxLimitTriggered = false;
+        YMinLimitTriggered = YMaxLimitTriggered = false;
+        ZMinLimitTriggered = ZMaxLimitTriggered = false;
         ConnectVm.ResetDeviceInfo();
     }
 

@@ -87,9 +87,12 @@
                                      PillBackground="{Binding MotionStateBrush}"/>
 
                 <controls:TwoColumnInfoGrid>
-                  <TextBlock Text="Connection" Classes="FieldLabel"/>
-                  <TextBlock Grid.Column="1" Text="{Binding ConnectionStatusText}" Classes="FieldValue"/>
-                </controls:TwoColumnInfoGrid>
+                          <TextBlock Text="Connection" Classes="FieldLabel"/>
+                          <TextBlock Grid.Column="1" Text="{Binding ConnectionStatusText}" Classes="FieldValue"/>
+
+                          <TextBlock Grid.Row="1" Text="Temp" Classes="FieldLabel"/>
+                          <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TemperatureText}" Classes="FieldValue"/>
+                        </controls:TwoColumnInfoGrid>
               </StackPanel>
             </controls:SectionCard.Body>
           </controls:SectionCard>
@@ -267,6 +270,7 @@
                           <TextBlock Grid.Row="1" Grid.Column="1"
                                      Text="{Binding MainVm.ConnectionStatusText}"
                                      Classes="FieldValue"/>
+
                         </controls:TwoColumnInfoGrid>
 
                         <TextBlock Text="{Binding ConnectionSummary}"

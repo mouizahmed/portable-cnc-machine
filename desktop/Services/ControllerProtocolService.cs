@@ -58,6 +58,7 @@ public sealed class ControllerProtocolService
     public event Action<SafetyLevel>? SafetyChanged;
     public event Action<string, IReadOnlyDictionary<string, string>>? EventReceived;
     public event Action<ControllerPos>? PositionChanged;
+    public event Action<double?>? TemperatureChanged;
     public event Action<ControllerInfo>? InfoReceived;
     public event Action<ControllerMachineSettings>? MachineSettingsReceived;
     public event Action? PongReceived;
@@ -224,6 +225,7 @@ public sealed class ControllerProtocolService
 
     public void SendEstop() => SendCommandFrame(new CmdEstop { MessageType = (byte)CommandMessageType.Estop });
     public void SendReset() => SendCommandFrame(new CmdReset { MessageType = (byte)CommandMessageType.Reset });
+    public void SendUnlock() => SendCommandFrame(new CmdUnlock { MessageType = (byte)CommandMessageType.Unlock });
 
     public void SendOverrideFeed(int percent)    => SendOverride(OverrideTarget.Feed, percent);
     public void SendOverrideSpindle(int percent) => SendOverride(OverrideTarget.Spindle, percent);
@@ -441,6 +443,11 @@ public sealed class ControllerProtocolService
                     settings.WarningTemperature,
                     settings.MaxTemperature));
                 break;
+
+            case ResponseMessageType.Temperature:
+                if (!TryReadPayload(payload, out RespTemperature temperature)) return;
+                TemperatureChanged?.Invoke(temperature.HasTemperature != 0 ? temperature.TemperatureC : null);
+                break;
         }
     }
 
@@ -522,7 +529,10 @@ public sealed class ControllerProtocolService
 
             case EventMessageType.Limit:
                 if (!TryReadPayload(payload, out EventLimit limit)) return;
-                EventReceived?.Invoke("LIMIT", Kv(("AXIS", AxesToken(limit.AxesMask))));
+                EventReceived?.Invoke("LIMIT", Kv(
+                    ("AXIS", AxesToken(limit.AxesMask)),
+                    ("MIN", AxesToken(limit.MinAxesMask)),
+                    ("MAX", AxesToken(limit.MaxAxesMask))));
                 break;
 
             case EventMessageType.Alarm:
@@ -530,6 +540,22 @@ public sealed class ControllerProtocolService
                 EventReceived?.Invoke("ALARM", Kv(
                     ("CODE", alarm.Code.ToString(CultureInfo.InvariantCulture)),
                     ("MSG", ReadFixedString(alarm.Message, ProtocolConstants.MaxMessageBytes))));
+                break;
+
+            case EventMessageType.Temperature:
+                if (!TryReadPayload(payload, out EventTemperature temperature)) return;
+                TemperatureChanged?.Invoke(temperature.HasTemperature != 0 ? temperature.TemperatureC : null);
+                EventReceived?.Invoke("TEMP", Kv(
+                    ("C", temperature.HasTemperature != 0
+                        ? temperature.TemperatureC.ToString("F1", CultureInfo.InvariantCulture)
+                        : "NA")));
+                break;
+
+            case EventMessageType.Message:
+                if (!TryReadPayload(payload, out EventMessage message)) return;
+                EventReceived?.Invoke("MSG", Kv(
+                    ("LEVEL", MessageLevelToken(message.MessageLevel)),
+                    ("TEXT", ReadFixedString(message.Message, ProtocolConstants.MaxMessageBytes))));
                 break;
         }
     }
@@ -743,6 +769,7 @@ public sealed class ControllerProtocolService
         CommandMessageType.Abort             => "ABORT",
         CommandMessageType.Estop             => "ESTOP",
         CommandMessageType.Reset             => "RESET",
+        CommandMessageType.Unlock            => "UNLOCK",
         CommandMessageType.SpindleOn         => "SPINDLE_ON",
         CommandMessageType.SpindleOff        => "SPINDLE_OFF",
         CommandMessageType.Override          => "OVERRIDE",
@@ -786,6 +813,15 @@ public sealed class ControllerProtocolService
         if ((axesMask & (byte)AxesMask.Z) != 0) axes.Append('Z');
         return axes.ToString();
     }
+
+    private static string MessageLevelToken(byte level) => level switch
+    {
+        1 => "INFO",
+        2 => "WARN",
+        3 => "ERROR",
+        4 => "DEBUG",
+        _ => "MSG"
+    };
 
     private static string DecodeValue(string value)
     {

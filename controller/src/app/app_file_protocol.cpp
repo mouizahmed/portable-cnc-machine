@@ -475,7 +475,7 @@ static bool wait_download_ack(AppCdcTransport& transport, uint8_t transfer_id, u
                 return true;
 
             if(frame.type == FRAME_CMD && frame.payload_len > 0 &&
-               frame.payload[0] == CMD_FILE_DOWNLOAD_ABORT)
+               frame.payload[0] == PCNC_CMD_FILE_DOWNLOAD_ABORT)
                 return false;
         }
 
@@ -633,11 +633,11 @@ bool app_file_protocol_handle_command(AppCdcTransport& transport, const AppCdcTr
         return false;
 
     switch(frame.payload[0]) {
-        case CMD_FILE_LIST:
+        case PCNC_CMD_FILE_LIST:
             send_file_list(transport, frame.seq);
             return true;
 
-        case CMD_FILE_LOAD:
+        case PCNC_CMD_FILE_LOAD:
             if(frame.payload_len < sizeof(CmdFileLoad)) {
                 send_storage_error(transport, frame.seq, ERROR_MISSING_PARAM,
                                    STORAGE_OP_LOAD, "Missing filename");
@@ -646,11 +646,11 @@ bool app_file_protocol_handle_command(AppCdcTransport& transport, const AppCdcTr
             send_file_load(transport, frame.seq, (const CmdFileLoad *)frame.payload);
             return true;
 
-        case CMD_FILE_UNLOAD:
+        case PCNC_CMD_FILE_UNLOAD:
             send_file_unload(transport, frame.seq);
             return true;
 
-        case CMD_FILE_DELETE:
+        case PCNC_CMD_FILE_DELETE:
             if(frame.payload_len < sizeof(CmdFileDelete)) {
                 send_storage_error(transport, frame.seq, ERROR_MISSING_PARAM,
                                    STORAGE_OP_DELETE, "Missing filename");
@@ -659,7 +659,7 @@ bool app_file_protocol_handle_command(AppCdcTransport& transport, const AppCdcTr
             send_file_delete(transport, frame.seq, (const CmdFileDelete *)frame.payload);
             return true;
 
-        case CMD_FILE_UPLOAD:
+        case PCNC_CMD_FILE_UPLOAD:
             if(frame.payload_len < sizeof(CmdFileUpload)) {
                 send_storage_error(transport, frame.seq, ERROR_UPLOAD_MISSING_PARAM,
                                    STORAGE_OP_UPLOAD, "Missing upload metadata");
@@ -668,7 +668,7 @@ bool app_file_protocol_handle_command(AppCdcTransport& transport, const AppCdcTr
             begin_file_upload(transport, frame.seq, (const CmdFileUpload *)frame.payload);
             return true;
 
-        case CMD_FILE_UPLOAD_END:
+        case PCNC_CMD_FILE_UPLOAD_END:
             if(frame.payload_len < sizeof(CmdFileUploadEnd)) {
                 send_storage_error(transport, frame.seq, ERROR_UPLOAD_MISSING_PARAM,
                                    STORAGE_OP_UPLOAD, "Missing upload CRC");
@@ -677,13 +677,13 @@ bool app_file_protocol_handle_command(AppCdcTransport& transport, const AppCdcTr
             finish_file_upload(transport, frame.seq, (const CmdFileUploadEnd *)frame.payload);
             return true;
 
-        case CMD_FILE_UPLOAD_ABORT:
+        case PCNC_CMD_FILE_UPLOAD_ABORT:
             if(upload_session.active)
                 close_upload_session(true);
             send_file_upload_abort(transport, frame.seq);
             return true;
 
-        case CMD_FILE_DOWNLOAD:
+        case PCNC_CMD_FILE_DOWNLOAD:
             if(frame.payload_len < sizeof(CmdFileDownload)) {
                 send_storage_error(transport, frame.seq, ERROR_DOWNLOAD_MISSING_PARAM,
                                    STORAGE_OP_DOWNLOAD, "Missing filename");
@@ -692,7 +692,7 @@ bool app_file_protocol_handle_command(AppCdcTransport& transport, const AppCdcTr
             send_file_download(transport, frame.seq, (const CmdFileDownload *)frame.payload);
             return true;
 
-        case CMD_FILE_DOWNLOAD_ABORT: {
+        case PCNC_CMD_FILE_DOWNLOAD_ABORT: {
             RespFileDownloadAbort response = {};
             response.message_type = RESP_FILE_DOWNLOAD_ABORT;
             response.request_seq = frame.seq;

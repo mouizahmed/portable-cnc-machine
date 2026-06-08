@@ -1,6 +1,10 @@
 #include "app/app_runtime.h"
 
 #include "app/app_touch_service.h"
+#include "app/app_bmp280_sensor.h"
+#include "app/app_temp_fan.h"
+#include "app/app_encoder_test.h"
+#include "app/app_fault_monitor.h"
 #include "app/app_ui_controller.h"
 #include "app/app_ui_state.h"
 #include "app_config/app_config_store.h"
@@ -35,6 +39,10 @@ void app_runtime_startup_task(void *data)
     report_message(app_config_status_text(status),
                    status == AppConfigStatus_Ready ? Message_Info : Message_Warning);
 
+    app_fault_monitor_start();
+    app_encoder_test_start();
+    app_bmp280_sensor_start();
+    app_temp_fan_start();
     app_protocol_start();
     app_touch_service_start();
     task_add_delayed(app_ui_refresh_task, NULL, 500);

@@ -22,7 +22,7 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
         set => SetProperty(ref _commandInput, value);
     }
 
-    private double _controllerTemperature;
+    private double _controllerTemperature = double.NaN;
     public double ControllerTemperature
     {
         get => _controllerTemperature;
@@ -32,9 +32,9 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
                 RaisePropertyChanged(nameof(ControllerTemperatureText));
         }
     }
-    public string ControllerTemperatureText => double.IsNaN(ControllerTemperature) ? "Unavailable" : $"{ControllerTemperature:F1} deg C";
+    public string ControllerTemperatureText => double.IsNaN(ControllerTemperature) ? "Unavailable" : $"{ControllerTemperature:F1} C";
 
-    private double _electronicsTemperature;
+    private double _electronicsTemperature = double.NaN;
     public double ElectronicsTemperature
     {
         get => _electronicsTemperature;
@@ -44,9 +44,9 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
                 RaisePropertyChanged(nameof(ElectronicsTemperatureText));
         }
     }
-    public string ElectronicsTemperatureText => double.IsNaN(ElectronicsTemperature) ? "Unavailable" : $"{ElectronicsTemperature:F1} deg C";
+    public string ElectronicsTemperatureText => double.IsNaN(ElectronicsTemperature) ? "Unavailable" : $"{ElectronicsTemperature:F1} C";
 
-    private double _spindleTemperature;
+    private double _spindleTemperature = double.NaN;
     public double SpindleTemperature
     {
         get => _spindleTemperature;
@@ -56,15 +56,27 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
                 RaisePropertyChanged(nameof(SpindleTemperatureText));
         }
     }
-    public string SpindleTemperatureText => double.IsNaN(SpindleTemperature) ? "Unavailable" : $"{SpindleTemperature:F1} deg C";
+    public string SpindleTemperatureText => double.IsNaN(SpindleTemperature) ? "Unavailable" : $"{SpindleTemperature:F1} C";
 
     public bool XLimitTriggered => MainVm?.XLimitTriggered == true;
     public bool YLimitTriggered => MainVm?.YLimitTriggered == true;
     public bool ZLimitTriggered => MainVm?.ZLimitTriggered == true;
+    public bool XMinLimitTriggered => MainVm?.XMinLimitTriggered == true;
+    public bool XMaxLimitTriggered => MainVm?.XMaxLimitTriggered == true;
+    public bool YMinLimitTriggered => MainVm?.YMinLimitTriggered == true;
+    public bool YMaxLimitTriggered => MainVm?.YMaxLimitTriggered == true;
+    public bool ZMinLimitTriggered => MainVm?.ZMinLimitTriggered == true;
+    public bool ZMaxLimitTriggered => MainVm?.ZMaxLimitTriggered == true;
 
     public string XLimitText => XLimitTriggered ? "TRIGGERED" : "CLEAR";
     public string YLimitText => YLimitTriggered ? "TRIGGERED" : "CLEAR";
     public string ZLimitText => ZLimitTriggered ? "TRIGGERED" : "CLEAR";
+    public string XMinLimitText => XMinLimitTriggered ? "TRIGGERED" : "CLEAR";
+    public string XMaxLimitText => XMaxLimitTriggered ? "TRIGGERED" : "CLEAR";
+    public string YMinLimitText => YMinLimitTriggered ? "TRIGGERED" : "CLEAR";
+    public string YMaxLimitText => YMaxLimitTriggered ? "TRIGGERED" : "CLEAR";
+    public string ZMinLimitText => ZMinLimitTriggered ? "TRIGGERED" : "CLEAR";
+    public string ZMaxLimitText => ZMaxLimitTriggered ? "TRIGGERED" : "CLEAR";
     public string LimitSummaryText => MainVm?.LimitSummaryText ?? "XYZ CLEAR";
 
     public ICommand SendCommandCommand { get; }
@@ -97,6 +109,12 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
             case nameof(MainWindowViewModel.XLimitTriggered):
             case nameof(MainWindowViewModel.YLimitTriggered):
             case nameof(MainWindowViewModel.ZLimitTriggered):
+            case nameof(MainWindowViewModel.XMinLimitTriggered):
+            case nameof(MainWindowViewModel.XMaxLimitTriggered):
+            case nameof(MainWindowViewModel.YMinLimitTriggered):
+            case nameof(MainWindowViewModel.YMaxLimitTriggered):
+            case nameof(MainWindowViewModel.ZMinLimitTriggered):
+            case nameof(MainWindowViewModel.ZMaxLimitTriggered):
             case nameof(MainWindowViewModel.LimitSummaryText):
                 RaiseLimitProperties();
                 break;
@@ -118,7 +136,8 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
         ElectronicsTemperature = double.NaN;
         SpindleTemperature = double.NaN;
 
-        AddLog("INFO", "Thermal telemetry unavailable");
+        MainVm?.Protocol.SendStatus();
+        AddLog("INFO", "Thermal telemetry refresh requested");
     }
 
     private async void ResetFault()
@@ -177,9 +196,21 @@ public sealed class DiagnosticsViewModel : PageViewModelBase
         RaisePropertyChanged(nameof(XLimitTriggered));
         RaisePropertyChanged(nameof(YLimitTriggered));
         RaisePropertyChanged(nameof(ZLimitTriggered));
+        RaisePropertyChanged(nameof(XMinLimitTriggered));
+        RaisePropertyChanged(nameof(XMaxLimitTriggered));
+        RaisePropertyChanged(nameof(YMinLimitTriggered));
+        RaisePropertyChanged(nameof(YMaxLimitTriggered));
+        RaisePropertyChanged(nameof(ZMinLimitTriggered));
+        RaisePropertyChanged(nameof(ZMaxLimitTriggered));
         RaisePropertyChanged(nameof(XLimitText));
         RaisePropertyChanged(nameof(YLimitText));
         RaisePropertyChanged(nameof(ZLimitText));
+        RaisePropertyChanged(nameof(XMinLimitText));
+        RaisePropertyChanged(nameof(XMaxLimitText));
+        RaisePropertyChanged(nameof(YMinLimitText));
+        RaisePropertyChanged(nameof(YMaxLimitText));
+        RaisePropertyChanged(nameof(ZMinLimitText));
+        RaisePropertyChanged(nameof(ZMaxLimitText));
         RaisePropertyChanged(nameof(LimitSummaryText));
     }
 }

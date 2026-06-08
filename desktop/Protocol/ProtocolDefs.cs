@@ -60,7 +60,8 @@ public enum CommandMessageType : byte
     EndJob = 29,
     ClearJob = 30,
     SettingsGet = 31,
-    SettingsSet = 32
+    SettingsSet = 32,
+    Unlock = 33
 }
 
 public enum ResponseMessageType : byte
@@ -87,7 +88,8 @@ public enum ResponseMessageType : byte
     FileDownloadAbort = 20,
     StorageError = 21,
     Wait = 22,
-    MachineSettings = 23
+    MachineSettings = 23,
+    Temperature = 24
 }
 
 public enum EventMessageType : byte
@@ -110,7 +112,9 @@ public enum EventMessageType : byte
     Limit = 16,
     Reserved17 = 17,
     Reserved18 = 18,
-    Alarm = 19
+    Alarm = 19,
+    Temperature = 20,
+    Message = 21
 }
 
 public enum AxisId : byte
@@ -237,6 +241,7 @@ public struct ProtocolFrameHeader
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdAbort { public byte MessageType; }
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdEstop { public byte MessageType; }
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdReset { public byte MessageType; }
+[StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdUnlock { public byte MessageType; }
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdSpindleOn { public byte MessageType; public ushort Rpm; }
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdSpindleOff { public byte MessageType; }
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct CmdOverride { public byte MessageType; public byte Target; public ushort Percent; }
@@ -452,6 +457,15 @@ public unsafe struct RespWait
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct RespTemperature
+{
+    public byte MessageType;
+    public uint RequestSeq;
+    public byte HasTemperature;
+    public float TemperatureC;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct RespMachineSettings
 {
     public byte MessageType;
@@ -515,12 +529,28 @@ public unsafe struct EventJobError
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct EventSdRemoved { public byte MessageType; }
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct EventEstopActive { public byte MessageType; }
 [StructLayout(LayoutKind.Sequential, Pack = 1)] public struct EventEstopCleared { public byte MessageType; }
-[StructLayout(LayoutKind.Sequential, Pack = 1)] public struct EventLimit { public byte MessageType; public byte AxesMask; }
+[StructLayout(LayoutKind.Sequential, Pack = 1)] public struct EventLimit { public byte MessageType; public byte AxesMask; public byte MinAxesMask; public byte MaxAxesMask; }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public unsafe struct EventAlarm
 {
     public byte MessageType;
     public ushort Code;
+    public fixed byte Message[ProtocolConstants.MaxMessageBytes];
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct EventTemperature
+{
+    public byte MessageType;
+    public byte HasTemperature;
+    public float TemperatureC;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public unsafe struct EventMessage
+{
+    public byte MessageType;
+    public byte MessageLevel;
     public fixed byte Message[ProtocolConstants.MaxMessageBytes];
 }

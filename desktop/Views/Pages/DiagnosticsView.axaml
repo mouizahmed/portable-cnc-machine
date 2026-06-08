@@ -79,33 +79,40 @@
         <controls:SectionCard Title="THERMAL READINGS">
           <controls:SectionCard.Body>
             <controls:TwoColumnInfoGrid>
-              <TextBlock Text="Controller Temp" Classes="FieldLabel"/>
+              <TextBlock Text="BMP280 Temp" Classes="FieldLabel"/>
               <TextBlock Grid.Column="1" Text="{Binding ControllerTemperatureText}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
-
-              <TextBlock Grid.Row="1" Text="Electronics Temp" Classes="FieldLabel"/>
-              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ElectronicsTemperatureText}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
-
-              <TextBlock Grid.Row="2" Text="Spindle Temp" Classes="FieldLabel"/>
-              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SpindleTemperatureText}" Classes="CodeText" Foreground="{DynamicResource TextPrimaryBrush}"/>
             </controls:TwoColumnInfoGrid>
           </controls:SectionCard.Body>
         </controls:SectionCard>
 
         <controls:SectionCard Title="LIMIT SWITCHES">
           <controls:SectionCard.Body>
-            <controls:TwoColumnInfoGrid>
-              <TextBlock Text="X Axis" Classes="FieldLabel"/>
-              <TextBlock Grid.Column="1" Text="{Binding XLimitText}" Classes="FieldValue"/>
+            <StackPanel Spacing="8">
+              <controls:TwoColumnInfoGrid>
+                <TextBlock Text="X Min" Classes="FieldLabel"/>
+                <TextBlock Grid.Column="1" Text="{Binding XMinLimitText}" Classes="FieldValue"/>
 
-              <TextBlock Grid.Row="1" Text="Y Axis" Classes="FieldLabel"/>
-              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding YLimitText}" Classes="FieldValue"/>
+                <TextBlock Grid.Row="1" Text="X Max" Classes="FieldLabel"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding XMaxLimitText}" Classes="FieldValue"/>
 
-              <TextBlock Grid.Row="2" Text="Z Axis" Classes="FieldLabel"/>
-              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ZLimitText}" Classes="FieldValue"/>
+                <TextBlock Grid.Row="2" Text="Y Min" Classes="FieldLabel"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding YMinLimitText}" Classes="FieldValue"/>
 
-              <TextBlock Grid.Row="3" Text="Summary" Classes="FieldLabel"/>
-              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LimitSummaryText}" Classes="FieldValue"/>
-            </controls:TwoColumnInfoGrid>
+                <TextBlock Grid.Row="3" Text="Y Max" Classes="FieldLabel"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding YMaxLimitText}" Classes="FieldValue"/>
+
+                <TextBlock Grid.Row="4" Text="Z Min" Classes="FieldLabel"/>
+                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ZMinLimitText}" Classes="FieldValue"/>
+
+                <TextBlock Grid.Row="5" Text="Z Max" Classes="FieldLabel"/>
+                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding ZMaxLimitText}" Classes="FieldValue"/>
+              </controls:TwoColumnInfoGrid>
+
+              <TextBlock Text="Summary" Classes="FieldLabel"/>
+              <TextBlock Text="{Binding LimitSummaryText}"
+                         Classes="FieldValue"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
           </controls:SectionCard.Body>
         </controls:SectionCard>
       </StackPanel>

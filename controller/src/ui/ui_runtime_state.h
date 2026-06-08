@@ -31,6 +31,7 @@ typedef struct {
     char sd_status[16];
     char littlefs_status[16];
     char touch_status[16];
+    char temperature[16];
 } ui_runtime_state_t;
 
 #ifdef __cplusplus

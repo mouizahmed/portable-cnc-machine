@@ -1113,6 +1113,9 @@ static void stepperEnable (axes_signals_t enable, bool hold)
 
 #ifdef STEPPERS_ENABLE_PIN
     DIGITAL_OUT(steppersEnable, enable.x)
+#ifdef Z_BRAKE_RELAY_PIN
+    DIGITAL_OUT(zBrakeRelay, enable.x ? Z_BRAKE_RELAY_ON : Z_BRAKE_RELAY_OFF)
+#endif
 #endif
 
 #ifdef X_ENABLE_PIN
@@ -1131,9 +1134,9 @@ static void stepperEnable (axes_signals_t enable, bool hold)
 
 #ifdef Z_ENABLE_PIN
     DIGITAL_OUT(enableZ, enable.z)
-#endif
 #ifdef Z_BRAKE_RELAY_PIN
     DIGITAL_OUT(zBrakeRelay, enable.z ? Z_BRAKE_RELAY_ON : Z_BRAKE_RELAY_OFF)
+#endif
 #endif
 #ifdef Z2_ENABLE_PIN
     DIGITAL_OUT(enableZ2, enable.z)

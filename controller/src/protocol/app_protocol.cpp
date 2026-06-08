@@ -3,21 +3,28 @@
 #include <string.h>
 
 #include "app/app_file_protocol.h"
+#include "app/app_bmp280_sensor.h"
 #include "app/app_job_service.h"
 #include "app/app_job_stream.h"
 #include "app/app_machine_state.h"
 #include "app/app_motion_control.h"
+#include "app/app_system_command.h"
 #include "machine/machine_status.h"
 #include "protocol/app_cdc_transport.h"
 #include "protocol/protocol_defs.h"
 
+#include "grbl/core_handlers.h"
+
 extern "C" {
+#include "grbl/errors.h"
+#include "grbl/hal.h"
 #include "grbl/task.h"
 }
 
 static AppCdcTransport transport;
 static AppCdcTransport::Frame rx_frame;
 static unsigned long last_job_progress_line = 0;
+static const char *last_bmp280_status_message = nullptr;
 
 static void copy_fixed(char *dest, size_t dest_size, const char *src)
 {
@@ -63,6 +70,15 @@ static void send_event(const void *payload, uint16_t payload_len)
                          (const uint8_t *)payload, payload_len);
 }
 
+static void send_message_event(uint8_t level, const char *message)
+{
+    EventMessage event = {};
+    event.message_type = EVENT_MESSAGE;
+    event.message_level = level;
+    copy_fixed(event.message, sizeof(event.message), message);
+    send_event(&event, sizeof(event));
+}
+
 static void send_error(uint32_t request_seq, ProtocolErrorCode error, const char *reason)
 {
     RespError response = {};
@@ -106,6 +122,14 @@ static void send_command_ack(uint32_t request_seq, uint8_t command_type)
     send_response(request_seq, &response, sizeof(response));
 }
 
+static void soft_reset_task(void *data)
+{
+    (void)data;
+
+    if(grbl.enqueue_realtime_command != nullptr)
+        grbl.enqueue_realtime_command(0x18u);
+}
+
 static void send_caps(uint32_t request_seq)
 {
     RespCaps response = {};
@@ -127,6 +151,17 @@ static void send_safety(uint32_t request_seq)
     response.message_type = RESP_SAFETY;
     response.request_seq = request_seq;
     response.safety = SAFETY_MONITORING;
+    send_response(request_seq, &response, sizeof(response));
+}
+
+static void send_temperature(uint32_t request_seq)
+{
+    RespTemperature response = {};
+    float temperature_c = 0.0f;
+    response.message_type = RESP_TEMPERATURE;
+    response.request_seq = request_seq;
+    response.has_temperature = app_bmp280_sensor_temperature_c(&temperature_c) ? 1 : 0;
+    response.temperature_c = temperature_c;
     send_response(request_seq, &response, sizeof(response));
 }
 
@@ -186,6 +221,7 @@ static void send_status_bundle(uint32_t request_seq)
     send_safety(request_seq);
     send_job(request_seq);
     send_position(request_seq);
+    send_temperature(request_seq);
 }
 
 static void handle_command_frame(const AppCdcTransport::Frame& frame)
@@ -199,7 +235,7 @@ static void handle_command_frame(const AppCdcTransport::Frame& frame)
         return;
 
     switch(frame.payload[0]) {
-        case CMD_PING: {
+        case PCNC_CMD_PING: {
             RespPong response = {};
             response.message_type = RESP_PONG;
             response.request_seq = frame.seq;
@@ -207,15 +243,15 @@ static void handle_command_frame(const AppCdcTransport::Frame& frame)
             break;
         }
 
-        case CMD_INFO:
+        case PCNC_CMD_INFO:
             send_info(frame.seq);
             break;
 
-        case CMD_STATUS:
+        case PCNC_CMD_STATUS:
             send_status_bundle(frame.seq);
             break;
 
-        case CMD_JOG: {
+        case PCNC_CMD_JOG: {
             if(frame.payload_len != sizeof(CmdJog)) {
                 send_error(frame.seq, ERROR_MISSING_PARAM, "Invalid jog command");
                 break;
@@ -231,7 +267,7 @@ static void handle_command_frame(const AppCdcTransport::Frame& frame)
             break;
         }
 
-        case CMD_JOG_CANCEL: {
+        case PCNC_CMD_JOG_CANCEL: {
             app_motion_result_t result = app_motion_jog_cancel();
             if(result == AppMotionResult_Ok)
                 send_command_ack(frame.seq, frame.payload[0]);
@@ -240,7 +276,7 @@ static void handle_command_frame(const AppCdcTransport::Frame& frame)
             break;
         }
 
-        case CMD_START:
+        case PCNC_CMD_START:
             if(!app_job_service_has_job()) {
                 send_error(frame.seq, ERROR_NO_JOB_LOADED, "No job loaded");
             } else {
@@ -268,7 +304,7 @@ static void handle_command_frame(const AppCdcTransport::Frame& frame)
             }
             break;
 
-        case CMD_RESUME:
+        case PCNC_CMD_RESUME:
             if(!app_job_service_is_running())
                 send_error(frame.seq, ERROR_NO_JOB_LOADED, "No running job");
             else if(app_job_stream_resume())
@@ -277,7 +313,7 @@ static void handle_command_frame(const AppCdcTransport::Frame& frame)
                 send_error(frame.seq, ERROR_INVALID_STATE, "Could not resume job");
             break;
 
-        case CMD_PAUSE:
+        case PCNC_CMD_PAUSE:
             if(!app_job_service_is_running())
                 send_error(frame.seq, ERROR_NO_JOB_LOADED, "No running job");
             else if(app_job_stream_pause())
@@ -286,7 +322,7 @@ static void handle_command_frame(const AppCdcTransport::Frame& frame)
                 send_error(frame.seq, ERROR_INVALID_STATE, "Could not pause job");
             break;
 
-        case CMD_ABORT:
+        case PCNC_CMD_ABORT:
             if(!app_job_service_is_running())
                 send_error(frame.seq, ERROR_NO_JOB_LOADED, "No running job");
             else if(app_job_stream_abort()) {
@@ -297,6 +333,28 @@ static void handle_command_frame(const AppCdcTransport::Frame& frame)
                 send_error(frame.seq, ERROR_INVALID_STATE, "Could not stop job");
             }
             break;
+
+        case PCNC_CMD_RESET:
+            if(grbl.enqueue_realtime_command != nullptr) {
+                send_command_ack(frame.seq, frame.payload[0]);
+                task_add_delayed(soft_reset_task, nullptr, 25);
+            } else {
+                send_error(frame.seq, ERROR_INVALID_STATE, "Could not queue soft reset");
+            }
+            break;
+
+        case PCNC_CMD_UNLOCK: {
+            char line[] = "$X";
+            status_code_t status = app_system_execute_line(line);
+            if(status == Status_OK)
+                send_command_ack(frame.seq, frame.payload[0]);
+            else {
+                const char *description = errors_get_description(status);
+                send_error(frame.seq, ERROR_INVALID_STATE,
+                           description == nullptr ? "Alarm unlock failed" : description);
+            }
+            break;
+        }
 
         default:
             send_error(frame.seq, ERROR_UNKNOWN, "Command not implemented on Teensy yet");
@@ -347,6 +405,47 @@ void app_protocol_push_task(void *data)
         state.message_type = EVENT_STATE;
         state.state = (uint8_t)protocol_state_from_mode(snapshot.mode);
         send_event(&state, sizeof(state));
+
+        EventTemperature temperature = {};
+        float temperature_c = 0.0f;
+        temperature.message_type = EVENT_TEMPERATURE;
+        temperature.has_temperature = app_bmp280_sensor_temperature_c(&temperature_c) ? 1 : 0;
+        temperature.temperature_c = temperature_c;
+        send_event(&temperature, sizeof(temperature));
+
+        const char *bmp280_status_message = nullptr;
+        uint8_t bmp280_status_level = 0;
+        if(app_bmp280_sensor_status(&bmp280_status_message, &bmp280_status_level) &&
+           bmp280_status_message != last_bmp280_status_message) {
+            last_bmp280_status_message = bmp280_status_message;
+            send_message_event(bmp280_status_level, bmp280_status_message);
+        }
+
+        if(hal.limits.get_state != nullptr) {
+            const limit_signals_t limits = hal.limits.get_state();
+            EventLimit limit = {};
+            limit.message_type = EVENT_LIMIT;
+            if(limits.min.x || limits.min2.x)
+                limit.min_axes_mask |= AXES_X;
+            if(limits.min.y || limits.min2.y)
+                limit.min_axes_mask |= AXES_Y;
+            if(limits.min.z || limits.min2.z)
+                limit.min_axes_mask |= AXES_Z;
+            if(limits.max.x || limits.max2.x)
+                limit.max_axes_mask |= AXES_X;
+            if(limits.max.y || limits.max2.y)
+                limit.max_axes_mask |= AXES_Y;
+            if(limits.max.z || limits.max2.z)
+                limit.max_axes_mask |= AXES_Z;
+            limit.axes_mask = (uint8_t)(limit.min_axes_mask | limit.max_axes_mask);
+            if(limits.min.x || limits.max.x || limits.min2.x || limits.max2.x)
+                limit.axes_mask |= AXES_X;
+            if(limits.min.y || limits.max.y || limits.min2.y || limits.max2.y)
+                limit.axes_mask |= AXES_Y;
+            if(limits.min.z || limits.max.z || limits.min2.z || limits.max2.z)
+                limit.axes_mask |= AXES_Z;
+            send_event(&limit, sizeof(limit));
+        }
 
         if(app_job_service_is_running()) {
             uint32_t line = 0;

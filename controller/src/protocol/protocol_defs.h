@@ -31,38 +31,39 @@ typedef enum {
 } FrameType;
 
 typedef enum {
-    CMD_PING = 1,
-    CMD_INFO = 2,
-    CMD_STATUS = 3,
-    CMD_HOME = 4,
-    CMD_PROBE_Z = 5,
-    CMD_JOG = 6,
-    CMD_JOG_CANCEL = 7,
-    CMD_ZERO = 8,
-    CMD_START = 9,
-    CMD_PAUSE = 10,
-    CMD_RESUME = 11,
-    CMD_ABORT = 12,
-    CMD_ESTOP = 13,
-    CMD_RESET = 14,
-    CMD_SPINDLE_ON = 15,
-    CMD_SPINDLE_OFF = 16,
-    CMD_OVERRIDE = 17,
-    CMD_FILE_LIST = 18,
-    CMD_FILE_LOAD = 19,
-    CMD_FILE_UNLOAD = 20,
-    CMD_FILE_DELETE = 21,
-    CMD_FILE_UPLOAD = 22,
-    CMD_FILE_UPLOAD_END = 23,
-    CMD_FILE_UPLOAD_ABORT = 24,
-    CMD_FILE_DOWNLOAD = 25,
-    CMD_RESERVED_26 = 26,
-    CMD_FILE_DOWNLOAD_ABORT = 27,
-    CMD_BEGIN_JOB = 28,
-    CMD_END_JOB = 29,
-    CMD_CLEAR_JOB = 30,
-    CMD_SETTINGS_GET = 31,
-    CMD_SETTINGS_SET = 32,
+    PCNC_CMD_PING = 1,
+    PCNC_CMD_INFO = 2,
+    PCNC_CMD_STATUS = 3,
+    PCNC_CMD_HOME = 4,
+    PCNC_CMD_PROBE_Z = 5,
+    PCNC_CMD_JOG = 6,
+    PCNC_CMD_JOG_CANCEL = 7,
+    PCNC_CMD_ZERO = 8,
+    PCNC_CMD_START = 9,
+    PCNC_CMD_PAUSE = 10,
+    PCNC_CMD_RESUME = 11,
+    PCNC_CMD_ABORT = 12,
+    PCNC_CMD_ESTOP = 13,
+    PCNC_CMD_RESET = 14,
+    PCNC_CMD_SPINDLE_ON = 15,
+    PCNC_CMD_SPINDLE_OFF = 16,
+    PCNC_CMD_OVERRIDE = 17,
+    PCNC_CMD_FILE_LIST = 18,
+    PCNC_CMD_FILE_LOAD = 19,
+    PCNC_CMD_FILE_UNLOAD = 20,
+    PCNC_CMD_FILE_DELETE = 21,
+    PCNC_CMD_FILE_UPLOAD = 22,
+    PCNC_CMD_FILE_UPLOAD_END = 23,
+    PCNC_CMD_FILE_UPLOAD_ABORT = 24,
+    PCNC_CMD_FILE_DOWNLOAD = 25,
+    PCNC_CMD_RESERVED_26 = 26,
+    PCNC_CMD_FILE_DOWNLOAD_ABORT = 27,
+    PCNC_CMD_BEGIN_JOB = 28,
+    PCNC_CMD_END_JOB = 29,
+    PCNC_CMD_CLEAR_JOB = 30,
+    PCNC_CMD_SETTINGS_GET = 31,
+    PCNC_CMD_SETTINGS_SET = 32,
+    PCNC_CMD_UNLOCK = 33,
 } CommandMessageType;
 
 typedef enum {
@@ -89,6 +90,7 @@ typedef enum {
     RESP_STORAGE_ERROR = 21,
     RESP_WAIT = 22,
     RESP_MACHINE_SETTINGS = 23,
+    RESP_TEMPERATURE = 24,
 } ResponseMessageType;
 
 typedef enum {
@@ -111,6 +113,8 @@ typedef enum {
     EVENT_RESERVED_17 = 17,
     EVENT_RESERVED_18 = 18,
     EVENT_ALARM = 19,
+    EVENT_TEMPERATURE = 20,
+    EVENT_MESSAGE = 21,
 } EventMessageType;
 
 typedef enum {
@@ -219,6 +223,7 @@ typedef struct PCNC_PACKED { uint8_t message_type; uint8_t axis; float dist; uin
 typedef struct PCNC_PACKED { uint8_t message_type; uint8_t axes_mask; } CmdZero;
 typedef struct PCNC_PACKED { uint8_t message_type; uint16_t rpm; } CmdSpindleOn;
 typedef struct PCNC_PACKED { uint8_t message_type; uint8_t target; uint16_t percent; } CmdOverride;
+typedef struct PCNC_PACKED { uint8_t message_type; } CmdUnlock;
 typedef struct PCNC_PACKED { uint8_t message_type; char name[PCNC_MAX_FILENAME_BYTES]; } CmdFileLoad;
 typedef struct PCNC_PACKED { uint8_t message_type; char name[PCNC_MAX_FILENAME_BYTES]; } CmdFileDelete;
 typedef struct PCNC_PACKED { uint8_t message_type; uint32_t size; uint8_t overwrite; char name[PCNC_MAX_FILENAME_BYTES]; } CmdFileUpload;
@@ -247,6 +252,7 @@ typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; uint8_t
 typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; } RespFileDownloadAbort;
 typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; uint8_t error; uint8_t operation; uint32_t seq; uint32_t expected; uint32_t actual; char detail[PCNC_MAX_REASON_BYTES]; } RespStorageError;
 typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; char reason[PCNC_MAX_REASON_BYTES]; } RespWait;
+typedef struct PCNC_PACKED { uint8_t message_type; uint32_t request_seq; uint8_t has_temperature; float temperature_c; } RespTemperature;
 
 typedef struct PCNC_PACKED { uint8_t message_type; uint8_t state; } EventState;
 typedef struct PCNC_PACKED { uint8_t message_type; uint16_t caps; } EventCaps;
@@ -261,12 +267,17 @@ typedef struct PCNC_PACKED { uint8_t message_type; } EventSdMounted;
 typedef struct PCNC_PACKED { uint8_t message_type; } EventSdRemoved;
 typedef struct PCNC_PACKED { uint8_t message_type; } EventEstopActive;
 typedef struct PCNC_PACKED { uint8_t message_type; } EventEstopCleared;
-typedef struct PCNC_PACKED { uint8_t message_type; uint8_t axes_mask; } EventLimit;
+typedef struct PCNC_PACKED { uint8_t message_type; uint8_t axes_mask; uint8_t min_axes_mask; uint8_t max_axes_mask; } EventLimit;
 typedef struct PCNC_PACKED { uint8_t message_type; uint16_t code; char message[PCNC_MAX_MESSAGE_BYTES]; } EventAlarm;
+typedef struct PCNC_PACKED { uint8_t message_type; uint8_t has_temperature; float temperature_c; } EventTemperature;
+typedef struct PCNC_PACKED { uint8_t message_type; uint8_t message_level; char message[PCNC_MAX_MESSAGE_BYTES]; } EventMessage;
 
 PCNC_STATIC_ASSERT(sizeof(ProtocolFrameHeader) == PCNC_FRAME_HEADER_SIZE, "ProtocolFrameHeader must match the wire header");
 PCNC_STATIC_ASSERT(sizeof(CmdJog) == 8, "CmdJog wire size changed");
 PCNC_STATIC_ASSERT(sizeof(RespPos) == 29, "RespPos wire size changed");
+PCNC_STATIC_ASSERT(sizeof(RespTemperature) == 10, "RespTemperature wire size changed");
+PCNC_STATIC_ASSERT(sizeof(EventTemperature) == 6, "EventTemperature wire size changed");
+PCNC_STATIC_ASSERT(sizeof(EventMessage) == 66, "EventMessage wire size changed");
 
 #undef PCNC_PACKED
 #undef PCNC_STATIC_ASSERT

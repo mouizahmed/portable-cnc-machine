@@ -717,9 +717,9 @@ public sealed class ManualControlViewModel : PageViewModelBase
     {
         if (MainVm == null || !CanAlarmUnlock) return;
 
-        MainVm.Protocol.SendReset();
-        SetCommandPreview("@RESET");
-        MainVm.StatusMessage = "Reset sent — check machine position before moving.";
+        MainVm.Protocol.SendUnlock();
+        SetCommandPreview("$X");
+        MainVm.StatusMessage = "Alarm unlock sent.";
     }
 
     private void SoftReset()
@@ -727,7 +727,7 @@ public sealed class ManualControlViewModel : PageViewModelBase
         if (MainVm == null || !CanSoftReset) return;
 
         MainVm.Protocol.SendReset();
-        SetCommandPreview("@RESET");
+        SetCommandPreview("Ctrl-X");
         MainVm.StatusMessage = "Soft reset sent.";
     }
 
@@ -736,11 +736,11 @@ public sealed class ManualControlViewModel : PageViewModelBase
         if (MainVm == null || !CanAlarmUnlock) return;
 
         await ExecuteProtocolCommandAsync(
-            "RESET",
-            MainVm.Protocol.SendReset,
-            "@RESET",
-            "Reset sent — check machine position before moving.",
-            "Reset failed");
+            "UNLOCK",
+            MainVm.Protocol.SendUnlock,
+            "$X",
+            "Alarm unlock sent.",
+            "Alarm unlock failed");
     }
 
     private async void SoftResetTracked()
@@ -750,7 +750,7 @@ public sealed class ManualControlViewModel : PageViewModelBase
         await ExecuteProtocolCommandAsync(
             "RESET",
             MainVm.Protocol.SendReset,
-            "@RESET",
+            "Ctrl-X",
             "Soft reset sent.",
             "Soft reset failed");
     }

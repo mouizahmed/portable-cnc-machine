@@ -20,11 +20,23 @@
 #define COOLANT_ENABLE          0
 #define SPINDLE0_ENABLE         0
 
+// HCT245 common-anode driver wiring:
+// ENA+ -> +5V, ENA- -> HCT245 output. A low output activates ENA on the driver,
+// and these drivers treat active ENA as disabled, so enabled state must be high.
+#define DEFAULT_ENABLE_SIGNALS_INVERT_MASK 0
+
 // Product feature intent. These are consumed by our app layer, not grblHAL.
 #define CNC_ENABLE_SD_CARD      1
 #define CNC_ENABLE_LITTLEFS     1
 #define CNC_ENABLE_TFT          1
 #define CNC_ENABLE_TOUCH        1
+#define CNC_ENABLE_Z_ALM        1
+#define CNC_ENABLE_BMP280       1
+#define CNC_ENABLE_TEMP_FAN     1
+#define CNC_ENABLE_ENCODER_TEST 1
+#define CNC_TEMP_FAN_ON_C       35.0f
+#define CNC_TEMP_FAN_OFF_C      30.0f
+#define CNC_Z_ALM_ACTIVE_HIGH   1
 #define CNC_AXIS_COUNT          3
 
 // Reserve 512 KiB of Teensy flash for app-owned LittleFS data.

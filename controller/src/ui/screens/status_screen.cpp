@@ -7,7 +7,7 @@
 #include <stdio.h>
 
 static const ui_runtime_state_t fallback_state = {
-    "IDLE", "--", "00:00", "--", "0.000", "0.000", "0.000", "--", "--", "ENABLED", "ENABLED", "CALIBRATED"
+    "IDLE", "--", "00:00", "--", "0.000", "0.000", "0.000", "--", "--", "ENABLED", "ENABLED", "CALIBRATED", "--"
 };
 
 static const ui_runtime_state_t *screen_state(const ui_runtime_state_t *state)
@@ -33,7 +33,7 @@ bool status_screen_field_rect(uint8_t field, ui_rect_t *rect)
             *rect = (ui_rect_t){20, 126, 190, 12};
             return true;
         case UiRuntimeField_Storage:
-            *rect = (ui_rect_t){260, 78, 190, 60};
+            *rect = (ui_rect_t){260, 78, 190, 84};
             return true;
         default:
             return false;
@@ -65,6 +65,8 @@ void status_screen_draw_fields(const ui_runtime_state_t *state, uint8_t fields)
         tft_display_draw_text(260, 102, line, UI_COLOR_TEXT, UI_COLOR_CARD, 1);
         snprintf(line, sizeof(line), "TOUCH: %s", s->touch_status);
         tft_display_draw_text(260, 126, line, UI_COLOR_TEXT, UI_COLOR_CARD, 1);
+        snprintf(line, sizeof(line), "TEMP: %s", s->temperature);
+        tft_display_draw_text(260, 150, line, UI_COLOR_TEXT, UI_COLOR_CARD, 1);
     }
 }
 
