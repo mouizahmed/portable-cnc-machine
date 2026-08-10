@@ -125,7 +125,17 @@ public static class UsbDeviceService
     private static string BuildInstanceKey(string deviceId)
     {
         var withoutMi = Regex.Replace(deviceId, @"&MI_[0-9A-F]{2}", "", RegexOptions.IgnoreCase);
-        return withoutMi.ToUpperInvariant();
+
+        // Windows appends the USB interface number to each composite child
+        // instance (for example, &0000 for MI_00 and &0002 for MI_02).
+        // Remove it so both CDC interfaces group under the same Teensy.
+        var withoutInterfaceInstance = Regex.Replace(
+            withoutMi,
+            @"&000[0-9A-F]$",
+            "",
+            RegexOptions.IgnoreCase);
+
+        return withoutInterfaceInstance.ToUpperInvariant();
     }
 
     private static List<UsbCdcPortPair> PairFallbackPorts(IEnumerable<string> ports)
